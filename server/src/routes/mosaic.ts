@@ -1,0 +1,37 @@
+import { Router } from "express";
+import { currentFamily, prisma } from "../lib/prisma.js";
+
+export const mosaicRouter = Router();
+
+/**
+ * Mosaic presents the archive aesthetically rather than chronologically.
+ * Real palette/composition analysis belongs to the AI phase; for now we sort by
+ * the stored hue + brightness and vary tile size to create a curated rhythm.
+ */
+mosaicRouter.get("/mosaic", async (_req, res) => {
+  const family = await currentFamily();
+  const memories = await prisma.memory.findMany({
+    where: { familyId: family.id },
+    orderBy: [{ paletteHue: "asc" }, { brightness: "desc" }],
+    include: { media: true },
+  });
+
+  const tiles = memories.map((m, i) => {
+    const hero = m.media.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
+    // A repeating 7-beat rhythm: mostly small tiles, occasional wide/tall ones.
+    const beat = i % 7;
+    const span = beat === 0 ? "wide" : beat === 3 ? "tall" : "single";
+    return {
+      id: m.id,
+      title: m.title,
+      occurredAt: m.occurredAt.toISOString(),
+      url: hero?.url ?? `/media/gen/${m.heroSeed}.png?w=900&h=900`,
+      isVideo: hero?.type === "VIDEO",
+      hasAudio: m.media.some((x) => x.type === "AUDIO"),
+      paletteHue: m.paletteHue,
+      span,
+    };
+  });
+
+  res.json({ tiles });
+});

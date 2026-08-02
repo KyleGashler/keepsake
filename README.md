@@ -1,1 +1,83 @@
-# keepsake
+# Keepsake — v0 prototype
+
+A working slice of Keepsake: a React Native app and an API, wired together and
+runnable with one command. **No authentication and no AI in this build** — it
+exists to make the product architecture tangible enough to argue with.
+
+```bash
+docker compose up --build
+```
+
+Then open **http://localhost:8081**. The database seeds itself on first boot
+with one demo family (the Bryners — two parents, two kids, two grandparents,
+24 memories across 36 collections), so there's something real to browse
+immediately.
+
+| Service | URL | What it is |
+| --- | --- | --- |
+| App | http://localhost:8081 | Expo dev server — React Native running on the web |
+| API | http://localhost:4000/api/health | Express + Prisma |
+| Postgres | `localhost:55432` | user / password / db all `keepsake` |
+
+## What's here
+
+All six primary destinations from the packet:
+
+- **Home** — greeting, Your People, Today's Moment to Capture, Your Story So Far, Family Updates
+- **Capture** — camera / import / write / record, all landing on one compose screen that writes a real memory
+- **Library** — three Story Pillars → child selector → collections → memories, with the default collection sets pre-loaded per child
+- **Mosaic** — the archive laid out by palette rather than date, in a masonry grid
+- **Search** — one query across memories, transcripts, people, places, and collections
+- **Family Hub** — modal: members, permissions, invites, settings
+
+Plus the immersive memory page: hero image, Story/Transcript toggle, original
+media, who was there, and inline editing of the narrative.
+
+## What's deliberately missing
+
+These are stubbed and labelled in the UI rather than faked:
+
+- **Auth** — the API is wide open and serves a single seeded family. Every route would hang off a session.
+- **AI** — no narratives, transcription, tagging, or generated prompts. `Memory.transcript` and the prompt table already exist, so the AI phase fills fields rather than reshaping the schema.
+- **Audio capture** — recording and playback need real files; the written form stands in, and typed transcripts land in the field transcription will eventually populate.
+- **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
+- **Real photographs** — every seeded image is a gradient generated from a string seed ([server/src/lib/placeholder.ts](server/src/lib/placeholder.ts)), so the app looks alive offline and nothing binary lives in git. Photos you upload yourself are real and land on a Docker volume.
+
+## Running on a phone
+
+The web build is the fastest way to look at it, but this is React Native — it
+runs natively too:
+
+```bash
+cd app && npx expo start   # then scan the QR code with Expo Go
+```
+
+The app derives the API host from Metro's LAN address, so a device on the same
+Wi-Fi finds the API without configuration. Override with `EXPO_PUBLIC_API_URL`
+if that guess is wrong.
+
+## Layout
+
+```
+app/                     Expo + expo-router
+  app/(tabs)/              the four primary destinations
+  app/memory/[id].tsx      the immersive memory page
+  src/api.ts               API client + response types
+  src/theme.ts             colours, type scale, spacing
+server/                  Express + Prisma
+  prisma/schema.prisma     Family, Person, Memory, Media, Collection, ActivityEvent
+  src/seed.ts              the demo family
+docker-compose.yml
+```
+
+## Common tasks
+
+```bash
+docker compose logs -f api                            # API logs
+docker compose exec api npx prisma studio             # browse the data
+docker compose exec -e SEED_RESET=1 api npm run seed  # rebuild the demo family
+docker compose down -v                                # wipe database + uploads
+```
+
+Schema changes apply on container start via `prisma db push` — no migration
+files until the shape settles.

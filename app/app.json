@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Keepsake",
+    "slug": "keepsake",
+    "scheme": "keepsake",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#FBF7F2",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.keepsake.app"
+    },
+    "android": {
+      "package": "com.keepsake.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#FBF7F2",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Keepsake needs access to your photos so you can preserve them as memories.",
+          "cameraPermission": "Keepsake needs your camera to capture a moment as it happens."
+        }
+      ]
+    ]
+  }
+}

@@ -1,0 +1,191 @@
+// Keepsake — v0 data model.
+// No auth yet: the API serves a single seeded family (see src/seed.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// The three Story Pillars the Library is organized around.
+enum Pillar {
+  ARRIVAL_STORIES
+  CHILD_PROFILES
+  FAMILY_LIFE
+}
+
+enum PersonRole {
+  PARENT
+  CHILD
+  GRANDPARENT
+  RELATIVE
+  COLLABORATOR
+}
+
+enum MediaType {
+  PHOTO
+  VIDEO
+  AUDIO
+}
+
+/// Highest-level container: the shared archive belonging to a household.
+model Family {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  people      Person[]
+  collections Collection[]
+  memories    Memory[]
+  updates     ActivityEvent[]
+  prompts     CapturePrompt[]
+}
+
+/// An individual whose life is part of the family's story.
+model Person {
+  id          String     @id @default(cuid())
+  familyId    String
+  name        String
+  role        PersonRole
+  /// How this person is referred to inside the family ("Mom", "Grandpa").
+  relation    String?
+  birthDate   DateTime?
+  /// Deterministic seed for the generated placeholder avatar.
+  avatarSeed  String
+  accentColor String     @default("#C97B5A")
+  sortOrder   Int        @default(0)
+  createdAt   DateTime   @default(now())
+
+  family        Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  collections   Collection[]
+  createdMemory Memory[]            @relation("MemoryAuthor")
+  appearsIn     MemoryParticipant[]
+  events        ActivityEvent[]
+
+  @@index([familyId])
+}
+
+/// A curated group of related Memories, experienced through a Story Pillar.
+model Collection {
+  id          String  @id @default(cuid())
+  familyId    String
+  pillar      Pillar
+  name        String
+  description String?
+  /// Child Profile / Arrival Story collections are scoped to one person.
+  personId    String?
+  isDefault   Boolean @default(true)
+  sortOrder   Int     @default(0)
+  coverSeed   String
+
+  family    Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  person    Person?            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  memories  MemoryCollection[]
+  createdAt DateTime           @default(now())
+
+  @@index([familyId, pillar])
+  @@index([personId])
+}
+
+/// The foundational object: a single meaningful moment preserved by a family.
+model Memory {
+  id          String   @id @default(cuid())
+  familyId    String
+  title       String
+  /// The written narrative. Families always retain editorial control.
+  story       String?
+  /// Written record of spoken audio. Populated by hand in v0 (no AI yet).
+  transcript  String?
+  occurredAt  DateTime
+  location    String?
+  authorId    String?
+  /// Deterministic seed for the generated hero image.
+  heroSeed    String
+  /// Drives Mosaic's aesthetic ordering (0-360). Stands in for palette analysis.
+  paletteHue  Int      @default(30)
+  brightness  Int      @default(50)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  family       Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  author       Person?             @relation("MemoryAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  media        Media[]
+  collections  MemoryCollection[]
+  participants MemoryParticipant[]
+
+  @@index([familyId, occurredAt])
+}
+
+/// Original assets attached to a Memory. Originals are never overwritten.
+model Media {
+  id         String    @id @default(cuid())
+  memoryId   String
+  type       MediaType
+  /// Either a generated placeholder path or an uploaded file path.
+  url        String
+  caption    String?
+  width      Int       @default(1200)
+  height     Int       @default(900)
+  durationS  Int?
+  sortOrder  Int       @default(0)
+  isOriginal Boolean   @default(true)
+  createdAt  DateTime  @default(now())
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@index([memoryId])
+}
+
+model MemoryCollection {
+  memoryId     String
+  collectionId String
+
+  memory     Memory     @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  collection Collection @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+
+  @@id([memoryId, collectionId])
+  @@index([collectionId])
+}
+
+model MemoryParticipant {
+  memoryId String
+  personId String
+
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  person Person @relation(fields: [personId], references: [id], onDelete: Cascade)
+
+  @@id([memoryId, personId])
+  @@index([personId])
+}
+
+/// Journal-style "Family Updates" feed. Not social media notifications.
+model ActivityEvent {
+  id        String   @id @default(cuid())
+  familyId  String
+  actorId   String?
+  kind      String
+  message   String
+  createdAt DateTime @default(now())
+
+  family Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  actor  Person? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([familyId, createdAt])
+}
+
+/// "Today's Moment to Capture". Hand-authored in v0; AI-generated later.
+model CapturePrompt {
+  id        String  @id @default(cuid())
+  familyId  String
+  text      String
+  subtitle  String?
+  imageSeed String
+  sortOrder Int     @default(0)
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+}
