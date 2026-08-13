@@ -1,0 +1,37 @@
+# Pick an unguessable app name — with no accounts behind it, the URL and the
+# demo password are the only things standing between the archive and the world.
+app = "keepsake-demo-h4t9wq"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "4000"
+  WEB_DIR = "/app/web"
+  MEDIA_DIR = "/data/media"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  # Scales to zero between viewings; first request after idle takes a few
+  # seconds to wake.
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    path = "/api/health"
+    method = "GET"
+    interval = "15s"
+    timeout = "5s"
+    grace_period = "40s"
+
+# Uploaded media lives here so redeploys don't erase it.
+[[mounts]]
+  source = "keepsake_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "1gb"
