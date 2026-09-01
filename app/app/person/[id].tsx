@@ -1,6 +1,7 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useApi, type MemoryCard, type Person } from "../../src/api";
+import { DreamCloud } from "../../src/components/brand";
 import {
   AppHeader,
   Avatar,
@@ -47,6 +48,8 @@ export default function PersonScreen() {
               {data.memoryCount} {data.memoryCount === 1 ? "memory" : "memories"} so far
             </Text>
           </View>
+          {/* Whimsical shape 6/6 — dream cloud, over the person the story is about. */}
+          <DreamCloud size={44} opacity={0.8} />
         </View>
 
         {data.collections.length ? (

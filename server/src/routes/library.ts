@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { currentFamily, prisma } from "../lib/prisma.js";
-import { collectionDto, memoryCardDto, personDto } from "../lib/serialize.js";
+import { collectionDto, imageUrl, memoryCardDto, personDto } from "../lib/serialize.js";
 
 export const libraryRouter = Router();
 
@@ -53,7 +53,7 @@ libraryRouter.get("/library", async (_req, res) => {
     pillars: PILLARS.map((p) => ({
       ...p,
       collectionCount: counts.find((c) => c.pillar === p.key)?._count._all ?? 0,
-      coverUrl: `/media/gen/${p.coverSeed}.png?w=1000&h=700`,
+      coverUrl: imageUrl(p.coverSeed, 1000, 700),
     })),
     children: children.map(personDto),
   });

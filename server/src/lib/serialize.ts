@@ -1,8 +1,29 @@
+import { RENDER_VERSION } from "./placeholder.js";
 import type { Collection, Media, Memory, Person } from "@prisma/client";
 
-/** Placeholder media is generated on demand; uploads are served from disk. */
-export function imageUrl(seed: string, w: number, h: number) {
-  return `/media/gen/${encodeURIComponent(seed)}.png?w=${w}&h=${h}`;
+/**
+ * Placeholder media is generated on demand; uploads are served from disk.
+ *
+ * `v` is the renderer's fingerprint, so changing the palette changes every URL
+ * and clients don't sit on a year of cached old colours.
+ */
+export function imageUrl(seed: string, w: number, h: number, baseColor?: string | null) {
+  const base = baseColor ? `&c=${encodeURIComponent(baseColor)}` : "";
+  return withVersion(`/media/gen/${encodeURIComponent(seed)}.png?w=${w}&h=${h}${base}`);
+}
+
+/**
+ * Stamp the renderer's fingerprint onto a generated-media path.
+ *
+ * Media rows store the path without one, deliberately — a fingerprint in the
+ * database would be a snapshot of whatever the palette looked like at seed time,
+ * and would go stale the moment it changed. Stamping on the way out means a
+ * palette change reaches every client on the next response, no reseed needed.
+ * Uploads are left alone; they're real files and their bytes never change.
+ */
+export function withVersion(url: string) {
+  if (!url.startsWith("/media/gen/")) return url;
+  return `${url}${url.includes("?") ? "&" : "?"}v=${RENDER_VERSION}`;
 }
 
 export function personDto(p: Person) {
@@ -13,7 +34,9 @@ export function personDto(p: Person) {
     relation: p.relation,
     birthDate: p.birthDate?.toISOString() ?? null,
     accentColor: p.accentColor,
-    avatarUrl: imageUrl(p.avatarSeed, 240, 240),
+    // An avatar takes the person's own palette colour, so the orb and the ring
+    // drawn around it are the same hue.
+    avatarUrl: imageUrl(p.avatarSeed, 240, 240, p.accentColor),
     initials: p.name
       .split(" ")
       .map((part) => part[0])
@@ -27,7 +50,7 @@ export function mediaDto(m: Media) {
   return {
     id: m.id,
     type: m.type,
-    url: m.url,
+    url: withVersion(m.url),
     caption: m.caption,
     width: m.width,
     height: m.height,
@@ -65,7 +88,7 @@ export function memoryCardDto(m: MemoryWithRelations) {
     title: m.title,
     occurredAt: m.occurredAt.toISOString(),
     location: m.location,
-    heroUrl: hero?.url ?? imageUrl(m.heroSeed, 1200, 900),
+    heroUrl: (hero ? withVersion(hero.url) : null) ?? imageUrl(m.heroSeed, 1200, 900),
     excerpt: m.story ? m.story.replace(/\s+/g, " ").slice(0, 140) : null,
     mediaCount: m.media?.length ?? 0,
     hasAudio: m.media?.some((x) => x.type === "AUDIO") ?? false,

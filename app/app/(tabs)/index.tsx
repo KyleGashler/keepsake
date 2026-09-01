@@ -4,6 +4,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { mediaUrl, useApi, type HomePayload } from "../../src/api";
+import { Twinkle } from "../../src/components/brand";
 import {
   AppHeader,
   Avatar,
@@ -38,7 +39,7 @@ export default function HomeScreen() {
 
   return (
     <>
-      <AppHeader subtitle="Keepsake" />
+      <AppHeader wordmark />
       <Screen>
         <View style={styles.greeting}>
           <Text style={type.display}>{data.greeting.salutation}</Text>
@@ -76,6 +77,8 @@ export default function HomeScreen() {
                 transition={300}
               />
               <View style={styles.heroScrim} />
+              {/* Whimsical shape 1/6 — twinkle, on the one moment worth capturing today. */}
+              <Twinkle size={22} color="#FFF7EF" opacity={0.9} style={styles.heroTwinkle} />
               <View style={styles.heroBody}>
                 <Text style={styles.heroText}>{data.prompt.text}</Text>
                 {data.prompt.subtitle ? <Text style={styles.heroSub}>{data.prompt.subtitle}</Text> : null}
@@ -133,7 +136,8 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
     justifyContent: "flex-end",
   },
-  heroScrim: { position: "absolute", inset: 0, backgroundColor: "rgba(28,23,19,0.34)" },
+  heroScrim: { position: "absolute", inset: 0, backgroundColor: "rgba(47,54,46,0.36)" },
+  heroTwinkle: { position: "absolute", top: spacing.lg, right: spacing.lg },
   heroBody: { padding: spacing.xl, gap: spacing.sm },
   heroText: { fontFamily: type.display.fontFamily, fontSize: 26, lineHeight: 33, color: "#FFF7EF" },
   heroSub: { fontSize: 14, lineHeight: 20, color: "rgba(255,247,239,0.85)" },

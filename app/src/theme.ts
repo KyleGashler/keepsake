@@ -4,18 +4,47 @@ import { Platform } from "react-native";
  * Keepsake should feel like a warm room, not a dashboard: paper tones, ink,
  * one terracotta accent, and a serif reserved for the family's own words.
  */
+
+/**
+ * The five approved brand colours, verbatim from the brand guide (v1.0).
+ * Nothing else in the app should invent a hue — everything below is either one
+ * of these or a tint/shade derived from them.
+ */
+export const brand = {
+  sage: "#A3AA9A",
+  duskBlue: "#8FA1A6",
+  goldenHoney: "#D49A4A",
+  terracotta: "#D68A75",
+  forest: "#2F362E",
+} as const;
+
 export const colors = {
-  bg: "#FBF7F2",
+  /** The guide's paper, sampled from the brand sheet. */
+  bg: "#FAF5F1",
   surface: "#FFFFFF",
-  surfaceAlt: "#F4EDE4",
-  ink: "#2A2521",
-  inkSoft: "#5C5249",
-  muted: "#8A7C70",
-  line: "#E8DFD4",
-  accent: "#C97B5A",
-  accentSoft: "#F3E1D5",
-  sage: "#6F8267",
-  overlay: "rgba(28,23,19,0.55)",
+  surfaceAlt: "#F0EAE0",
+  /**
+   * App type is Forest — warmer and softer than black, and on-palette. The
+   * logo is deliberately not this; it keeps the near-black it's drawn in
+   * (see LOGO_INK in components/brand.tsx), because the guide says not to
+   * alter the lockups.
+   */
+  ink: brand.forest,
+  inkSoft: "#555B50",
+  muted: "#6F6E64",
+  line: "#E4DDD1",
+  accent: brand.goldenHoney,
+  /**
+   * Golden Honey is too light to carry white text (2.2:1), so filled controls
+   * use this deeper shade of the same hue — 4.8:1, which clears AA.
+   */
+  accentDeep: "#9E6526",
+  accentSoft: "#F7EBD8",
+  sage: brand.sage,
+  duskBlue: brand.duskBlue,
+  terracotta: brand.terracotta,
+  forest: brand.forest,
+  overlay: "rgba(47,54,46,0.55)",
 };
 
 export const spacing = {
@@ -59,11 +88,11 @@ export const type = {
 
 export const shadow = Platform.select({
   ios: {
-    shadowColor: "#8A6A4F",
-    shadowOpacity: 0.14,
+    shadowColor: brand.forest,
+    shadowOpacity: 0.12,
     shadowRadius: 18,
     shadowOffset: { width: 0, height: 8 },
   },
   android: { elevation: 3 },
-  default: { boxShadow: "0 8px 24px rgba(138,106,79,0.14)" },
+  default: { boxShadow: "0 8px 24px rgba(47,54,46,0.10)" },
 }) as object;

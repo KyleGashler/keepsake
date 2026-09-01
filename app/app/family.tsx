@@ -54,7 +54,7 @@ export default function FamilyHubScreen() {
 
   return (
     <>
-      <AppHeader back subtitle="Family Hub" title={data.family.name} globalActions={false} />
+      <AppHeader back mark subtitle="Family Hub" title={data.family.name} globalActions={false} />
       <Screen>
         <View style={styles.stats}>
           <Stat value={data.stats.memoryCount} label="Memories" />

@@ -4,6 +4,7 @@ import { router } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
+import { StardustCluster } from "../../src/components/brand";
 import { AppHeader, ErrorState, Loading, MAX_WIDTH, Screen } from "../../src/components/ui";
 import { colors, radius, spacing, type } from "../../src/theme";
 
@@ -45,9 +46,13 @@ export default function MosaicScreen() {
     <>
       <AppHeader subtitle="Mosaic" title="The whole picture" />
       <Screen>
-        <Text style={[type.body, { marginBottom: spacing.lg }]}>
-          Not by date, not by folder — by how it all feels together.
-        </Text>
+        {/* Whimsical shape 3/6 — stardust, for the archive scattered by palette. */}
+        <View style={styles.intro}>
+          <StardustCluster size={46} />
+          <Text style={[type.body, { flex: 1 }]}>
+            Not by date, not by folder — by how it all feels together.
+          </Text>
+        </View>
         <View style={{ flexDirection: "row", gap: GAP }}>
           {columns.map((column, i) => (
             <View key={i} style={{ width: columnWidth, gap: GAP }}>
@@ -83,12 +88,18 @@ export default function MosaicScreen() {
 }
 
 const styles = StyleSheet.create({
+  intro: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
   tile: { borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surfaceAlt },
   badge: {
     position: "absolute",
     top: spacing.sm,
     right: spacing.sm,
-    backgroundColor: "rgba(28,23,19,0.6)",
+    backgroundColor: "rgba(47,54,46,0.62)",
     borderRadius: radius.pill,
     padding: 5,
   },

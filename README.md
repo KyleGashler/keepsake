@@ -63,12 +63,21 @@ app/                     Expo + expo-router
   app/(tabs)/              the four primary destinations
   app/memory/[id].tsx      the immersive memory page
   src/api.ts               API client + response types
-  src/theme.ts             colours, type scale, spacing
+  src/theme.ts             brand palette, type scale, spacing
+  src/components/brand.tsx logo lockups + the six whimsical shapes
+  src/components/brand-artwork.ts   generated — see design/
 server/                  Express + Prisma
   prisma/schema.prisma     Family, Person, Memory, Media, Collection, ActivityEvent
   src/seed.ts              the demo family
+design/
+  extract_logo.py          traces the logo out of the brand guide PNG
 docker-compose.yml
 ```
+
+The logotype is a custom drawing, so it isn't any font and can't be rebuilt from
+one. `design/extract_logo.py` traces it straight out of the brand sheet into
+`brand-artwork.ts`, splitting ink from accent by colour, and the app draws those
+paths — no font, identical on every platform. Re-run it if the guide is reissued.
 
 ## Common tasks
 
@@ -77,6 +86,14 @@ docker compose logs -f api                            # API logs
 docker compose exec api npx prisma studio             # browse the data
 docker compose exec -e SEED_RESET=1 api npm run seed  # rebuild the demo family
 docker compose down -v                                # wipe database + uploads
+```
+
+`node_modules` lives in an anonymous volume that shadows the image's copy, so a
+new dependency needs the volume thrown away as well as a rebuild — otherwise
+Metro reports it as unresolvable:
+
+```bash
+docker compose up -d --build --renew-anon-volumes web
 ```
 
 Schema changes apply on container start via `prisma db push` — no migration

@@ -2,6 +2,7 @@ import { Image } from "expo-image";
 import { router } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { mediaUrl, useApi, type LibraryPayload } from "../../src/api";
+import { StoryArc } from "../../src/components/brand";
 import { AppHeader, ErrorState, Loading, Screen } from "../../src/components/ui";
 import { colors, radius, spacing, type } from "../../src/theme";
 
@@ -20,9 +21,11 @@ export default function LibraryScreen() {
     <>
       <AppHeader subtitle="Library" title="Every memory has a place" />
       <Screen>
-        <Text style={[type.body, { marginBottom: spacing.lg }]}>
-          Three ways into your family's archive.
-        </Text>
+        {/* Whimsical shape 2/6 — story arc, over the three pillars a story travels. */}
+        <View style={styles.intro}>
+          <StoryArc size={64} />
+          <Text style={[type.body, { flex: 1 }]}>Three ways into your family's archive.</Text>
+        </View>
 
         <View style={{ gap: spacing.lg }}>
           {data.pillars.map((pillar) => (
@@ -52,6 +55,12 @@ export default function LibraryScreen() {
 }
 
 const styles = StyleSheet.create({
+  intro: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
   pillar: {
     height: 200,
     borderRadius: radius.lg,
@@ -59,7 +68,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
     justifyContent: "flex-end",
   },
-  scrim: { position: "absolute", inset: 0, backgroundColor: "rgba(28,23,19,0.36)" },
+  scrim: { position: "absolute", inset: 0, backgroundColor: "rgba(47,54,46,0.38)" },
   body: { padding: spacing.xl, gap: 4 },
   name: { fontFamily: type.display.fontFamily, fontSize: 25, color: "#FFF7EF" },
   tagline: { fontSize: 14, lineHeight: 20, color: "rgba(255,247,239,0.88)" },

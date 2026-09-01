@@ -4,6 +4,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { apiSend, mediaUrl, useApi, type MediaItem, type Memory } from "../../src/api";
+import { LittleMoon } from "../../src/components/brand";
 import {
   AppHeader,
   Avatar,
@@ -134,7 +135,7 @@ export default function MemoryScreen() {
               }}
               style={styles.editLink}
             >
-              <Ionicons name="create-outline" size={15} color={colors.accent} />
+              <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
               <Text style={styles.editLinkText}>Edit this story</Text>
             </Pressable>
           ) : null}
@@ -202,12 +203,17 @@ export default function MemoryScreen() {
             </View>
           ) : null}
 
+          {/* Whimsical shape 5/6 — little moon, the end-mark on a memory that's told. */}
+          <View style={styles.endMark}>
+            <LittleMoon size={18} opacity={0.75} />
+          </View>
+
           <Button
             label="Share this memory"
             variant="secondary"
             icon="share-outline"
             onPress={() => setSharePressed(true)}
-            style={{ marginTop: spacing.xxl, alignSelf: "center" }}
+            style={{ alignSelf: "center" }}
           />
           {sharePressed ? (
             <PreviewNote>
@@ -282,7 +288,8 @@ const styles = StyleSheet.create({
     color: colors.ink,
   },
   editLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md },
-  editLinkText: { fontSize: 13.5, color: colors.accent, fontWeight: "600" },
+  editLinkText: { fontSize: 13.5, color: colors.accentDeep, fontWeight: "600" },
+  endMark: { alignItems: "center", marginTop: spacing.xxl, marginBottom: spacing.xl },
   audio: {
     flexDirection: "row",
     alignItems: "center",
@@ -297,7 +304,7 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: radius.pill,
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentDeep,
     alignItems: "center",
     justifyContent: "center",
   },

@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""Extract the Keepsake logo from the brand guide, exactly.
+
+The logotype is a custom drawing, so it can't be reconstructed from a font.
+This traces it straight out of the brand sheet instead:
+
+  crop the lockup -> upscale (sub-pixel edges) -> split ink from accent by
+  colour -> threshold -> potrace -> bake potrace's transform -> emit paths
+
+Both lockups keep their own shared coordinate space, so the layers of each
+(letters + twinkle; K + ring) line up without any hand positioning.
+
+    brew install potrace
+    python3 -m venv venv && ./venv/bin/pip install Pillow svgelements
+    ./venv/bin/python extract_logo.py
+
+Re-run this if the brand sheet is ever reissued at a higher resolution.
+"""
+import pathlib
+import re
+import subprocess
+import tempfile
+import textwrap
+
+from PIL import Image
+from svgelements import Matrix, Path
+
+SOURCE = pathlib.Path.home() / "Downloads/Keepsake Visual Direction.PNG"
+OUT = pathlib.Path(__file__).parent.parent / "app/src/components/brand-artwork.ts"
+
+UPSCALE = 6      # trace at 6x so anti-aliased edges land on sub-pixel boundaries
+UNITS = 10       # emit coordinates in deck-pixels x 10, to keep integers precise
+
+# Crops taken from the 1536x1024 brand sheet. Each lockup is one crop, so the
+# layers traced out of it already share an origin.
+LOGO_CROP = (395, 65, 1105, 285)     # "Keepsake" + its twinkle
+MARK_CROP = (1238, 62, 1390, 215)    # the K in its ring
+
+def is_ink(p):
+    """Near-black: the letterforms."""
+    return (p[0] + p[1] + p[2]) / 3 < 118
+
+
+def is_accent(p):
+    """Golden Honey: the twinkle, and the mark's ring."""
+    return p[0] > 145 and p[0] - p[2] > 40 and p[1] < p[0] - 8
+
+
+def trace(img, pred, name):
+    """Mask by `pred`, trace with potrace, and bake its transform out."""
+    w, h = img.size
+    rows = []
+    px = img.load()
+    for y in range(h):
+        rows.append("".join("1" if pred(px[x, y]) else "0" for x in range(w)))
+    if not any("1" in r for r in rows):
+        raise SystemExit(f"{name}: mask is empty — check the crop or predicate")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        pbm = pathlib.Path(tmp) / "in.pbm"
+        svg = pathlib.Path(tmp) / "out.svg"
+        pbm.write_text(f"P1\n{w} {h}\n" + "\n".join(rows) + "\n")
+        subprocess.run(
+            ["potrace", "-b", "svg", "-a", "1.0", "-O", "0.15",
+             "-t", str(4 * UPSCALE), "-u", "20", "-o", str(svg), str(pbm)],
+            check=True,
+        )
+        out = svg.read_text()
+
+    # potrace wraps the path in a translate+flip; bake it so the path stands alone.
+    gt = re.search(r'<g transform="([^"]+)"', out)
+    ds = re.findall(r'<path d="([^"]+)"', out)
+    if not ds:
+        raise SystemExit(f"{name}: potrace produced no paths")
+    m = Matrix(gt.group(1)) if gt else Matrix()
+    # Scale from upscaled pixels back to deck pixels, then into output units.
+    m *= Matrix(f"scale({UNITS / UPSCALE})")
+    path = Path(" ".join(ds)) * m
+    path.reify()
+    return path
+
+
+def layers(crop, specs):
+    """Trace several colour layers out of one crop, sharing its coordinates."""
+    im = Image.open(SOURCE).convert("RGB").crop(crop)
+    big = im.resize((im.width * UPSCALE, im.height * UPSCALE), Image.LANCZOS)
+    out = {}
+    for key, pred in specs.items():
+        p = trace(big, pred, key)
+        x0, y0, x1, y1 = p.bbox()
+        print(f"  {key:16} ink {x0:7.0f}..{x1:7.0f} x  {y0:7.0f}..{y1:7.0f} y")
+        out[key] = (p.d(), p.bbox())
+    return out
+
+
+def union(*boxes):
+    return (min(b[0] for b in boxes), min(b[1] for b in boxes),
+            max(b[2] for b in boxes), max(b[3] for b in boxes))
+
+
+def quote(d, indent="  "):
+    lines = textwrap.wrap(d, width=96, break_long_words=True, break_on_hyphens=False)
+    body = "\n".join(f'{indent}"{ln} " +' for ln in lines[:-1])
+    return f'{body}\n{indent}"{lines[-1]}";'
+
+
+def viewbox(b, pad=6):
+    return (f"{b[0]-pad:.0f} {b[1]-pad:.0f} "
+            f"{b[2]-b[0]+2*pad:.0f} {b[3]-b[1]+2*pad:.0f}")
+
+
+def main():
+    if not SOURCE.exists():
+        raise SystemExit(f"brand sheet not found at {SOURCE}")
+
+    print("primary logo:")
+    logo = layers(LOGO_CROP, {"letters": is_ink, "twinkle": is_accent})
+    print("icon / mark:")
+    mark = layers(MARK_CROP, {"k": is_ink, "ring": is_accent})
+
+    logo_box = union(logo["letters"][1], logo["twinkle"][1])
+    mark_box = union(mark["k"][1], mark["ring"][1])
+
+    OUT.write_text(TEMPLATE.format(
+        wordmark=quote(logo["letters"][0]),
+        wordmark_twinkle=quote(logo["twinkle"][0]),
+        mark_k=quote(mark["k"][0]),
+        mark_ring=quote(mark["ring"][0]),
+        logo_vb=viewbox(logo_box),
+        mark_vb=viewbox(mark_box),
+    ))
+    print(f"\nwrote {OUT}")
+    print(f"  WORDMARK_VIEWBOX  {viewbox(logo_box)}")
+    print(f"  MARK_VIEWBOX      {viewbox(mark_box)}")
+
+
+TEMPLATE = '''/**
+ * Keepsake logo — traced from the brand guide.
+ *
+ * GENERATED by design/extract_logo.py. Don't hand-edit these coordinates.
+ *
+ * The logotype is a custom drawing, so no font has it and it can't be rebuilt
+ * from one. These paths are the artwork itself, traced out of
+ * "Keepsake Visual Direction.PNG" and split into ink and accent layers by
+ * colour. Each lockup's layers share one coordinate space, so they compose
+ * without any manual positioning — just draw them into the matching viewBox.
+ *
+ * Units are brand-sheet pixels x10, y down.
+ */
+
+/** viewBox for the primary logo: the letters and the twinkle together. */
+export const WORDMARK_VIEWBOX = "{logo_vb}";
+
+/** "Keepsake" — the letterforms, including the K's swash. */
+export const WORDMARK_PATH =
+{wordmark}
+
+/** The twinkle that sits above the final "e". */
+export const WORDMARK_TWINKLE_PATH =
+{wordmark_twinkle}
+
+/** viewBox for the icon mark. */
+export const MARK_VIEWBOX = "{mark_vb}";
+
+/** The mark's K, whose swash breaks through the ring at the lower right. */
+export const MARK_K_PATH =
+{mark_k}
+
+/** The mark's ring and twinkle — the ring is broken where the swash crosses it. */
+export const MARK_RING_PATH =
+{mark_ring}
+'''
+
+
+if __name__ == "__main__":
+    main()

@@ -128,7 +128,7 @@ export default function ComposeScreen() {
       <Screen>
         {params.prompt ? (
           <View style={styles.promptEcho}>
-            <Ionicons name="sparkles-outline" size={15} color={colors.accent} />
+            <Ionicons name="sparkles-outline" size={15} color={colors.accentDeep} />
             <Text style={[type.caption, { flex: 1, color: colors.inkSoft }]}>{params.prompt}</Text>
           </View>
         ) : null}
@@ -300,7 +300,7 @@ function Chip({
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.chip, selected && { backgroundColor: colors.accent, borderColor: colors.accent }]}
+      style={[styles.chip, selected && { backgroundColor: colors.accentDeep, borderColor: colors.accentDeep }]}
     >
       <Text style={[styles.chipLabel, selected && { color: colors.surface }]}>{label}</Text>
     </Pressable>
@@ -339,5 +339,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   chipLabel: { fontSize: 13.5, color: colors.ink },
-  error: { ...type.caption, color: "#A8464A", marginTop: spacing.lg },
+  error: { ...type.caption, color: "#9C4A38", marginTop: spacing.lg },
 });

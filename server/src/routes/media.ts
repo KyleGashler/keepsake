@@ -18,7 +18,9 @@ mediaRouter.get("/gen/:seed.png", (req, res) => {
     const n = Number(v);
     return Number.isFinite(n) ? Math.min(2000, Math.max(16, Math.round(n))) : d;
   };
-  const png = placeholderPng(seed, clamp(req.query.w, 1200), clamp(req.query.h, 900));
+  // `c` pins the gradient to one colour — avatars pass the person's own.
+  const base = typeof req.query.c === "string" ? req.query.c : null;
+  const png = placeholderPng(seed, clamp(req.query.w, 1200), clamp(req.query.h, 900), base);
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   res.send(png);

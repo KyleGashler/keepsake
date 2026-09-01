@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { currentFamily, prisma } from "../lib/prisma.js";
+import { imageUrl, withVersion } from "../lib/serialize.js";
 
 export const mosaicRouter = Router();
 
@@ -25,7 +26,7 @@ mosaicRouter.get("/mosaic", async (_req, res) => {
       id: m.id,
       title: m.title,
       occurredAt: m.occurredAt.toISOString(),
-      url: hero?.url ?? `/media/gen/${m.heroSeed}.png?w=900&h=900`,
+      url: hero ? withVersion(hero.url) : imageUrl(m.heroSeed, 900, 900),
       isVideo: hero?.type === "VIDEO",
       hasAudio: m.media.some((x) => x.type === "AUDIO"),
       paletteHue: m.paletteHue,

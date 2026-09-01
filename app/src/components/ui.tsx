@@ -16,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
 import { colors, radius, shadow, spacing, type } from "../theme";
+import { KeepsakeMark, KeepsakeWordmark } from "./brand";
 
 /** Content is capped so the phone layout stays intact on a wide browser. */
 export const MAX_WIDTH = 720;
@@ -54,11 +55,17 @@ export function AppHeader({
   subtitle,
   back = false,
   globalActions = true,
+  wordmark = false,
+  mark = false,
 }: {
   title?: string;
   subtitle?: string;
   back?: boolean;
   globalActions?: boolean;
+  /** Primary logo, in place of the label/title pair. Home only. */
+  wordmark?: boolean;
+  /** The K mark, alongside the label/title pair. */
+  mark?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   return (
@@ -74,14 +81,19 @@ export function AppHeader({
               <Ionicons name="chevron-back" size={20} color={colors.ink} />
             </Pressable>
           ) : null}
-          <View style={{ flexShrink: 1 }}>
-            {subtitle ? <Text style={type.label}>{subtitle}</Text> : null}
-            {title ? (
-              <Text style={[type.title, { marginTop: subtitle ? 2 : 0 }]} numberOfLines={1}>
-                {title}
-              </Text>
-            ) : null}
-          </View>
+          {mark ? <KeepsakeMark size={38} /> : null}
+          {wordmark ? (
+            <KeepsakeWordmark width={152} />
+          ) : (
+            <View style={{ flexShrink: 1 }}>
+              {subtitle ? <Text style={type.label}>{subtitle}</Text> : null}
+              {title ? (
+                <Text style={[type.title, { marginTop: subtitle ? 2 : 0 }]} numberOfLines={1}>
+                  {title}
+                </Text>
+              ) : null}
+            </View>
+          )}
         </View>
         {globalActions ? (
           <View style={styles.headerActions}>
@@ -266,7 +278,7 @@ export function Button({
 export function Loading({ label = "Gathering memories…" }: { label?: string }) {
   return (
     <View style={styles.centered}>
-      <ActivityIndicator color={colors.accent} />
+      <ActivityIndicator color={colors.accentDeep} />
       <Text style={[type.caption, { marginTop: spacing.md }]}>{label}</Text>
     </View>
   );
@@ -358,7 +370,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: spacing.sm,
     right: spacing.sm,
-    backgroundColor: "rgba(28,23,19,0.6)",
+    backgroundColor: "rgba(47,54,46,0.62)",
     borderRadius: radius.pill,
     padding: 6,
   },
@@ -381,7 +393,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     borderRadius: radius.pill,
   },
-  buttonPrimary: { backgroundColor: colors.accent },
+  buttonPrimary: { backgroundColor: colors.accentDeep },
   buttonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   buttonLabel: { fontSize: 15, fontWeight: "600" },
   centered: { alignItems: "center", justifyContent: "center", paddingVertical: 64, paddingHorizontal: spacing.xl },

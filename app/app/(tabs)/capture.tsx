@@ -3,6 +3,7 @@ import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { ShootingStar } from "../../src/components/brand";
 import { AppHeader, PreviewNote, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
 import { colors, radius, spacing, type } from "../../src/theme";
@@ -84,9 +85,13 @@ export default function CaptureScreen() {
     <>
       <AppHeader subtitle="Capture" title="Preserve a moment" />
       <Screen>
-        <Text style={[type.body, { marginBottom: spacing.lg }]}>
-          However it wants to be remembered — a photo, a voice, or a few sentences.
-        </Text>
+        {/* Whimsical shape 4/6 — shooting star, for the moment that's going past. */}
+        <View style={styles.intro}>
+          <ShootingStar size={46} />
+          <Text style={[type.body, { flex: 1 }]}>
+            However it wants to be remembered — a photo, a voice, or a few sentences.
+          </Text>
+        </View>
 
         <View style={{ gap: spacing.md }}>
           {OPTIONS.map((option) => (
@@ -97,7 +102,7 @@ export default function CaptureScreen() {
               style={({ pressed }) => [styles.option, pressed && { opacity: 0.75 }]}
             >
               <View style={styles.optionIcon}>
-                <Ionicons name={option.icon} size={22} color={colors.accent} />
+                <Ionicons name={option.icon} size={22} color={colors.accentDeep} />
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={type.heading}>{option.title}</Text>
@@ -118,6 +123,12 @@ export default function CaptureScreen() {
 }
 
 const styles = StyleSheet.create({
+  intro: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    marginBottom: spacing.lg,
+  },
   option: {
     flexDirection: "row",
     alignItems: "center",

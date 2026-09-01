@@ -354,13 +354,15 @@ async function main() {
 
   const family = await prisma.family.create({ data: { name: "the Bryners" } });
 
+  // Avatar rings come from the brand palette: the warm hues for the household,
+  // the quieter ones for the grandparents.
   const peopleSpec = [
-    { name: "Ali", role: "PARENT", relation: "Mom", accentColor: "#C97B5A", birthDate: "1991-03-12" },
-    { name: "Jordan", role: "PARENT", relation: "Dad", accentColor: "#5F7A8C", birthDate: "1990-07-04" },
-    { name: "Mae", role: "CHILD", relation: "Daughter", accentColor: "#D99C6A", birthDate: "2020-06-08" },
-    { name: "Theo", role: "CHILD", relation: "Son", accentColor: "#6F8267", birthDate: "2023-09-22" },
-    { name: "Ruth", role: "GRANDPARENT", relation: "Grandma", accentColor: "#A8646E", birthDate: "1958-02-20" },
-    { name: "Frank", role: "GRANDPARENT", relation: "Grandpa", accentColor: "#7A6A8F", birthDate: "1956-10-09" },
+    { name: "Ali", role: "PARENT", relation: "Mom", accentColor: "#D68A75", birthDate: "1991-03-12" },
+    { name: "Jordan", role: "PARENT", relation: "Dad", accentColor: "#8FA1A6", birthDate: "1990-07-04" },
+    { name: "Mae", role: "CHILD", relation: "Daughter", accentColor: "#D49A4A", birthDate: "2020-06-08" },
+    { name: "Theo", role: "CHILD", relation: "Son", accentColor: "#A3AA9A", birthDate: "2023-09-22" },
+    { name: "Ruth", role: "GRANDPARENT", relation: "Grandma", accentColor: "#2F362E", birthDate: "1958-02-20" },
+    { name: "Frank", role: "GRANDPARENT", relation: "Grandpa", accentColor: "#6E8288", birthDate: "1956-10-09" },
   ] as const;
 
   const people: Record<string, Person> = {};
