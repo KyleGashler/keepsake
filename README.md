@@ -106,3 +106,11 @@ After editing `schema.prisma`, run `npm run db:migrate` (inside `server/`) to
 generate and apply a new migration, then commit the generated folder.
 Containers apply whatever is checked in via `prisma migrate deploy` on boot —
 no more `prisma db push`.
+
+A database that predates the migrations (created by `db push`) already has the
+tables but no migration history, so `migrate deploy` will refuse to run. Either
+wipe it (`docker compose down -v`) or mark the baseline as applied:
+
+```bash
+docker compose exec api npx prisma migrate resolve --applied 20260910042628_init
+```
