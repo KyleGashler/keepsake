@@ -1,14 +1,13 @@
 #!/bin/sh
 set -e
 
-# No migration files yet, so the schema is pushed on boot exactly like it is in
-# development. Fine while the only data is a seeded demo family — swap this for
-# `prisma migrate deploy` before anything irreplaceable lives here.
-echo "→ syncing schema"
-npx prisma db push --skip-generate --accept-data-loss
+echo "→ applying migrations"
+npx prisma migrate deploy
 
-echo "→ seeding (skips if data exists)"
-npm run --silent seed
+if [ "$SEED_DEMO" = "1" ]; then
+  echo "→ seeding (skips if data exists)"
+  npm run --silent seed
+fi
 
 echo "→ starting API"
 exec npm run --silent start

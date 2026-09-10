@@ -88,6 +88,11 @@ docker compose exec -e SEED_RESET=1 api npm run seed  # rebuild the demo family
 docker compose down -v                                # wipe database + uploads
 ```
 
+```bash
+cd server && npm run db:migrate    # edit schema.prisma, then create + apply a migration
+cd server && npm run db:deploy     # apply pending migrations without creating one (what containers do on boot)
+```
+
 `node_modules` lives in an anonymous volume that shadows the image's copy, so a
 new dependency needs the volume thrown away as well as a rebuild — otherwise
 Metro reports it as unresolvable:
@@ -96,5 +101,8 @@ Metro reports it as unresolvable:
 docker compose up -d --build --renew-anon-volumes web
 ```
 
-Schema changes apply on container start via `prisma db push` — no migration
-files until the shape settles.
+Schema changes are tracked as real migrations under `server/prisma/migrations/`.
+After editing `schema.prisma`, run `npm run db:migrate` (inside `server/`) to
+generate and apply a new migration, then commit the generated folder.
+Containers apply whatever is checked in via `prisma migrate deploy` on boot —
+no more `prisma db push`.

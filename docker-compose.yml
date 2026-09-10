@@ -22,6 +22,7 @@ services:
       DATABASE_URL: postgresql://keepsake:keepsake@db:5432/keepsake
       PORT: "4000"
       MEDIA_DIR: /app/media
+      SEED_DEMO: "1"
     ports:
       - "4000:4000"
     volumes:

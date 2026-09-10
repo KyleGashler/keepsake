@@ -8,6 +8,8 @@
     "start": "tsx src/index.ts",
     "seed": "tsx src/seed.ts",
     "db:push": "prisma db push",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

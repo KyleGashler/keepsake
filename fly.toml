@@ -10,6 +10,7 @@ primary_region = "sjc"
   PORT = "4000"
   WEB_DIR = "/app/web"
   MEDIA_DIR = "/data/media"
+  SEED_DEMO = "1"
 
 [http_service]
   internal_port = 4000
