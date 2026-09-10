@@ -341,10 +341,49 @@ const PROMPTS = [
   },
 ];
 
+/**
+ * The one signing-in user, so the auth work has something to resolve against.
+ * The first PARENT is the account holder; other adults get invites later and
+ * the children never become Users at all. Idempotent: safe on every boot.
+ */
+async function ensureDemoUser(familyId: string) {
+  const owner = await prisma.person.findFirst({
+    where: { familyId, role: "PARENT" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+  if (!owner) return;
+
+  const demoUser = await prisma.user.upsert({
+    where: { authProviderId: "dev:demo@keepsake.local" },
+    update: {},
+    create: {
+      authProviderId: "dev:demo@keepsake.local",
+      email: "demo@keepsake.local",
+      displayName: owner.name,
+    },
+  });
+
+  const membership = await prisma.familyMembership.findUnique({
+    where: { userId_familyId: { userId: demoUser.id, familyId } },
+  });
+  if (membership) return;
+
+  if (!owner.userId) {
+    await prisma.person.update({ where: { id: owner.id }, data: { userId: demoUser.id } });
+  }
+  await prisma.familyMembership.create({
+    data: { userId: demoUser.id, familyId, role: "OWNER", personId: owner.id },
+  });
+  console.log(`Demo owner demo@keepsake.local attached to family ${familyId} as ${owner.name}.`);
+}
+
 async function main() {
   const existing = await prisma.family.findFirst();
   if (existing && process.env.SEED_RESET !== "1") {
     console.log(`Seed skipped — "${existing.name}" already exists. Use SEED_RESET=1 to rebuild.`);
+    // A database seeded before accounts existed has the family but no one who
+    // can sign in to it. Attach the demo owner so the dev bridge resolves.
+    await ensureDemoUser(existing.id);
     return;
   }
   if (existing) {
@@ -390,18 +429,7 @@ async function main() {
   // One signing-in user so the auth work (A3/A4) has something to resolve
   // against. Ali is the account holder; the other adults get invites later and
   // the children never become Users at all.
-  const owner = people.Ali;
-  const demoUser = await prisma.user.create({
-    data: {
-      authProviderId: "dev:demo@keepsake.local",
-      email: "demo@keepsake.local",
-      displayName: owner.name,
-    },
-  });
-  await prisma.person.update({ where: { id: owner.id }, data: { userId: demoUser.id } });
-  await prisma.familyMembership.create({
-    data: { userId: demoUser.id, familyId: family.id, role: "OWNER", personId: owner.id },
-  });
+  await ensureDemoUser(family.id);
 
   const children = [people.Mae, people.Theo];
   const collections: Record<string, string> = {};
