@@ -1,5 +1,19 @@
-// Keepsake — v0 data model.
-// No auth yet: the API serves a single seeded family (see src/seed.ts).
+// Keepsake data model.
+//
+// A Family is the tenancy boundary: every row that holds content hangs off one,
+// and every query filters by familyId. People in a family are Person rows; a
+// Person who can sign in is linked to a User through a FamilyMembership, which
+// also carries the role (OWNER / CONTRIBUTOR / VIEWER). Children are Person rows
+// and never Users. Invites bring new Users into a family.
+//
+// Media rows point at objects in a storage provider (storageKey) and gain
+// Derivatives — thumbnails, display renditions, posters, waveforms. Background
+// work (deriving, transcription, narration, push) runs through the Job table.
+// Subscription and DeviceToken back billing and push.
+//
+// Several columns are placeholders that later phases fill: Memory.palette and
+// analysisStatus, Media.storageKey/sha256, Job payloads. The seeded demo family
+// in src/seed.ts exercises the whole shape.
 
 generator client {
   provider = "prisma-client-js"
@@ -31,17 +45,70 @@ enum MediaType {
   AUDIO
 }
 
+/// What a member is allowed to do inside one family.
+enum MembershipRole {
+  OWNER
+  CONTRIBUTOR
+  VIEWER
+}
+
+/// Lifecycle of an uploaded object. Two-phase upload: init → UPLOADING,
+/// finalize → READY.
+enum MediaStatus {
+  UPLOADING
+  READY
+  FAILED
+}
+
+/// A rendition generated from an original. Originals are never touched.
+enum DerivativeKind {
+  THUMB
+  DISPLAY
+  POSTER
+  WAVEFORM
+}
+
+/// Progress of the background analysis pass over a Memory.
+enum AnalysisStatus {
+  PENDING
+  RUNNING
+  READY
+  FAILED
+}
+
+/// Who wrote the narrative. Flips to HUMAN the moment a person edits it.
+enum StorySource {
+  HUMAN
+  AI_DRAFT
+}
+
+enum JobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
+  WEB
+}
+
 /// Highest-level container: the shared archive belonging to a household.
 model Family {
   id        String   @id @default(cuid())
   name      String
   createdAt DateTime @default(now())
 
-  people      Person[]
-  collections Collection[]
-  memories    Memory[]
-  updates     ActivityEvent[]
-  prompts     CapturePrompt[]
+  people       Person[]
+  collections  Collection[]
+  memories     Memory[]
+  updates      ActivityEvent[]
+  prompts      CapturePrompt[]
+  memberships  FamilyMembership[]
+  invites      Invite[]
+  subscription Subscription?
 }
 
 /// An individual whose life is part of the family's story.
@@ -57,13 +124,18 @@ model Person {
   avatarSeed  String
   accentColor String     @default("#C97B5A")
   sortOrder   Int        @default(0)
+  /// Set when this person can sign in. Children never have one — enforced in
+  /// application code, not by the schema.
+  userId      String?    @unique
   createdAt   DateTime   @default(now())
 
   family        Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  user          User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
   collections   Collection[]
   createdMemory Memory[]            @relation("MemoryAuthor")
   appearsIn     MemoryParticipant[]
   events        ActivityEvent[]
+  membership    FamilyMembership?
 
   @@index([familyId])
 }
@@ -92,23 +164,29 @@ model Collection {
 
 /// The foundational object: a single meaningful moment preserved by a family.
 model Memory {
-  id          String   @id @default(cuid())
-  familyId    String
-  title       String
+  id             String         @id @default(cuid())
+  familyId       String
+  title          String
   /// The written narrative. Families always retain editorial control.
-  story       String?
+  story          String?
   /// Written record of spoken audio. Populated by hand in v0 (no AI yet).
-  transcript  String?
-  occurredAt  DateTime
-  location    String?
-  authorId    String?
+  transcript     String?
+  occurredAt     DateTime
+  location       String?
+  authorId       String?
   /// Deterministic seed for the generated hero image.
-  heroSeed    String
+  heroSeed       String
   /// Drives Mosaic's aesthetic ordering (0-360). Stands in for palette analysis.
-  paletteHue  Int      @default(30)
-  brightness  Int      @default(50)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  paletteHue     Int            @default(30)
+  brightness     Int            @default(50)
+  /// Hex swatches pulled from the hero image by the analysis job.
+  palette        String[]       @default([])
+  analysisStatus AnalysisStatus @default(PENDING)
+  storySource    StorySource    @default(HUMAN)
+  /// Soft delete. Hidden everywhere; a trash view restores it.
+  deletedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   family       Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
   author       Person?             @relation("MemoryAuthor", fields: [authorId], references: [id], onDelete: SetNull)
@@ -117,26 +195,55 @@ model Memory {
   participants MemoryParticipant[]
 
   @@index([familyId, occurredAt])
+  @@index([familyId, deletedAt])
 }
 
 /// Original assets attached to a Memory. Originals are never overwritten.
 model Media {
-  id         String    @id @default(cuid())
+  id         String      @id @default(cuid())
   memoryId   String
   type       MediaType
   /// Either a generated placeholder path or an uploaded file path.
   url        String
   caption    String?
-  width      Int       @default(1200)
-  height     Int       @default(900)
+  width      Int         @default(1200)
+  height     Int         @default(900)
   durationS  Int?
-  sortOrder  Int       @default(0)
-  isOriginal Boolean   @default(true)
-  createdAt  DateTime  @default(now())
+  sortOrder  Int         @default(0)
+  isOriginal Boolean     @default(true)
+  /// Key of the original object in the storage provider. Null for the
+  /// generated placeholders the demo family ships with.
+  storageKey String?
+  mimeType   String?
+  bytes      Int?
+  /// Hex digest of the original, recorded at finalize.
+  sha256     String?
+  status     MediaStatus @default(READY)
+  /// Soft delete of the row. The original object itself is never deleted.
+  deletedAt  DateTime?
+  createdAt  DateTime    @default(now())
 
-  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  memory      Memory       @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  derivatives Derivative[]
 
   @@index([memoryId])
+}
+
+/// A generated rendition of a Media original: thumbnail, display size, video
+/// poster frame, audio waveform. Safe to delete and regenerate.
+model Derivative {
+  id         String         @id @default(cuid())
+  mediaId    String
+  kind       DerivativeKind
+  storageKey String
+  width      Int?
+  height     Int?
+  mimeType   String
+  createdAt  DateTime       @default(now())
+
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([mediaId, kind])
 }
 
 model MemoryCollection {
@@ -188,4 +295,106 @@ model CapturePrompt {
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 
   @@index([familyId])
+}
+
+/// Someone who can sign in. Identity lives with the auth provider; this row is
+/// the local mirror, keyed by the provider's subject id.
+model User {
+  id             String   @id @default(cuid())
+  /// Provider subject, e.g. "firebase:abc123" or "dev:ali@example.com".
+  authProviderId String   @unique
+  email          String   @unique
+  displayName    String
+  createdAt      DateTime @default(now())
+
+  memberships  FamilyMembership[]
+  invitesSent  Invite[]           @relation("InviteInvitedBy")
+  deviceTokens DeviceToken[]
+  person       Person?
+}
+
+/// A User's seat in one Family, with their role and (optionally) the Person
+/// row that represents them in the archive.
+model FamilyMembership {
+  userId    String
+  familyId  String
+  role      MembershipRole
+  /// The Person this member appears as inside the family, if any.
+  personId  String?        @unique
+  createdAt DateTime       @default(now())
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  family Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  person Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
+
+  @@id([userId, familyId])
+  @@index([familyId])
+}
+
+/// A pending invitation to join a family. Consumed by token.
+model Invite {
+  id          String         @id @default(cuid())
+  familyId    String
+  email       String
+  role        MembershipRole
+  token       String         @unique
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  invitedById String
+  createdAt   DateTime       @default(now())
+
+  family    Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  invitedBy User   @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+
+  @@index([familyId])
+}
+
+/// Durable background work. Claimed with FOR UPDATE SKIP LOCKED; retried with
+/// backoff until maxAttempts.
+model Job {
+  id          String    @id @default(cuid())
+  /// Handler key, e.g. "media.derive", "ai.narrate".
+  type        String
+  payload     Json
+  status      JobStatus @default(QUEUED)
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(5)
+  runAt       DateTime  @default(now())
+  lockedAt    DateTime?
+  lastError   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status, runAt])
+  @@index([type])
+}
+
+/// A push target for one user's device.
+model DeviceToken {
+  id         String         @id @default(cuid())
+  userId     String
+  token      String         @unique
+  platform   DevicePlatform
+  createdAt  DateTime       @default(now())
+  lastSeenAt DateTime       @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Billing state for a family, mirrored from the store or payment processor.
+model Subscription {
+  id               String    @id @default(cuid())
+  familyId         String    @unique
+  /// "revenuecat", "stripe", …
+  provider         String
+  externalId       String?
+  status           String
+  plan             String
+  currentPeriodEnd DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
 }
