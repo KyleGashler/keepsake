@@ -17,11 +17,13 @@ done
 echo "→ prisma generate"
 npx prisma generate >/dev/null
 
-echo "→ syncing schema"
-npx prisma db push --skip-generate --accept-data-loss
+echo "→ applying migrations"
+npx prisma migrate deploy
 
-echo "→ seeding (skips if data exists)"
-npm run --silent seed
+if [ "$SEED_DEMO" = "1" ]; then
+  echo "→ seeding (skips if data exists)"
+  npm run --silent seed
+fi
 
 echo "→ starting API"
 exec npm run --silent dev
