@@ -1,5 +1,6 @@
-# Pick an unguessable app name — with no accounts behind it, the URL and the
-# demo password are the only things standing between the archive and the world.
+# Pick an unguessable app name — until a real token verifier lands (B1) this
+# deployment still runs dev auth, so the URL is most of what stands between
+# the archive and the world.
 app = "keepsake-demo-h4t9wq"
 primary_region = "sjc"
 
@@ -11,6 +12,14 @@ primary_region = "sjc"
   WEB_DIR = "/app/web"
   MEDIA_DIR = "/data/media"
   SEED_DEMO = "1"
+  # Dev auth: a bearer token of `dev:<email>` is taken at face value, and a
+  # request with no token at all is treated as DEV_DEFAULT_USER. That is not
+  # authentication — ALLOW_DEV_AUTH_IN_PROD is the explicit opt-in the server
+  # demands before it will boot this way, and it exists only so the demo keeps
+  # working until the Firebase verifier lands (B1). Delete all three then.
+  AUTH_MODE = "dev"
+  ALLOW_DEV_AUTH_IN_PROD = "1"
+  DEV_DEFAULT_USER = "demo@keepsake.local"
 
 [http_service]
   internal_port = 4000

@@ -7,8 +7,11 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
+import { createTokenVerifier } from "./auth/index.js";
+import { requireFamily, requireUser } from "./auth/middleware.js";
 import { logger } from "./lib/logger.js";
 import { prisma } from "./lib/prisma.js";
+import { accountRouter } from "./routes/account.js";
 import { familyRouter } from "./routes/family.js";
 import { homeRouter } from "./routes/home.js";
 import { libraryRouter } from "./routes/library.js";
@@ -21,6 +24,10 @@ import { searchRouter } from "./routes/search.js";
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 const isProduction = process.env.NODE_ENV === "production";
+
+// Before anything else: a misconfigured verifier must stop the boot, not
+// quietly serve an open API. Throws in production unless dev auth is opted in.
+const tokenVerifier = createTokenVerifier();
 
 // Fly terminates TLS and forwards one X-Forwarded-For hop, so the rate
 // limiters see the real client address rather than the proxy's.
@@ -120,28 +127,23 @@ async function checkMediaDir(): Promise<boolean> {
   }
 }
 
-/**
- * One shared password for the hosted demo, off unless DEMO_PASSWORD is set.
- * This is a curtain, not a lock — there are still no accounts, and everyone
- * past it shares the same family. Real auth replaces this entirely.
- */
-const DEMO_PASSWORD = process.env.DEMO_PASSWORD;
-if (DEMO_PASSWORD) {
-  app.use((req, res, next) => {
-    const [scheme, encoded] = (req.headers.authorization ?? "").split(" ");
-    if (scheme === "Basic" && encoded) {
-      const [, password] = Buffer.from(encoded, "base64").toString().split(":");
-      if (password === DEMO_PASSWORD) return next();
-    }
-    res.setHeader("WWW-Authenticate", 'Basic realm="Keepsake demo"');
-    res.status(401).send("Keepsake demo — password required.");
-  });
-  logger.info("Demo password gate is ON");
-}
-
 app.use("/api/media/upload", uploadLimiter);
 app.use("/api", apiLimiter);
 
+/**
+ * Everything under /api needs an identity (health is registered above and so
+ * escapes this). `/me` and `/families` are the two routes a signed-in person
+ * can reach before belonging to an archive; every router past them is scoped
+ * to exactly one family, and reads it from `req.ctx` rather than guessing.
+ *
+ * The middleware is mounted once rather than repeated per router so a request
+ * verifies its token and resolves its membership a single time.
+ */
+const authenticated = requireUser(tokenVerifier);
+app.use("/api", authenticated);
+app.use("/api", accountRouter);
+
+app.use("/api", requireFamily);
 app.use("/api", homeRouter);
 app.use("/api", peopleRouter);
 app.use("/api", libraryRouter);
@@ -150,8 +152,18 @@ app.use("/api", mosaicRouter);
 app.use("/api", searchRouter);
 app.use("/api", familyRouter);
 
+/**
+ * Media bytes stay public for now. The client renders them as plain `<img>`
+ * URLs with no way to attach a header, and the generated placeholders are
+ * pure functions of a seed with nothing private in them. A5 replaces this
+ * with signed URLs; until then the public surface is reads only, so the
+ * upload endpoint under `/api/media` is the authenticated one.
+ */
 app.use("/media/uploads", express.static(path.join(MEDIA_DIR, "uploads"), { maxAge: "1y" }));
-app.use("/media", mediaRouter);
+app.use("/media", (req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD") return next();
+  res.status(404).json({ error: "Not found" });
+}, mediaRouter);
 app.use("/api/media", mediaRouter);
 
 /**

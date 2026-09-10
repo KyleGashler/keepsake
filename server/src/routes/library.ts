@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { collectionDto, imageUrl, memoryCardDto, personDto } from "../lib/serialize.js";
 
 export const libraryRouter = Router();
@@ -34,8 +34,8 @@ const PILLARS = [
   },
 ];
 
-libraryRouter.get("/library", async (_req, res) => {
-  const family = await currentFamily();
+libraryRouter.get("/library", async (req, res) => {
+  const family = req.ctx.family;
 
   const [children, counts] = await Promise.all([
     prisma.person.findMany({
@@ -65,7 +65,7 @@ const collectionQuery = z.object({
 });
 
 libraryRouter.get("/collections", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = collectionQuery.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { pillar, personId } = parsed.data;
@@ -84,14 +84,15 @@ libraryRouter.get("/collections", async (req, res) => {
 });
 
 libraryRouter.get("/collections/:id", async (req, res) => {
-  const collection = await prisma.collection.findUnique({
-    where: { id: req.params.id },
+  const family = req.ctx.family;
+  const collection = await prisma.collection.findFirst({
+    where: { id: req.params.id, familyId: family.id },
     include: { _count: { select: { memories: true } }, person: true },
   });
   if (!collection) return res.status(404).json({ error: "Collection not found" });
 
   const memories = await prisma.memory.findMany({
-    where: { collections: { some: { collectionId: collection.id } } },
+    where: { familyId: family.id, collections: { some: { collectionId: collection.id } } },
     orderBy: { occurredAt: "desc" },
     include: { media: true, participants: { include: { person: true } } },
   });
@@ -111,9 +112,17 @@ const newCollection = z.object({
 
 /** "Add Collection" — families can shape the archive around their own life. */
 libraryRouter.post("/collections", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = newCollection.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+
+  if (parsed.data.personId) {
+    const person = await prisma.person.findFirst({
+      where: { id: parsed.data.personId, familyId: family.id },
+      select: { id: true },
+    });
+    if (!person) return res.status(400).json({ error: "unknown_reference" });
+  }
 
   const max = await prisma.collection.aggregate({
     where: { familyId: family.id, pillar: parsed.data.pillar },

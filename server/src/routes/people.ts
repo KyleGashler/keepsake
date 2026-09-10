@@ -1,12 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { memoryCardDto, personDto } from "../lib/serialize.js";
 
 export const peopleRouter = Router();
 
-peopleRouter.get("/people", async (_req, res) => {
-  const family = await currentFamily();
+peopleRouter.get("/people", async (req, res) => {
+  const family = req.ctx.family;
   const people = await prisma.person.findMany({
     where: { familyId: family.id },
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
@@ -15,19 +15,23 @@ peopleRouter.get("/people", async (_req, res) => {
 });
 
 peopleRouter.get("/people/:id", async (req, res) => {
-  const person = await prisma.person.findUnique({ where: { id: req.params.id } });
+  const family = req.ctx.family;
+  const person = await prisma.person.findFirst({
+    where: { id: req.params.id, familyId: family.id },
+  });
   if (!person) return res.status(404).json({ error: "Person not found" });
 
+  const appearsIn = { familyId: family.id, participants: { some: { personId: person.id } } };
   const [memories, memoryCount, collections] = await Promise.all([
     prisma.memory.findMany({
-      where: { participants: { some: { personId: person.id } } },
+      where: appearsIn,
       orderBy: { occurredAt: "desc" },
       take: 24,
       include: { media: true, participants: { include: { person: true } } },
     }),
-    prisma.memory.count({ where: { participants: { some: { personId: person.id } } } }),
+    prisma.memory.count({ where: appearsIn }),
     prisma.collection.findMany({
-      where: { personId: person.id },
+      where: { familyId: family.id, personId: person.id },
       orderBy: [{ pillar: "asc" }, { sortOrder: "asc" }],
     }),
   ]);
@@ -48,7 +52,7 @@ const newPerson = z.object({
 });
 
 peopleRouter.post("/people", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = newPerson.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 

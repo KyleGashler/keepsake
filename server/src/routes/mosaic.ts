@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { imageUrl, withVersion } from "../lib/serialize.js";
 
 export const mosaicRouter = Router();
@@ -9,8 +9,8 @@ export const mosaicRouter = Router();
  * Real palette/composition analysis belongs to the AI phase; for now we sort by
  * the stored hue + brightness and vary tile size to create a curated rhythm.
  */
-mosaicRouter.get("/mosaic", async (_req, res) => {
-  const family = await currentFamily();
+mosaicRouter.get("/mosaic", async (req, res) => {
+  const family = req.ctx.family;
   const memories = await prisma.memory.findMany({
     where: { familyId: family.id },
     orderBy: [{ paletteHue: "asc" }, { brightness: "desc" }],

@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { personDto } from "../lib/serialize.js";
 
 export const familyRouter = Router();
 
 /** Family Hub: administrative rather than emotional, hence its own modal. */
-familyRouter.get("/family", async (_req, res) => {
-  const family = await currentFamily();
+familyRouter.get("/family", async (req, res) => {
+  const family = req.ctx.family;
 
   const [people, memoryCount, mediaCount, collectionCount] = await Promise.all([
     prisma.person.findMany({
@@ -46,7 +46,7 @@ const invite = z.object({
  * placeholder link. Real invites need accounts, tokens, and permissions.
  */
 familyRouter.post("/family/invites", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = invite.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
