@@ -56,6 +56,15 @@ The app derives the API host from Metro's LAN address, so a device on the same
 Wi-Fi finds the API without configuration. Override with `EXPO_PUBLIC_API_URL`
 if that guess is wrong.
 
+The API's CORS policy is an allowlist read from `CORS_ORIGINS` (comma-separated
+origins, e.g. `http://localhost:8081,https://keepsake.example`). It is
+deliberately unset in `docker-compose.yml`: outside production an empty
+`CORS_ORIGINS` allows every origin, which is what lets a phone on an
+unpredictable LAN address reach the API. In production an empty `CORS_ORIGINS`
+means same-origin only — no `Access-Control-Allow-Origin` header at all — which
+is correct for the hosted build, where the web bundle is served by the API
+itself.
+
 ## Layout
 
 ```
@@ -91,6 +100,16 @@ docker compose down -v                                # wipe database + uploads
 ```bash
 cd server && npm run db:migrate    # edit schema.prisma, then create + apply a migration
 cd server && npm run db:deploy     # apply pending migrations without creating one (what containers do on boot)
+```
+
+Development runs the server straight off TypeScript with `tsx watch`. The
+production image doesn't: `npm run build` in `server/` runs `prisma generate`
+and compiles `src/` to ESM in `server/dist/` (with source maps), and
+`npm start` runs `node dist/index.js`. The root `Dockerfile` builds that way,
+so the hosted image starts compiled JavaScript.
+
+```bash
+cd server && npm run build && npm start   # compiled, as production runs it
 ```
 
 `node_modules` lives in an anonymous volume that shadows the image's copy, so a

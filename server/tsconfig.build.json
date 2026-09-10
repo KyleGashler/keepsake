@@ -1,0 +1,14 @@
+{
+  // Emit config for the production image: `npm run typecheck` still uses the
+  // base tsconfig with noEmit. Sources already import with `.js` extensions,
+  // so the emitted ESM runs on plain node with no specifier rewriting.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "dist",
+    "rootDir": "src",
+    "sourceMap": true,
+    "declaration": false
+  },
+  "exclude": ["dist", "node_modules"]
+}

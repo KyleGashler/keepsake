@@ -10,4 +10,5 @@ if [ "$SEED_DEMO" = "1" ]; then
 fi
 
 echo "→ starting API"
-exec npm run --silent start
+# exec straight into node so SIGTERM reaches the process that handles it.
+exec node dist/index.js
