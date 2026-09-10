@@ -29,7 +29,7 @@ All six primary destinations from the packet:
 - **Capture** — camera / import / write / record, all landing on one compose screen that writes a real memory
 - **Library** — three Story Pillars → child selector → collections → memories, with the default collection sets pre-loaded per child
 - **Mosaic** — the archive laid out by palette rather than date, in a masonry grid
-- **Search** — one query across memories, transcripts, people, places, and collections
+- **Search** — one query across memories, transcripts, people, places, and collections. Memories are ranked with real Postgres full-text search — a generated, GIN-indexed `tsvector` column, not `ILIKE` scans; see `server/prisma/migrations/*_memory_search_vector/`.
 - **Family Hub** — modal: members, permissions, invites, settings
 
 Plus the immersive memory page: hero image, Story/Transcript toggle, original

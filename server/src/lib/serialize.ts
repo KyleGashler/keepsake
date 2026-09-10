@@ -98,6 +98,17 @@ export function memoryCardDto(m: MemoryWithRelations) {
   };
 }
 
+/**
+ * Same as `memoryCardDto`, but overrides `excerpt` with a caller-supplied
+ * string when one is given (falls back to the story lead-in otherwise).
+ * Used by search to show a `ts_headline` snippet of the matched terms
+ * instead of the plain start of the story.
+ */
+export function memoryCardDtoWithExcerpt(m: MemoryWithRelations, excerpt: string | null | undefined) {
+  const card = memoryCardDto(m);
+  return excerpt ? { ...card, excerpt } : card;
+}
+
 export function memoryDto(m: MemoryWithRelations) {
   return {
     ...memoryCardDto(m),
