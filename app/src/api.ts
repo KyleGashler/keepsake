@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { Platform } from "react-native";
 import Constants from "expo-constants";
+import { File as FsFile, UploadType } from "expo-file-system";
 
 /**
  * v0 talks to an open API — no tokens, no session. Everything here assumes a
@@ -39,18 +41,85 @@ export async function apiSend<T>(path: string, method: "POST" | "PATCH", body: u
   return res.json();
 }
 
-export async function uploadFile(uri: string, name: string, type: string) {
-  const form = new FormData();
-  if (uri.startsWith("data:") || uri.startsWith("blob:")) {
+/** What `POST /api/media/init` authorises. Mirrors the server's UploadTarget. */
+export type UploadTarget = {
+  url: string;
+  method: "PUT";
+  headers: Record<string, string>;
+  expiresAt: string;
+};
+
+export type UploadInit = { uploadId: string; key: string; target: UploadTarget };
+
+/**
+ * What `POST /api/media/finalize` observed in the bytes that actually landed —
+ * pass it straight into `media[]` when creating the memory.
+ */
+export type FinalizedMedia = {
+  key: string;
+  type: "PHOTO" | "VIDEO" | "AUDIO";
+  mimeType: string;
+  bytes: number;
+  sha256: string;
+  width?: number;
+  height?: number;
+};
+
+/**
+ * Two-phase upload: ask the API where to put the bytes, put them there, then
+ * ask the API what it got.
+ *
+ * The middle step deliberately doesn't go through this server's API surface —
+ * `target.url` is wherever storage says, which is a local route today and a
+ * presigned S3 URL once B2 lands. Nothing here needs to change for that.
+ *
+ * `onProgress` reports 0..1 and only fires on native; the web path has no
+ * progress events to hook without dropping to XHR.
+ */
+export async function uploadFile(
+  uri: string,
+  name: string,
+  type: string,
+  onProgress?: (fraction: number) => void,
+): Promise<FinalizedMedia> {
+  const init = async (bytes: number) =>
+    apiSend<UploadInit>("/api/media/init", "POST", { mimeType: type, bytes, filename: name });
+
+  if (Platform.OS === "web") {
+    // Picked media on web is a blob:/data: URI; fetching it yields the bytes
+    // and, more importantly, their exact length — which init has to authorise.
     const blob = await (await fetch(uri)).blob();
-    form.append("file", blob as unknown as Blob, name);
-  } else {
-    // React Native's FormData accepts this shape for local file URIs.
-    form.append("file", { uri, name, type } as unknown as Blob);
+    const { key, target } = await init(blob.size);
+    const res = await fetch(mediaUrl(target.url) as string, {
+      method: target.method,
+      headers: target.headers,
+      body: blob,
+    });
+    if (!res.ok) throw new Error((await res.text()) || `Upload failed (${res.status})`);
+    onProgress?.(1);
+    return finalizeUpload(key);
   }
-  const res = await fetch(`${API_URL}/api/media/upload`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(await res.text());
-  return (await res.json()) as { media: { url: string; type: "PHOTO" | "VIDEO" | "AUDIO" } };
+
+  // Native: expo-file-system streams the file straight from disk, so a large
+  // video never has to be materialised in JS memory the way a Blob would.
+  const file = new FsFile(uri);
+  const { key, target } = await init(file.size);
+  const result = await file.upload(mediaUrl(target.url) as string, {
+    httpMethod: target.method,
+    uploadType: UploadType.BINARY_CONTENT,
+    headers: target.headers,
+    mimeType: type,
+    onProgress: onProgress
+      ? ({ bytesSent, totalBytes }) => onProgress(totalBytes > 0 ? bytesSent / totalBytes : 0)
+      : undefined,
+  });
+  if (result.status >= 400) throw new Error(result.body || `Upload failed (${result.status})`);
+  return finalizeUpload(key);
+}
+
+async function finalizeUpload(key: string) {
+  const { media } = await apiSend<{ media: FinalizedMedia }>("/api/media/finalize", "POST", { key });
+  return media;
 }
 
 /** Small stand-in for a data layer; swap for React Query when caching matters. */

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { currentFamily, prisma } from "../lib/prisma.js";
-import { imageUrl, withVersion } from "../lib/serialize.js";
+import { imageUrl, mediaReadUrl } from "../lib/serialize.js";
 
 export const mosaicRouter = Router();
 
@@ -17,7 +17,7 @@ mosaicRouter.get("/mosaic", async (_req, res) => {
     include: { media: true },
   });
 
-  const tiles = memories.map((m, i) => {
+  const tiles = await Promise.all(memories.map(async (m, i) => {
     const hero = m.media.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
     // A repeating 7-beat rhythm: mostly small tiles, occasional wide/tall ones.
     const beat = i % 7;
@@ -26,13 +26,13 @@ mosaicRouter.get("/mosaic", async (_req, res) => {
       id: m.id,
       title: m.title,
       occurredAt: m.occurredAt.toISOString(),
-      url: hero ? withVersion(hero.url) : imageUrl(m.heroSeed, 900, 900),
+      url: hero ? await mediaReadUrl(hero) : imageUrl(m.heroSeed, 900, 900),
       isVideo: hero?.type === "VIDEO",
       hasAudio: m.media.some((x) => x.type === "AUDIO"),
       paletteHue: m.paletteHue,
       span,
     };
-  });
+  }));
 
   res.json({ tiles });
 });

@@ -112,7 +112,7 @@ async function checkDatabase(): Promise<boolean> {
 
 async function checkMediaDir(): Promise<boolean> {
   try {
-    await fsp.access(path.join(MEDIA_DIR, "uploads"), fs.constants.W_OK);
+    await fsp.access(path.join(MEDIA_DIR, "objects"), fs.constants.W_OK);
     return true;
   } catch (err) {
     logger.error({ err }, "health: media directory not writable");
@@ -139,7 +139,8 @@ if (DEMO_PASSWORD) {
   logger.info("Demo password gate is ON");
 }
 
-app.use("/api/media/upload", uploadLimiter);
+app.use("/api/media/init", uploadLimiter);
+app.use("/api/media/finalize", uploadLimiter);
 app.use("/api", apiLimiter);
 
 app.use("/api", homeRouter);

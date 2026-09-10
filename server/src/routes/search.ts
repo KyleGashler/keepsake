@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { currentFamily, prisma } from "../lib/prisma.js";
-import { collectionDto, memoryCardDto, personDto } from "../lib/serialize.js";
+import { collectionDto, memoryCardDtos, personDto } from "../lib/serialize.js";
 
 export const searchRouter = Router();
 
@@ -52,7 +52,7 @@ searchRouter.get("/search", async (req, res) => {
 
   res.json({
     q,
-    memories: memories.map(memoryCardDto),
+    memories: await memoryCardDtos(memories),
     people: people.map(personDto),
     collections: collections.map(collectionDto),
     total: memories.length + people.length + collections.length,

@@ -43,6 +43,14 @@ These are stubbed and labelled in the UI rather than faked:
 - **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
 - **Real photographs** — every seeded image is a gradient generated from a string seed ([server/src/lib/placeholder.ts](server/src/lib/placeholder.ts)), so the app looks alive offline and nothing binary lives in git. Photos you upload yourself are real and land on a Docker volume.
 
+Uploads go through a two-phase handshake — `POST /api/media/init` authorises a
+target, the client `PUT`s the bytes to it, `POST /api/media/finalize` sniffs the
+real type and records size and SHA-256 — so the same client code works against
+a local volume today and presigned S3 URLs later
+([server/src/storage/](server/src/storage/)). `STORAGE_PROVIDER` picks the
+backend (`local`); `MEDIA_SIGNING_SECRET` signs the upload and read tokens and
+should be set anywhere the API is reachable from outside your machine.
+
 ## Running on a phone
 
 The web build is the fastest way to look at it, but this is React Native — it
