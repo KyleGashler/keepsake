@@ -349,7 +349,13 @@ async function main() {
   }
   if (existing) {
     console.log("SEED_RESET=1 — clearing existing data.");
+    // Deleting a Family cascades to its people, collections, memories, media,
+    // derivatives, activity, prompts, memberships, invites and subscription.
+    // Users hang off no family, so they (and their device tokens, which do
+    // cascade) go separately; jobs are family-independent too.
     await prisma.family.deleteMany();
+    await prisma.user.deleteMany();
+    await prisma.job.deleteMany();
   }
 
   const family = await prisma.family.create({ data: { name: "the Bryners" } });
@@ -380,6 +386,22 @@ async function main() {
       },
     });
   }
+
+  // One signing-in user so the auth work (A3/A4) has something to resolve
+  // against. Ali is the account holder; the other adults get invites later and
+  // the children never become Users at all.
+  const owner = people.Ali;
+  const demoUser = await prisma.user.create({
+    data: {
+      authProviderId: "dev:demo@keepsake.local",
+      email: "demo@keepsake.local",
+      displayName: owner.name,
+    },
+  });
+  await prisma.person.update({ where: { id: owner.id }, data: { userId: demoUser.id } });
+  await prisma.familyMembership.create({
+    data: { userId: demoUser.id, familyId: family.id, role: "OWNER", personId: owner.id },
+  });
 
   const children = [people.Mae, people.Theo];
   const collections: Record<string, string> = {};
@@ -432,6 +454,9 @@ async function main() {
       url: `/media/gen/${heroSeed}-${i}.png?w=1400&h=1050`,
       width: 1400,
       height: 1050,
+      // Placeholders are complete the moment they exist — there is no upload
+      // to wait on, so they skip the UPLOADING phase.
+      status: "READY" as const,
       sortOrder: i,
     }));
     const audio = spec.audio
@@ -442,6 +467,7 @@ async function main() {
             url: `/media/gen/${heroSeed}-audio.png?w=900&h=300`,
             width: 900,
             height: 300,
+            status: "READY" as const,
             durationS: spec.audio.durationS,
             caption: spec.audio.caption,
             sortOrder: photos.length,
@@ -493,6 +519,7 @@ async function main() {
   }
 
   const counts = {
+    users: 1,
     people: Object.keys(people).length,
     collections: Object.keys(collections).length,
     memories: MEMORIES.length,

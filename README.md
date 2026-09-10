@@ -83,6 +83,22 @@ design/
 docker-compose.yml
 ```
 
+### Data model
+
+`Family` is the tenancy boundary — every content row hangs off one and every
+query filters by `familyId`. The tables beyond the v0 six are in place ahead of
+the code that fills them, so the shape stops moving while the features land:
+`User`, `FamilyMembership` (OWNER / CONTRIBUTOR / VIEWER) and `Person.userId`
+carry sign-in and family scoping (A3), `Invite` carries the join flow (A4).
+`Media.storageKey` / `mimeType` / `bytes` / `sha256` / `status` describe an
+object in a storage provider rather than a path on disk, and `Derivative` holds
+the thumbnails, display renditions, posters and waveforms generated from it
+(A5, A6). `Job` is the durable work queue those derivatives run through (A6),
+and `Memory.palette` / `analysisStatus` / `storySource` are what the analysis
+and AI passes write back (A6, A13). `DeviceToken` and `Subscription` are for
+push and billing in Track B (B7, B9). Soft deletes (`deletedAt` on `Memory` and
+`Media`) exist because an original is never destroyed.
+
 The logotype is a custom drawing, so it isn't any font and can't be rebuilt from
 one. `design/extract_logo.py` traces it straight out of the brand sheet into
 `brand-artwork.ts`, splitting ink from accent by colour, and the app draws those
