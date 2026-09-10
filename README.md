@@ -1,8 +1,10 @@
 # Keepsake — v0 prototype
 
 A working slice of Keepsake: a React Native app and an API, wired together and
-runnable with one command. **No authentication and no AI in this build** — it
-exists to make the product architecture tangible enough to argue with.
+runnable with one command. **Dev-mode identity and no AI in this build** — a
+bearer token is taken at face value (see [Auth](#auth)) and nothing is
+generated. It exists to make the product architecture tangible enough to argue
+with.
 
 ```bash
 docker compose up --build
@@ -37,11 +39,71 @@ media, who was there, and inline editing of the narrative.
 
 These are stubbed and labelled in the UI rather than faked:
 
-- **Auth** — the API is wide open and serves a single seeded family. Every route would hang off a session.
+- **Auth** — the request context, family scoping and roles are real; the *verification* isn't. A `dev:<email>` token is believed without proof. See [Auth](#auth).
 - **AI** — no narratives, transcription, tagging, or generated prompts. `Memory.transcript` and the prompt table already exist, so the AI phase fills fields rather than reshaping the schema.
 - **Audio capture** — recording and playback need real files; the written form stands in, and typed transcripts land in the field transcription will eventually populate.
 - **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
 - **Real photographs** — every seeded image is a gradient generated from a string seed ([server/src/lib/placeholder.ts](server/src/lib/placeholder.ts)), so the app looks alive offline and nothing binary lives in git. Photos you upload yourself are real and land on a Docker volume.
+
+## Auth
+
+Every `/api` route except `/api/health` needs a signed-in user, and every query
+is scoped to one family. What's missing is the part that checks a credential is
+genuine — that's a `TokenVerifier`, and the only implementation so far is the
+development one.
+
+```
+Authorization: Bearer dev:ali@example.com
+```
+
+`DevTokenVerifier` believes that token: it signs you in as `ali@example.com`,
+creating the `User` row on first sight. There is no password and no signature.
+It is active only when `AUTH_MODE=dev` (the default outside production).
+
+| Variable | Meaning |
+| --- | --- |
+| `AUTH_MODE` | `dev` is the only implemented mode. `firebase` arrives with B1. |
+| `DEV_DEFAULT_USER` | An email. In dev mode, a request with **no** `Authorization` header is treated as that user. |
+| `ALLOW_DEV_AUTH_IN_PROD` | `1` lets `AUTH_MODE=dev` run under `NODE_ENV=production`. Without it the server refuses to boot, which is the point. |
+
+`DEV_DEFAULT_USER` is set to `demo@keepsake.local` (the seeded OWNER of the
+demo family) in `docker-compose.yml` and `fly.toml`. That's a stopgap: the app
+doesn't send a token yet, and won't until A8 gives it a sign-in screen. Unset
+the variable and the API behaves like production — no token, no access.
+
+A user in several families must say which one they mean:
+
+```
+x-family-id: <family id>
+```
+
+Without the header, a single membership is used and several are a
+`400 family_required` listing them. A family you don't belong to is a `403`,
+and a row belonging to another family is a `404` — an id never confirms itself.
+
+```bash
+API=http://localhost:4000
+TOKEN='Bearer dev:demo@keepsake.local'
+
+curl -s $API/api/me -H "Authorization: $TOKEN"          # user + memberships
+curl -s $API/api/home -H "Authorization: $TOKEN"
+curl -s $API/api/memories -H "Authorization: $TOKEN" -H 'x-family-id: <id>'
+curl -s -X POST $API/api/families -H "Authorization: $TOKEN" \
+  -H 'content-type: application/json' -d '{"name":"The Reyes"}'
+```
+
+`POST /api/families` and `GET /api/me` are the only routes reachable before you
+belong to an archive; creating one makes you its OWNER and gives you a `Person`
+row inside it.
+
+**Production needs a real verifier.** `createTokenVerifier()` throws at boot
+rather than serve dev auth under `NODE_ENV=production`, unless
+`ALLOW_DEV_AUTH_IN_PROD=1` is set — which the hosted demo does today, and logs
+loudly about, until the Firebase verifier (B1) replaces it.
+
+Media bytes are still public: `/media/gen/*` (generated placeholders) and
+`/media/uploads/*` are served without a token, because the client loads them as
+plain `<img>` URLs. A5 replaces those with signed URLs.
 
 ## Running on a phone
 
@@ -88,8 +150,11 @@ docker-compose.yml
 `Family` is the tenancy boundary — every content row hangs off one and every
 query filters by `familyId`. The tables beyond the v0 six are in place ahead of
 the code that fills them, so the shape stops moving while the features land:
-`User`, `FamilyMembership` (OWNER / CONTRIBUTOR / VIEWER) and `Person.userId`
-carry sign-in and family scoping (A3), `Invite` carries the join flow (A4).
+`User` and `FamilyMembership` (OWNER / CONTRIBUTOR / VIEWER) carry sign-in and
+family scoping and are live — `FamilyMembership.personId` is the canonical link
+between a login and the person they are inside one family, and the older
+`Person.userId` (globally unique, so one Person per login) survives only until
+a later migration drops it. `Invite` carries the join flow (A4).
 `Media.storageKey` / `mimeType` / `bytes` / `sha256` / `status` describe an
 object in a storage provider rather than a path on disk, and `Derivative` holds
 the thumbnails, display renditions, posters and waveforms generated from it

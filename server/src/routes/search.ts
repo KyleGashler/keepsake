@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { collectionDto, memoryCardDto, personDto } from "../lib/serialize.js";
 
 export const searchRouter = Router();
@@ -13,7 +13,7 @@ const query = z.object({ q: z.string().trim().max(120).default("") });
  * semantic/vector search is a later conversation.
  */
 searchRouter.get("/search", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = query.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const q = parsed.data.q;

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { memoryCardDto, memoryDto } from "../lib/serialize.js";
 
@@ -21,7 +21,7 @@ const listQuery = z.object({
 });
 
 memoriesRouter.get("/memories", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = listQuery.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { collectionId, personId, limit, offset } = parsed.data;
@@ -47,7 +47,12 @@ memoriesRouter.get("/memories", async (req, res) => {
 });
 
 memoriesRouter.get("/memories/:id", async (req, res) => {
-  const memory = await prisma.memory.findUnique({ where: { id: req.params.id }, include });
+  // findFirst, not findUnique: an id from another family must read as absent,
+  // not as forbidden — otherwise the 404/403 split confirms the id exists.
+  const memory = await prisma.memory.findFirst({
+    where: { id: req.params.id, familyId: req.ctx.family.id },
+    include,
+  });
   if (!memory) return res.status(404).json({ error: "Memory not found" });
   res.json({ memory: memoryDto(memory) });
 });
@@ -74,10 +79,31 @@ const newMemory = z.object({
 });
 
 memoriesRouter.post("/memories", async (req, res) => {
-  const family = await currentFamily();
+  const family = req.ctx.family;
   const parsed = newMemory.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const input = parsed.data;
+
+  // Every id the client hands us is a chance to reach into another archive.
+  // Confirm each one belongs to this family before it becomes a relation.
+  const personIds = [...new Set([...input.participantIds, ...(input.authorId ? [input.authorId] : [])])];
+  const [knownPeople, knownCollections] = await Promise.all([
+    personIds.length
+      ? prisma.person.findMany({
+          where: { id: { in: personIds }, familyId: family.id },
+          select: { id: true },
+        })
+      : [],
+    input.collectionIds.length
+      ? prisma.collection.findMany({
+          where: { id: { in: input.collectionIds }, familyId: family.id },
+          select: { id: true },
+        })
+      : [],
+  ]);
+  if (knownPeople.length !== personIds.length || knownCollections.length !== new Set(input.collectionIds).size) {
+    return res.status(400).json({ error: "unknown_reference" });
+  }
 
   const heroSeed = `memory-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
   const memory = await prisma.memory.create({
@@ -136,11 +162,14 @@ memoriesRouter.patch("/memories/:id", async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { occurredAt, ...rest } = parsed.data;
 
-  const existing = await prisma.memory.findUnique({ where: { id: req.params.id } });
+  const existing = await prisma.memory.findFirst({
+    where: { id: req.params.id, familyId: req.ctx.family.id },
+    select: { id: true },
+  });
   if (!existing) return res.status(404).json({ error: "Memory not found" });
 
   const memory = await prisma.memory.update({
-    where: { id: req.params.id },
+    where: { id: existing.id },
     data: { ...rest, ...(occurredAt ? { occurredAt: new Date(occurredAt) } : {}) },
     include,
   });

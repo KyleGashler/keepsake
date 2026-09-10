@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { currentFamily, prisma } from "../lib/prisma.js";
+import { prisma } from "../lib/prisma.js";
 import { imageUrl, memoryCardDto, personDto } from "../lib/serialize.js";
 
 export const homeRouter = Router();
@@ -27,8 +27,8 @@ function dayIndex(date: Date) {
   return Math.floor((date.getTime() - start) / 86_400_000);
 }
 
-homeRouter.get("/home", async (_req, res) => {
-  const family = await currentFamily();
+homeRouter.get("/home", async (req, res) => {
+  const family = req.ctx.family;
   const now = new Date();
 
   const [people, recent, updates, prompts] = await Promise.all([

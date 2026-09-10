@@ -23,6 +23,12 @@ services:
       PORT: "4000"
       MEDIA_DIR: /app/media
       SEED_DEMO: "1"
+      # `Bearer dev:<email>` is the whole credential in dev mode — see the Auth
+      # section of the README. DEV_DEFAULT_USER is who an unauthenticated
+      # request is treated as, which keeps the app working until it learns to
+      # send a token (A8).
+      AUTH_MODE: dev
+      DEV_DEFAULT_USER: demo@keepsake.local
     ports:
       - "4000:4000"
     volumes:
