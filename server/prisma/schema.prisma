@@ -194,6 +194,13 @@ model Memory {
   collections  MemoryCollection[]
   participants MemoryParticipant[]
 
+  /// Generated tsvector over title/location/story/transcript (A weighted highest,
+  /// D lowest), maintained by Postgres itself — see the memory_search_vector
+  /// migration. Prisma can't model a GENERATED column, so this is Unsupported
+  /// purely so `migrate diff` / `db pull` don't see drift; it's never read or
+  /// written through the client. Query it with $queryRaw (see routes/search.ts).
+  searchVector Unsupported("tsvector")?
+
   @@index([familyId, occurredAt])
   @@index([familyId, deletedAt])
 }
