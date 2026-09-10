@@ -144,3 +144,6 @@ vite.config.ts.timestamp-*
 
 # Uploaded media (dev volume)
 server/media/
+
+# Claude Code agent worktrees
+.claude/worktrees/
