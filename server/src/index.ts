@@ -15,7 +15,7 @@ import { accountRouter } from "./routes/account.js";
 import { familyRouter } from "./routes/family.js";
 import { homeRouter } from "./routes/home.js";
 import { libraryRouter } from "./routes/library.js";
-import { MEDIA_DIR, mediaRouter } from "./routes/media.js";
+import { MEDIA_DIR, mediaApiRouter, mediaBytesRouter } from "./routes/media.js";
 import { memoriesRouter } from "./routes/memories.js";
 import { mosaicRouter } from "./routes/mosaic.js";
 import { peopleRouter } from "./routes/people.js";
@@ -119,7 +119,7 @@ async function checkDatabase(): Promise<boolean> {
 
 async function checkMediaDir(): Promise<boolean> {
   try {
-    await fsp.access(path.join(MEDIA_DIR, "uploads"), fs.constants.W_OK);
+    await fsp.access(path.join(MEDIA_DIR, "objects"), fs.constants.W_OK);
     return true;
   } catch (err) {
     logger.error({ err }, "health: media directory not writable");
@@ -127,7 +127,8 @@ async function checkMediaDir(): Promise<boolean> {
   }
 }
 
-app.use("/api/media/upload", uploadLimiter);
+app.use("/api/media/init", uploadLimiter);
+app.use("/api/media/finalize", uploadLimiter);
 app.use("/api", apiLimiter);
 
 /**
@@ -151,20 +152,17 @@ app.use("/api", memoriesRouter);
 app.use("/api", mosaicRouter);
 app.use("/api", searchRouter);
 app.use("/api", familyRouter);
+app.use("/api/media", mediaApiRouter);
 
 /**
- * Media bytes stay public for now. The client renders them as plain `<img>`
- * URLs with no way to attach a header, and the generated placeholders are
- * pure functions of a seed with nothing private in them. A5 replaces this
- * with signed URLs; until then the public surface is reads only, so the
- * upload endpoint under `/api/media` is the authenticated one.
+ * Media bytes are public: the client renders them as plain `<img>` URLs with
+ * no way to attach a header. Generated placeholders are pure functions of a
+ * seed, and uploaded originals are reachable only through signed, expiring
+ * tokens in the path. The upload handshake itself lives under `/api/media`,
+ * behind auth (mounted above) and the upload limiter.
  */
 app.use("/media/uploads", express.static(path.join(MEDIA_DIR, "uploads"), { maxAge: "1y" }));
-app.use("/media", (req, res, next) => {
-  if (req.method === "GET" || req.method === "HEAD") return next();
-  res.status(404).json({ error: "Not found" });
-}, mediaRouter);
-app.use("/api/media", mediaRouter);
+app.use("/media", mediaBytesRouter);
 
 /**
  * In the hosted build the web bundle ships inside this image, so the app and

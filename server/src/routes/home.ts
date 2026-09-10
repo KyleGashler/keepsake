@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { imageUrl, memoryCardDto, personDto } from "../lib/serialize.js";
+import { imageUrl, memoryCardDtos, personDto } from "../lib/serialize.js";
 
 export const homeRouter = Router();
 
@@ -74,7 +74,7 @@ homeRouter.get("/home", async (req, res) => {
           imageUrl: imageUrl(prompt.imageSeed, 1200, 1400),
         }
       : null,
-    storySoFar: recent.map(memoryCardDto),
+    storySoFar: await memoryCardDtos(recent),
     updates: updates.map((u) => ({
       id: u.id,
       kind: u.kind,

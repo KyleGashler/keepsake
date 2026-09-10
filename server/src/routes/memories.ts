@@ -2,7 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
-import { memoryCardDto, memoryDto } from "../lib/serialize.js";
+import { memoryCardDtos, memoryDto } from "../lib/serialize.js";
 
 export const memoriesRouter = Router();
 
@@ -43,7 +43,7 @@ memoriesRouter.get("/memories", async (req, res) => {
     prisma.memory.count({ where }),
   ]);
 
-  res.json({ memories: memories.map(memoryCardDto), total });
+  res.json({ memories: await memoryCardDtos(memories), total });
 });
 
 memoriesRouter.get("/memories/:id", async (req, res) => {
@@ -54,17 +54,33 @@ memoriesRouter.get("/memories/:id", async (req, res) => {
     include,
   });
   if (!memory) return res.status(404).json({ error: "Memory not found" });
-  res.json({ memory: memoryDto(memory) });
+  res.json({ memory: await memoryDto(memory) });
 });
 
-const mediaInput = z.object({
-  type: z.enum(["PHOTO", "VIDEO", "AUDIO"]),
-  url: z.string().min(1),
-  caption: z.string().max(280).optional(),
-  width: z.number().int().positive().default(1200),
-  height: z.number().int().positive().default(900),
-  durationS: z.number().int().positive().optional(),
-});
+/**
+ * A memory's media, as the client reports it.
+ *
+ * `storageKey` is the A5 path: the client has already run init → PUT →
+ * finalize, and passes back exactly what finalize returned. `url` is the older
+ * path, kept for the generated placeholders the seed writes and for anything
+ * still pointing at `/media/uploads/*`. One or the other, never neither.
+ */
+const mediaInput = z
+  .object({
+    type: z.enum(["PHOTO", "VIDEO", "AUDIO"]),
+    url: z.string().min(1).optional(),
+    storageKey: z.string().min(1).max(512).optional(),
+    mimeType: z.string().max(120).optional(),
+    bytes: z.number().int().positive().optional(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    caption: z.string().max(280).optional(),
+    width: z.number().int().positive().default(1200),
+    height: z.number().int().positive().default(900),
+    durationS: z.number().int().positive().optional(),
+  })
+  .refine((m) => Boolean(m.url || m.storageKey), {
+    message: "media needs either a storageKey (from /api/media/finalize) or a url",
+  });
 
 const newMemory = z.object({
   title: z.string().min(1).max(160),
@@ -105,6 +121,11 @@ memoriesRouter.post("/memories", async (req, res) => {
     return res.status(400).json({ error: "unknown_reference" });
   }
 
+  // A storage key carries its owning family in its prefix; refuse to attach
+  // another family's object to this family's memory.
+  const foreign = input.media.find((m) => m.storageKey && !m.storageKey.startsWith(`${family.id}/`));
+  if (foreign) return res.status(403).json({ error: "Storage key does not belong to this family" });
+
   const heroSeed = `memory-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
   const memory = await prisma.memory.create({
     data: {
@@ -121,7 +142,15 @@ memoriesRouter.post("/memories", async (req, res) => {
       media: {
         create: input.media.map((m, i) => ({
           type: m.type,
-          url: m.url,
+          // Uploads have no stored URL: it's signed per response from the
+          // storage key, because a presigned URL expires and this column
+          // doesn't. See lib/serialize.ts#mediaReadUrl.
+          url: m.storageKey ? "" : (m.url as string),
+          storageKey: m.storageKey ?? null,
+          mimeType: m.mimeType ?? null,
+          bytes: m.bytes ?? null,
+          sha256: m.sha256 ?? null,
+          status: "READY" as const,
           caption: m.caption ?? null,
           width: m.width,
           height: m.height,
@@ -145,7 +174,7 @@ memoriesRouter.post("/memories", async (req, res) => {
     },
   });
 
-  res.status(201).json({ memory: memoryDto(memory) });
+  res.status(201).json({ memory: await memoryDto(memory) });
 });
 
 const editMemory = z.object({
@@ -174,5 +203,5 @@ memoriesRouter.patch("/memories/:id", async (req, res) => {
     include,
   });
 
-  res.json({ memory: memoryDto(memory) });
+  res.json({ memory: await memoryDto(memory) });
 });

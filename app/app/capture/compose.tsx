@@ -63,6 +63,9 @@ export default function ComposeScreen() {
   );
   const [pillar, setPillar] = useState<PillarKey>("FAMILY_LIFE");
   const [saving, setSaving] = useState(false);
+  // Uploads happen before the memory is written, and a video can take a while;
+  // say what's happening rather than leaving one word on the button.
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const people = peopleData?.people ?? [];
@@ -87,15 +90,25 @@ export default function ComposeScreen() {
     setError(null);
     try {
       const media = [];
-      for (const asset of assets) {
-        const uploaded = await uploadFile(asset.uri, asset.name, asset.mime);
+      for (const [i, asset] of assets.entries()) {
+        const label = assets.length > 1 ? `${i + 1} of ${assets.length}` : "";
+        setProgress(`Uploading ${label}`.trim() + "…");
+        const uploaded = await uploadFile(asset.uri, asset.name, asset.mime, (fraction) =>
+          setProgress(`Uploading ${label} ${Math.round(fraction * 100)}%`.replace(/\s+/g, " ").trim()),
+        );
+        // Everything but the caption comes from the server's own reading of the
+        // bytes; the picker's dimensions only fill in what it couldn't measure.
         media.push({
-          type: uploaded.media.type,
-          url: uploaded.media.url,
-          width: asset.width ?? 1200,
-          height: asset.height ?? 900,
+          type: uploaded.type,
+          storageKey: uploaded.key,
+          mimeType: uploaded.mimeType,
+          bytes: uploaded.bytes,
+          sha256: uploaded.sha256,
+          width: uploaded.width ?? asset.width ?? 1200,
+          height: uploaded.height ?? asset.height ?? 900,
         });
       }
+      setProgress(assets.length ? "Preserving…" : null);
 
       const res = await apiSend<{ memory: Memory }>("/api/memories", "POST", {
         title: title.trim(),
@@ -114,6 +127,7 @@ export default function ComposeScreen() {
       setError((err as Error).message);
     } finally {
       setSaving(false);
+      setProgress(null);
     }
   }
 
@@ -260,7 +274,7 @@ export default function ComposeScreen() {
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <Button
-          label={saving ? "Preserving…" : "Preserve this memory"}
+          label={saving ? (progress ?? "Preserving…") : "Preserve this memory"}
           icon="checkmark"
           onPress={save}
           disabled={saving}

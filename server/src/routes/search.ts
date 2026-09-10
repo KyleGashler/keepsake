@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { collectionDto, memoryCardDto, memoryCardDtoWithExcerpt, personDto } from "../lib/serialize.js";
+import { collectionDto, memoryCardDtoWithExcerpt, memoryCardDtos, personDto } from "../lib/serialize.js";
 
 export const searchRouter = Router();
 
@@ -106,10 +106,12 @@ async function searchMemories(familyId: string, q: string) {
 
   // Preserve the rank order from the raw query — Prisma's `in` filter makes
   // no ordering guarantee of its own.
-  return hits
-    .map((h) => byId.get(h.id))
-    .filter((m): m is NonNullable<typeof m> => m != null)
-    .map((m) => memoryCardDtoWithExcerpt(m, snippetById.get(m.id)));
+  return Promise.all(
+    hits
+      .map((h) => byId.get(h.id))
+      .filter((m): m is NonNullable<typeof m> => m != null)
+      .map((m) => memoryCardDtoWithExcerpt(m, snippetById.get(m.id))),
+  );
 }
 
 async function isEmptyTsQuery(q: string) {
@@ -137,5 +139,5 @@ function searchMemoriesByIlike(familyId: string, q: string) {
       take: 30,
       include: { media: true, participants: { include: { person: true } } },
     })
-    .then((records) => records.map((m) => memoryCardDto(m)));
+    .then((records) => memoryCardDtos(records));
 }

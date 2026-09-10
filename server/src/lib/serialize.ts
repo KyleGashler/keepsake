@@ -1,4 +1,5 @@
 import { RENDER_VERSION } from "./placeholder.js";
+import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
 import type { Collection, Media, Memory, Person } from "@prisma/client";
 
 /**
@@ -46,11 +47,28 @@ export function personDto(p: Person) {
   };
 }
 
-export function mediaDto(m: Media) {
+/**
+ * Where a Media row is actually readable from.
+ *
+ * A row with a `storageKey` is a real upload, and its URL is minted by the
+ * storage provider fresh on every response — presigned URLs expire, so a URL is
+ * never something to persist. Rows without one are the generated placeholders
+ * (and pre-A5 demo uploads), whose `url` column is the answer.
+ *
+ * This is why the DTO functions below are async. S3's `getSignedUrl` returns a
+ * promise, so `StorageProvider.getReadUrl` has to; a sync path that only the
+ * local provider could satisfy would be torn out again the day B2 lands.
+ */
+export async function mediaReadUrl(m: Pick<Media, "url" | "storageKey">) {
+  if (m.storageKey) return storage().getReadUrl(m.storageKey, READ_URL_TTL_SECONDS);
+  return withVersion(m.url);
+}
+
+export async function mediaDto(m: Media) {
   return {
     id: m.id,
     type: m.type,
-    url: withVersion(m.url),
+    url: await mediaReadUrl(m),
     caption: m.caption,
     width: m.width,
     height: m.height,
@@ -81,14 +99,14 @@ type MemoryWithRelations = Memory & {
   collections?: { collection: Collection }[];
 };
 
-export function memoryCardDto(m: MemoryWithRelations) {
+export async function memoryCardDto(m: MemoryWithRelations) {
   const hero = m.media?.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
   return {
     id: m.id,
     title: m.title,
     occurredAt: m.occurredAt.toISOString(),
     location: m.location,
-    heroUrl: (hero ? withVersion(hero.url) : null) ?? imageUrl(m.heroSeed, 1200, 900),
+    heroUrl: (hero ? await mediaReadUrl(hero) : null) ?? imageUrl(m.heroSeed, 1200, 900),
     excerpt: m.story ? m.story.replace(/\s+/g, " ").slice(0, 140) : null,
     mediaCount: m.media?.length ?? 0,
     hasAudio: m.media?.some((x) => x.type === "AUDIO") ?? false,
@@ -104,19 +122,24 @@ export function memoryCardDto(m: MemoryWithRelations) {
  * Used by search to show a `ts_headline` snippet of the matched terms
  * instead of the plain start of the story.
  */
-export function memoryCardDtoWithExcerpt(m: MemoryWithRelations, excerpt: string | null | undefined) {
-  const card = memoryCardDto(m);
+export async function memoryCardDtoWithExcerpt(m: MemoryWithRelations, excerpt: string | null | undefined) {
+  const card = await memoryCardDto(m);
   return excerpt ? { ...card, excerpt } : card;
 }
 
-export function memoryDto(m: MemoryWithRelations) {
+/** A list means N independent URL signings; run them together, not in sequence. */
+export function memoryCardDtos(memories: MemoryWithRelations[]) {
+  return Promise.all(memories.map((m) => memoryCardDto(m)));
+}
+
+export async function memoryDto(m: MemoryWithRelations) {
   return {
-    ...memoryCardDto(m),
+    ...(await memoryCardDto(m)),
     story: m.story,
     transcript: m.transcript,
     createdAt: m.createdAt.toISOString(),
     author: m.author ? personDto(m.author) : null,
-    media: m.media?.map(mediaDto) ?? [],
+    media: await Promise.all(m.media?.map(mediaDto) ?? []),
     collections:
       m.collections?.map((mc) => ({
         id: mc.collection.id,

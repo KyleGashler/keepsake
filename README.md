@@ -101,9 +101,17 @@ rather than serve dev auth under `NODE_ENV=production`, unless
 `ALLOW_DEV_AUTH_IN_PROD=1` is set — which the hosted demo does today, and logs
 loudly about, until the Firebase verifier (B1) replaces it.
 
-Media bytes are still public: `/media/gen/*` (generated placeholders) and
-`/media/uploads/*` are served without a token, because the client loads them as
-plain `<img>` URLs. A5 replaces those with signed URLs.
+Media bytes are reachable without a bearer token because the client loads them
+as plain `<img>` URLs: `/media/gen/*` placeholders are public, and uploaded
+originals are served from `/media/o/<signed token>` with a one-hour expiry.
+
+Uploads go through a two-phase handshake — `POST /api/media/init` authorises a
+target, the client `PUT`s the bytes to it, `POST /api/media/finalize` sniffs the
+real type and records size and SHA-256 — so the same client code works against
+a local volume today and presigned S3 URLs later
+([server/src/storage/](server/src/storage/)). `STORAGE_PROVIDER` picks the
+backend (`local`); `MEDIA_SIGNING_SECRET` signs the upload and read tokens and
+should be set anywhere the API is reachable from outside your machine.
 
 ## Running on a phone
 
