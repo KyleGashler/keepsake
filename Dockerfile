@@ -26,7 +26,9 @@ COPY server/package.json server/package-lock.json* ./
 RUN npm install --no-audit --no-fund
 
 COPY server/ ./
-RUN npx prisma generate
+# `build` runs prisma generate and then compiles src/ to dist/ — production
+# runs the compiled JS, not tsx.
+RUN npm run build
 
 COPY --from=web /build/dist ./web
 

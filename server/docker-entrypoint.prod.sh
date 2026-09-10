@@ -11,4 +11,5 @@ echo "→ seeding (skips if data exists)"
 npm run --silent seed
 
 echo "→ starting API"
-exec npm run --silent start
+# exec straight into node so SIGTERM reaches the process that handles it.
+exec node dist/index.js
