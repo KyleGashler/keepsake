@@ -145,7 +145,7 @@ Family Hub screen shows real permissions and pending invites.
 - Handler `media.derive`: `sharp` → THUMB (400), DISPLAY (1600), HEIC→JPEG,
   EXIF date extraction (fill `occurredAt` if unset), dominant palette via
   `sharp().stats()` or a small k-means → `Memory.palette` + `paletteHue` +
-  `brightness` from the hero. Video: poster frame via `ffmpeg` if present on
+  `brightness` from the hero. Video (see "Decision: video, for now"): poster frame via `ffmpeg` if present on
   the image, else skip. Audio: duration.
 - Mosaic route orders by real palette; DTOs return derivative URLs, originals
   only on the memory page.
@@ -212,7 +212,7 @@ Track A; the row says which.
 | ID | Service | Provision (human) | Adapter (agent) | Implements | After |
 | --- | --- | --- | --- | --- | --- |
 | B1 | **Firebase Auth** | Create project; enable Email, Apple, Google; download service-account JSON; add iOS/Android apps + web config | `FirebaseTokenVerifier` (`firebase-admin`); client `FirebaseAuthProvider` (Firebase JS SDK on web, `@react-native-firebase/auth` native) | A3 `TokenVerifier`, A8 `AuthProvider` | A3, A8 |
-| B2 | **AWS S3** (or Cloudflare R2) | Bucket with versioning on, no lifecycle deletes; IAM user scoped to that bucket; CORS for PUT from app origins; optional CloudFront | `S3StorageProvider` with presigned PUT/GET (`@aws-sdk/client-s3`, `s3-request-presigner`) | A5 `StorageProvider` | A5 |
+| B2 | **AWS S3** | Bucket with versioning on, no lifecycle deletes; IAM user scoped to that bucket (get/put/head, no delete on `*/original.*`); CORS for PUT from app origins | `S3StorageProvider` with presigned PUT/GET (`@aws-sdk/client-s3`, `s3-request-presigner`); local S3 emulator in compose; one-off copy of Fly-volume objects into the bucket | A5 `StorageProvider` | A5 |
 | B3 | **Managed Postgres + backups** | Fly Postgres / Neon / RDS with PITR; set `DATABASE_URL` secret | Point `migrate deploy` at it; document restore drill | A1 | A1 |
 | B4 | **Worker process** | Fly `[processes] worker` + scale | `fly.toml` process groups; `WORKER_INLINE=0` | A6 | A6 |
 | B5 | **AI providers** | Anthropic API key; speech-to-text key (Deepgram / AssemblyAI / OpenAI) | `ClaudeNarrator`, `ClaudeTagger`, `ClaudePromptGenerator` (vision for palette/composition refinements), `DeepgramTranscriber` | A13 interfaces | A13 |
@@ -224,6 +224,24 @@ Track A; the row says which.
 | B11 | **Domain, TLS, secrets** | Domain + Fly cert; set all secrets | `CORS_ORIGINS`, `EXPO_PUBLIC_API_URL` per env | A12 | A12 |
 
 ---
+
+## Decision: video, for now (2026-10-06)
+
+Originals of every type, video included, go to plain S3. Video is accepted as
+is and played back from the original through a presigned URL. Known costs we
+are choosing to live with until real customers are close:
+
+- The 100 MB upload cap stays. Longer or 4K phone videos are rejected; the
+  client must say so clearly before uploading, not after.
+- Single presigned PUT, no multipart or resumable upload.
+- No transcoding. HEVC `.mov` from iPhones won't play in some browsers or on
+  some Android devices; the memory page shows a download/open fallback.
+- No adaptive streaming and no CDN; playback is slower over cellular.
+
+**Revisit before launch** (one task, swap-in behind A6's job queue): raise the
+cap with multipart uploads; transcode to H.264 MP4/HLS (Mux, Cloudflare Stream,
+MediaConvert or an ffmpeg worker); CloudFront or R2 for egress; lifecycle
+originals to an infrequent-access tier (transition, never expire).
 
 ## Dependency graph
 
@@ -242,8 +260,9 @@ A12 ── B8, B11
 
 ## Suggested execution
 
-1. **Now, in parallel:** A1, A12, A2. Human starts B1/B2/B3 provisioning.
-2. **Next:** A3, A5, A10. Then B2 adapter as soon as A5 merges.
+1. **Now, in parallel:** A1, A12, A2. ✅ Done. Human starts B1/B2/B3 provisioning.
+2. **Next:** A3, A5, A10. ✅ Done.
+   B2 adapter runs alongside Wave 3 (built against a local S3 emulator; AWS account only needed for the cutover).
 3. **Then:** A4, A6, A7, A8 in parallel. B1 adapter after A3 + A8.
 4. **Then:** A9, A13, A16; B4–B11 as their A-side lands.
 
