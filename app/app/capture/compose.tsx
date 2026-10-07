@@ -20,6 +20,8 @@ import {
   type Memory,
   type PillarKey,
   type Person,
+  tooLargeMessage,
+  type UploadLimits,
 } from "../../src/api";
 import { AppHeader, Button, Loading, PreviewNote, Screen } from "../../src/components/ui";
 import { draft } from "../../src/draft";
@@ -48,6 +50,7 @@ export default function ComposeScreen() {
   const params = useLocalSearchParams<{ prompt?: string; collectionId?: string; mode?: string }>();
   const { data: peopleData } = useApi<{ people: Person[] }>("/api/people");
   const { data: collectionsData } = useApi<{ collections: Collection[] }>("/api/collections");
+  const { data: limits } = useApi<UploadLimits>("/api/media/limits");
 
   // Media picked in Capture is handed over once, on mount.
   const [assets] = useState(() => draft.take());
@@ -67,6 +70,11 @@ export default function ComposeScreen() {
   // say what's happening rather than leaving one word on the button.
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Said up front, before anyone writes a story for a video that can't be kept.
+  // Assets whose size the picker didn't report are caught by init's 413 instead.
+  const oversized = limits ? assets.find((a) => a.bytes !== undefined && a.bytes > limits.maxUploadBytes) : undefined;
+  const oversizedMessage = oversized && limits ? tooLargeMessage(oversized.mime, limits.maxUploadBytes) : null;
 
   const people = peopleData?.people ?? [];
   const author = authorId ?? people.find((p) => p.role === "PARENT")?.id ?? people[0]?.id ?? null;
@@ -156,6 +164,7 @@ export default function ComposeScreen() {
             </View>
           </ScrollView>
         ) : null}
+        {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
 
         <Field label="Title">
           <TextInput
@@ -277,7 +286,7 @@ export default function ComposeScreen() {
           label={saving ? (progress ?? "Preserving…") : "Preserve this memory"}
           icon="checkmark"
           onPress={save}
-          disabled={saving}
+          disabled={saving || Boolean(oversizedMessage)}
           style={{ marginTop: spacing.xl }}
         />
       </Screen>

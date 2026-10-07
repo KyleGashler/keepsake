@@ -103,15 +103,109 @@ loudly about, until the Firebase verifier (B1) replaces it.
 
 Media bytes are reachable without a bearer token because the client loads them
 as plain `<img>` URLs: `/media/gen/*` placeholders are public, and uploaded
-originals are served from `/media/o/<signed token>` with a one-hour expiry.
+originals are served through signed URLs with a one-hour expiry — see
+[Storage](#storage).
+
+## Storage
 
 Uploads go through a two-phase handshake — `POST /api/media/init` authorises a
-target, the client `PUT`s the bytes to it, `POST /api/media/finalize` sniffs the
-real type and records size and SHA-256 — so the same client code works against
-a local volume today and presigned S3 URLs later
-([server/src/storage/](server/src/storage/)). `STORAGE_PROVIDER` picks the
-backend (`local`); `MEDIA_SIGNING_SECRET` signs the upload and read tokens and
-should be set anywhere the API is reachable from outside your machine.
+target, the client `PUT`s the bytes straight to it, `POST /api/media/finalize`
+sniffs the real type and records size and SHA-256 — so the same client code
+works against a local volume and a presigned S3 URL
+([server/src/storage/](server/src/storage/)). Originals of every type, video
+included, are stored as uploaded and capped at 100 MB (`GET /api/media/limits`;
+the capture screen says so before uploading). No transcoding, multipart or CDN
+yet — see "Decision: video, for now" in [docs/PLAN.md](docs/PLAN.md).
+
+| Variable | Meaning |
+| --- | --- |
+| `STORAGE_PROVIDER` | `local` (default): originals on `MEDIA_DIR/objects`, upload and read URLs are `/media/local-upload/<token>` and `/media/o/<token>` on this API. `s3`: originals in a bucket, URLs are presigned S3 URLs. |
+| `MEDIA_DIR` | Local provider's root. Also where pre-A5 `/media/uploads/*` files live, which are served from it whichever provider is active. |
+| `MEDIA_SIGNING_SECRET` | Local provider only: HMAC key for its upload/read tokens. Set it anywhere the API is reachable from outside your machine. |
+| `S3_BUCKET` | Required with `s3` — the server refuses to boot without it. |
+| `S3_REGION` | Required with `s3` (falls back to `AWS_REGION`). |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | Read by the AWS SDK's default credential chain. |
+| `S3_ENDPOINT` | Emulators only: where the API reaches the S3 API (e.g. `http://s3:9000` in compose). Unset for AWS. |
+| `S3_PUBLIC_ENDPOINT` | Emulators only: the host a *client* uses, when it differs from `S3_ENDPOINT`. Presigned URLs are signed for this host. |
+| `S3_FORCE_PATH_STYLE` | `1` for emulators (`endpoint/bucket/key` addressing). |
+
+With `s3`, a presigned PUT has `Content-Type`, `Content-Length` and
+`If-None-Match: *` inside its signature: a client can't upload a different type
+or size than init authorised, and can't overwrite a key that already holds an
+object — replaying the URL after finalize gets `412` from the bucket, the
+equivalent of the local provider's `409`. Finalize also refuses (`409`) a key
+that has more than one version. `/api/health` reports `media: false` when the
+bucket doesn't answer `HeadBucket` (or, locally, when `MEDIA_DIR/objects` isn't
+writable).
+
+### Running against the S3 emulator
+
+Compose ships an S3-compatible emulator ([RustFS](https://github.com/rustfs/rustfs)),
+behind the `s3` profile so the default stack doesn't start it. It validates
+SigV4 presigned URLs, conditional writes, versioning and bucket CORS, so it
+rejects the same uploads AWS would. `s3-init` creates the `keepsake-dev`
+bucket, turns versioning on and allows `http://localhost:8081` (CORS).
+
+```bash
+STORAGE_PROVIDER=s3 docker compose --profile s3 up --build   # API on the emulator
+docker compose up                                            # back to the volume
+```
+
+The emulator's S3 API is on `localhost:9300` (user `keepsake`, password
+`keepsake-dev-secret`). Presigned URLs point there, so uploads from a phone on
+your LAN won't reach it; use the web build, or set `S3_PUBLIC_ENDPOINT` to your
+machine's LAN address. Outside compose, run the API with the same variables
+(`S3_ENDPOINT=http://localhost:9300`, no `S3_PUBLIC_ENDPOINT`) and create the
+bucket with `npm run storage:s3-setup` in `server/` — it refuses to run without
+`S3_ENDPOINT`, so it can't touch AWS.
+
+The AWS SDK is a new dependency, so an existing stack needs its
+`node_modules` volume renewed: `docker compose up -d --build --renew-anon-volumes api`.
+
+### Cutover to AWS
+
+The policies are in [docs/aws/](docs/aws/); replace `REPLACE_WITH_BUCKET` in
+each. `us-west-1` is the region nearest Fly's `sjc`.
+
+1. **Bucket** — private, versioned, no lifecycle rules (nothing ever expires an
+   original):
+   ```bash
+   B=keepsake-originals-<suffix>; R=us-west-1
+   aws s3api create-bucket --bucket $B --region $R --create-bucket-configuration LocationConstraint=$R
+   aws s3api put-public-access-block --bucket $B --public-access-block-configuration \
+     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+   aws s3api put-bucket-versioning --bucket $B --versioning-configuration Status=Enabled
+   aws s3api put-bucket-cors --bucket $B --cors-configuration file://docs/aws/cors.json
+   aws s3api put-bucket-policy --bucket $B --policy file://docs/aws/bucket-policy.json
+   ```
+   `cors.json` lists the app's origins (the Fly host and local Metro) — add any
+   other web origin. `bucket-policy.json` denies any PUT to an `original.*` key
+   that isn't create-only (`If-None-Match: *`) and any non-TLS request.
+2. **IAM user** for the API — get/put/list on this bucket only, delete only for
+   non-originals ([docs/aws/iam-policy.json](docs/aws/iam-policy.json)):
+   ```bash
+   aws iam create-user --user-name keepsake-api
+   aws iam put-user-policy --user-name keepsake-api --policy-name keepsake-media \
+     --policy-document file://docs/aws/iam-policy.json
+   aws iam create-access-key --user-name keepsake-api
+   ```
+3. **Secrets** — `fly secrets set AWS_ACCESS_KEY_ID=… AWS_SECRET_ACCESS_KEY=…`
+   (this redeploys; the app is still on `local`).
+4. **Copy what's on the volume**, dry run first. It uploads each object under
+   `MEDIA_DIR/objects` to the same key if absent, with the type from `Media.mimeType`,
+   and is safe to re-run:
+   ```bash
+   fly ssh console -C "sh -c 'cd /app && S3_BUCKET=$B S3_REGION=$R node dist/scripts/copy-local-to-s3.js --dry-run'"
+   fly ssh console -C "sh -c 'cd /app && S3_BUCKET=$B S3_REGION=$R node dist/scripts/copy-local-to-s3.js'"
+   ```
+   (Locally: `npm run storage:copy-to-s3 -- --dry-run` in `server/`.) Pre-A5
+   files under `MEDIA_DIR/uploads` are counted and left alone — they're served
+   from the volume regardless of provider, so keep the Fly mount.
+5. **Flip it** — in `fly.toml` `[env]`: `STORAGE_PROVIDER = "s3"`,
+   `S3_BUCKET = "<bucket>"`, `S3_REGION = "us-west-1"`; `fly deploy`.
+6. **Run the copy again** — picks up anything uploaded between steps 4 and 5;
+   everything else reports "already present". Then check `/api/health` shows
+   `"media": true` and upload a photo and a video from the web app.
 
 ## Running on a phone
 

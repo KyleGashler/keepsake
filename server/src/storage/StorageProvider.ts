@@ -3,8 +3,9 @@
  *
  * The rest of the server never touches a filesystem path or a bucket name: it
  * asks for an upload target, hands the client the answer, and later asks for a
- * read URL. Today that's the local disk (`LocalDiskProvider`); tomorrow it's S3
- * or R2 (task B2) and no route changes.
+ * read URL. `LocalDiskProvider` keeps objects on a volume; `S3StorageProvider`
+ * (task B2) keeps them in a bucket. `STORAGE_PROVIDER` picks one and no route
+ * cares which.
  *
  * The contract is deliberately shaped like presigned object storage rather than
  * like a filesystem — the client uploads *directly* to the target, so the API
@@ -15,6 +16,12 @@
 export interface UploadTarget {
   url: string;
   method: "PUT";
+  /**
+   * Send these exactly, and nothing that contradicts them. `Content-Length` is
+   * also authorised (it must equal the size given to init) but isn't listed:
+   * every HTTP client derives it from the body, and browsers refuse to let
+   * script set it.
+   */
   headers: Record<string, string>;
   /** ISO-8601. After this the target is refused and the client must re-init. */
   expiresAt: string;
@@ -32,6 +39,15 @@ export interface StorageProvider {
   head(key: string): Promise<{ bytes: number } | null>;
 
   /**
+   * False when `key` has held more than one object — i.e. something was
+   * written over the upload after init authorised it. Finalize refuses such a
+   * key: the sha256 it records has to describe the only bytes there have ever
+   * been. Providers that make an overwrite impossible at write time may still
+   * report what they can observe.
+   */
+  writtenOnce(key: string): Promise<boolean>;
+
+  /**
    * A URL a client can GET for `ttlSeconds`. May be a relative path (the local
    * provider returns `/media/o/<token>`); callers resolve it against the API
    * origin the way they already do for `/media/gen/...`.
@@ -46,10 +62,20 @@ export interface StorageProvider {
    * call this with an original's key, and implementations refuse if asked.
    */
   delete(key: string): Promise<void>;
+
+  /**
+   * Whether the backing store is reachable — `/api/health` asks this. May
+   * throw instead of returning false; the caller counts a throw as unhealthy
+   * and logs it, which keeps the reason.
+   */
+  healthCheck(): Promise<boolean>;
 }
 
 /** Hard ceiling on a single original, enforced at init and again at upload. */
 export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+
+/** How long a client has to actually push the bytes after init. */
+export const UPLOAD_URL_TTL_SECONDS = 15 * 60;
 
 /** How long a DTO's media URL stays good. Matches the Cache-Control we send. */
 export const READ_URL_TTL_SECONDS = 3600;
@@ -62,6 +88,25 @@ export const READ_URL_TTL_SECONDS = 3600;
  */
 export function originalKey(familyId: string, mediaId: string, ext: string) {
   return `${familyId}/${mediaId}/original${ext}`;
+}
+
+/** The size and key checks every provider makes before authorising an upload. */
+export function assertUploadable(input: { key: string; bytes: number }) {
+  assertSafeKey(input.key);
+  if (!Number.isInteger(input.bytes) || input.bytes <= 0 || input.bytes > MAX_UPLOAD_BYTES) {
+    throw new StorageKeyError("Upload size out of range");
+  }
+}
+
+/**
+ * The guard behind every `delete()`: derivatives may go, originals may not.
+ * Shared so no provider can forget it.
+ */
+export function assertDeletable(key: string) {
+  assertSafeKey(key);
+  // Belt and braces: the interface says derivatives only, and this makes a
+  // future caller's mistake an exception rather than a lost photograph.
+  if (isOriginalKey(key)) throw new StorageKeyError("Refusing to delete an original");
 }
 
 /** True when `key` names an original — the one thing `delete()` must refuse. */

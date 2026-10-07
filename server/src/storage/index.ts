@@ -1,12 +1,13 @@
 import { LocalDiskProvider } from "./LocalDiskProvider.js";
+import { S3StorageProvider, s3ConfigFromEnv } from "./S3StorageProvider.js";
 import type { StorageProvider } from "./StorageProvider.js";
 
-export { MAX_UPLOAD_BYTES, READ_URL_TTL_SECONDS, originalKey, assertSafeKey, StorageKeyError } from "./StorageProvider.js";
+export { MAX_UPLOAD_BYTES, READ_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS, originalKey, assertSafeKey, StorageKeyError } from "./StorageProvider.js";
 export type { StorageProvider, UploadTarget } from "./StorageProvider.js";
 
 /**
- * `STORAGE_PROVIDER` picks the implementation. Only `local` exists today; B2
- * adds `s3` here and nothing else in the server changes. An unrecognised value
+ * `STORAGE_PROVIDER` picks the implementation: `local` (the default — a volume)
+ * or `s3` (a bucket; see S3StorageProvider for its env). An unrecognised value
  * throws rather than quietly falling back, because silently writing a family's
  * photographs to the wrong place is not a recoverable mistake.
  */
@@ -15,8 +16,10 @@ export function createStorageProvider(): StorageProvider {
   switch (name) {
     case "local":
       return new LocalDiskProvider();
+    case "s3":
+      return new S3StorageProvider(s3ConfigFromEnv());
     default:
-      throw new Error(`Unknown STORAGE_PROVIDER "${name}" (expected: local)`);
+      throw new Error(`Unknown STORAGE_PROVIDER "${name}" (expected: local, s3)`);
   }
 }
 
