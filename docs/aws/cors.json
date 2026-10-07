@@ -1,0 +1,11 @@
+{
+  "CORSRules": [
+    {
+      "AllowedOrigins": ["https://keepsake-demo-h4t9wq.fly.dev", "http://localhost:8081"],
+      "AllowedMethods": ["GET", "HEAD", "PUT"],
+      "AllowedHeaders": ["content-type", "if-none-match", "range"],
+      "ExposeHeaders": ["ETag", "Content-Length", "Content-Range", "Accept-Ranges"],
+      "MaxAgeSeconds": 3600
+    }
+  ]
+}

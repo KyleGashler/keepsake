@@ -11,9 +11,13 @@
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "storage:copy-to-s3": "tsx src/scripts/copy-local-to-s3.ts",
+    "storage:s3-setup": "tsx src/scripts/s3-emulator-setup.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1147.0",
+    "@aws-sdk/s3-request-presigner": "^3.1147.0",
     "@prisma/client": "^6.19.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",

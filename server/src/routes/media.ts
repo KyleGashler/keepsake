@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { Router } from "express";
+import { Router, type Request, type RequestHandler, type Response } from "express";
 import { fileTypeFromBuffer } from "file-type";
 import { imageSize } from "image-size";
 import { z } from "zod";
@@ -35,6 +35,19 @@ storage();
 export const mediaBytesRouter = Router();
 export const mediaApiRouter = Router();
 
+/**
+ * Express 4 doesn't catch a rejected async handler — the rejection goes
+ * unhandled and Node takes the whole process down. Every handler here awaits
+ * storage (a disk, or a bucket across the network) and reads client sockets
+ * that can drop mid-upload, so each one routes its failures to the error
+ * handler instead.
+ */
+function handle(fn: (req: Request, res: Response) => Promise<unknown>): RequestHandler {
+  return (req, res, next) => {
+    fn(req, res).catch(next);
+  };
+}
+
 /** Generated stand-in imagery — see lib/placeholder.ts for why these exist. */
 mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
   const seed = String(req.params.seed ?? "keepsake");
@@ -54,9 +67,9 @@ mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
 // The local stand-in for a bucket's endpoint.
 //
 // Both routes are public on purpose: the signed token *is* the authorisation,
-// exactly as a presigned S3 URL carries its own. When B2 lands they become
-// dead code for a deployment pointed at S3 — the client PUTs to Amazon
-// instead — which is why they hold no business logic.
+// exactly as a presigned S3 URL carries its own. With STORAGE_PROVIDER=s3 they
+// answer 404 — the client PUTs to and reads from the bucket instead — which is
+// why they hold no business logic.
 // ---------------------------------------------------------------------------
 
 /**
@@ -64,7 +77,7 @@ mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
  * and the exact byte count, so the only thing left to check is that the client
  * sent what it said it would.
  */
-mediaBytesRouter.put("/local-upload/:token", async (req, res) => {
+mediaBytesRouter.put("/local-upload/:token", handle(async (req, res) => {
   const provider = localProvider();
   if (!provider) return res.status(404).json({ error: "Local uploads are not enabled" });
 
@@ -108,10 +121,10 @@ mediaBytesRouter.put("/local-upload/:token", async (req, res) => {
   }
 
   res.status(201).json({ key: claims.key, bytes: written.bytes });
-});
+}));
 
 /** Serve a stored object for the life of its read token. */
-mediaBytesRouter.get("/o/:token", async (req, res) => {
+mediaBytesRouter.get("/o/:token", handle(async (req, res) => {
   const provider = localProvider();
   if (!provider) return res.status(404).json({ error: "Local reads are not enabled" });
 
@@ -141,7 +154,7 @@ mediaBytesRouter.get("/o/:token", async (req, res) => {
     res.destroy(err);
   });
   body.pipe(res);
-});
+}));
 
 // ---------------------------------------------------------------------------
 // Two-phase upload. These sit under /api, so they run after auth.
@@ -149,8 +162,19 @@ mediaBytesRouter.get("/o/:token", async (req, res) => {
 
 const initBody = z.object({
   mimeType: z.string().min(1).max(120),
-  bytes: z.number().int().positive().max(MAX_UPLOAD_BYTES),
+  // The ceiling is checked separately below so it can answer 413 with the
+  // number, rather than a validation error the client would have to parse.
+  bytes: z.number().int().positive(),
   filename: z.string().max(255).optional(),
+});
+
+/**
+ * What the client should check before it asks for anything: lets the capture
+ * screen say "too big" the moment a file is picked, instead of after the
+ * family has written the story. The server stays the one source of the number.
+ */
+mediaApiRouter.get("/limits", (_req, res) => {
+  res.json({ maxUploadBytes: MAX_UPLOAD_BYTES });
 });
 
 /**
@@ -162,12 +186,19 @@ const initBody = z.object({
  * the only thing that has to survive between the two calls, and it's derived,
  * not stored — the family prefix is what proves ownership at finalize.
  */
-mediaApiRouter.post("/init", async (req, res) => {
+mediaApiRouter.post("/init", handle(async (req, res) => {
   const family = req.ctx.family;
   const parsed = initBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
   const { mimeType, bytes } = parsed.data;
+  if (bytes > MAX_UPLOAD_BYTES) {
+    return res.status(413).json({
+      error: `Uploads are limited to ${MAX_UPLOAD_BYTES} bytes`,
+      code: "too_large",
+      maxUploadBytes: MAX_UPLOAD_BYTES,
+    });
+  }
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
     return res.status(415).json({ error: `Unsupported media type: ${mimeType}` });
   }
@@ -177,7 +208,7 @@ mediaApiRouter.post("/init", async (req, res) => {
   const target = await storage().createUploadTarget({ key, mimeType, bytes });
 
   res.status(201).json({ uploadId, key, target });
-});
+}));
 
 const finalizeBody = z.object({ key: z.string().min(1).max(512) });
 
@@ -194,7 +225,7 @@ const finalizeBody = z.object({ key: z.string().min(1).max(512) });
  * the delete path never runs against an `original.*` key; a sweeper that knows
  * which keys no `Media` row claims is the right owner of that cleanup.
  */
-mediaApiRouter.post("/finalize", async (req, res) => {
+mediaApiRouter.post("/finalize", handle(async (req, res) => {
   const family = req.ctx.family;
   const parsed = finalizeBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -222,6 +253,17 @@ mediaApiRouter.post("/finalize", async (req, res) => {
   }
 
   const sha256 = await hashObject(await provider.stream(key));
+
+  // Checked last, so it covers the reads above: if anything wrote over the
+  // upload — before finalize or while it was being hashed — the digest might
+  // describe bytes that are no longer the object. See S3StorageProvider for
+  // why this is a backstop and not the main guard.
+  if (!(await provider.writtenOnce(key))) {
+    return res.status(409).json({
+      error: "This upload was written more than once; upload the file again",
+    });
+  }
+
   const dimensions = mediaTypeFor(declared) === "PHOTO" ? measure(head) : null;
 
   res.json({
@@ -234,7 +276,7 @@ mediaApiRouter.post("/finalize", async (req, res) => {
       ...(dimensions ?? {}),
     },
   });
-});
+}));
 
 function keyBelongsTo(key: string, familyId: string) {
   return key.startsWith(`${familyId}/`);

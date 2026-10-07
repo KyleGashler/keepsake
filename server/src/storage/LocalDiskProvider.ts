@@ -5,10 +5,11 @@ import path from "node:path";
 import { pipeline } from "node:stream/promises";
 import { logger } from "../lib/logger.js";
 import {
-  MAX_UPLOAD_BYTES,
   StorageKeyError,
+  UPLOAD_URL_TTL_SECONDS,
+  assertDeletable,
   assertSafeKey,
-  isOriginalKey,
+  assertUploadable,
   type StorageProvider,
   type UploadTarget,
 } from "./StorageProvider.js";
@@ -84,19 +85,13 @@ function verify(token: string, scope: TokenScope): Payload {
  * the token *is* the authorisation, which is why they sit outside `/api`.
  */
 export class LocalDiskProvider implements StorageProvider {
-  /** How long a client has to actually push the bytes after init. */
-  private readonly uploadTtlSeconds = 15 * 60;
-
   constructor() {
     fs.mkdirSync(OBJECTS_DIR, { recursive: true });
   }
 
   async createUploadTarget(input: { key: string; mimeType: string; bytes: number }): Promise<UploadTarget> {
-    assertSafeKey(input.key);
-    if (!Number.isInteger(input.bytes) || input.bytes <= 0 || input.bytes > MAX_UPLOAD_BYTES) {
-      throw new StorageKeyError("Upload size out of range");
-    }
-    const expires = new Date(Date.now() + this.uploadTtlSeconds * 1000);
+    assertUploadable(input);
+    const expires = new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000);
     const token = sign({
       v: 1,
       s: "u",
@@ -125,6 +120,16 @@ export class LocalDiskProvider implements StorageProvider {
     }
   }
 
+  /**
+   * Always true: `/media/local-upload` refuses to write a key that already
+   * exists and lands each object with an atomic rename, so a second write can't
+   * happen here. (S3 has to check after the fact; see S3StorageProvider.)
+   */
+  async writtenOnce(key: string): Promise<boolean> {
+    assertSafeKey(key);
+    return true;
+  }
+
   async getReadUrl(key: string, ttlSeconds: number): Promise<string> {
     assertSafeKey(key);
     const token = sign({ v: 1, s: "r", k: key, e: Math.floor(Date.now() / 1000) + ttlSeconds });
@@ -137,11 +142,13 @@ export class LocalDiskProvider implements StorageProvider {
   }
 
   async delete(key: string): Promise<void> {
-    assertSafeKey(key);
-    // Belt and braces: the interface says derivatives only, and this makes a
-    // future caller's mistake an exception rather than a lost photograph.
-    if (isOriginalKey(key)) throw new StorageKeyError("Refusing to delete an original");
+    assertDeletable(key);
     await fsp.rm(this.pathFor(key), { force: true });
+  }
+
+  async healthCheck(): Promise<boolean> {
+    await fsp.access(OBJECTS_DIR, fs.constants.W_OK);
+    return true;
   }
 
   // ---- Local-only: the routes that stand in for S3's endpoint ---------------

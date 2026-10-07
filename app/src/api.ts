@@ -41,6 +41,20 @@ export async function apiSend<T>(path: string, method: "POST" | "PATCH", body: u
   return res.json();
 }
 
+/** `GET /api/media/limits` — the server is the one place the upload ceiling lives. */
+export type UploadLimits = { maxUploadBytes: number };
+
+/**
+ * The sentence a family sees when a file is over the ceiling. Phrased for
+ * video because that's what crosses it — a phone photo never does.
+ */
+export function tooLargeMessage(mime: string, maxUploadBytes: number) {
+  const mb = Math.floor(maxUploadBytes / (1024 * 1024));
+  return mime.startsWith("video/")
+    ? `Videos over ${mb} MB can't be added yet — try a shorter clip.`
+    : `Files over ${mb} MB can't be added yet.`;
+}
+
 /** What `POST /api/media/init` authorises. Mirrors the server's UploadTarget. */
 export type UploadTarget = {
   url: string;
@@ -70,8 +84,10 @@ export type FinalizedMedia = {
  * ask the API what it got.
  *
  * The middle step deliberately doesn't go through this server's API surface —
- * `target.url` is wherever storage says, which is a local route today and a
- * presigned S3 URL once B2 lands. Nothing here needs to change for that.
+ * `target.url` is wherever storage says: a relative local route, or an
+ * absolute presigned S3 URL (which `mediaUrl` passes through untouched). The
+ * PUT sends exactly `target.headers` — with S3 they're part of the signature,
+ * so adding to or changing them fails the upload.
  *
  * `onProgress` reports 0..1 and only fires on native; the web path has no
  * progress events to hook without dropping to XHR.
@@ -82,8 +98,21 @@ export async function uploadFile(
   type: string,
   onProgress?: (fraction: number) => void,
 ): Promise<FinalizedMedia> {
-  const init = async (bytes: number) =>
-    apiSend<UploadInit>("/api/media/init", "POST", { mimeType: type, bytes, filename: name });
+  const init = async (bytes: number): Promise<UploadInit> => {
+    const res = await fetch(`${API_URL}/api/media/init`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mimeType: type, bytes, filename: name }),
+    });
+    // Over the ceiling: say so in words, with the server's own number. Nothing
+    // has been uploaded yet.
+    if (res.status === 413) {
+      const body = (await res.json().catch(() => null)) as Partial<UploadLimits> | null;
+      if (body?.maxUploadBytes) throw new Error(tooLargeMessage(type, body.maxUploadBytes));
+    }
+    if (!res.ok) throw new Error((await res.text()) || res.statusText);
+    return res.json();
+  };
 
   if (Platform.OS === "web") {
     // Picked media on web is a blob:/data: URI; fetching it yields the bytes

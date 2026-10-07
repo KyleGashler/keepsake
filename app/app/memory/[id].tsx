@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { createElement, useState } from "react";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import { apiSend, mediaUrl, useApi, type MediaItem, type Memory } from "../../src/api";
 import { LittleMoon } from "../../src/components/brand";
 import {
@@ -56,12 +56,16 @@ export default function MemoryScreen() {
       <Screen padded={false}>
         <View style={styles.inner}>
           <View style={styles.heroWrap}>
-            <Image
-              source={{ uri: mediaUrl(hero?.url ?? memory.heroUrl) }}
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={280}
-            />
+            {hero?.type === "VIDEO" ? (
+              <VideoHero url={mediaUrl(hero.url) as string} />
+            ) : (
+              <Image
+                source={{ uri: mediaUrl(hero?.url ?? memory.heroUrl) }}
+                style={StyleSheet.absoluteFill}
+                contentFit="cover"
+                transition={280}
+              />
+            )}
           </View>
 
           <View style={styles.metaRow}>
@@ -227,6 +231,45 @@ export default function MemoryScreen() {
   );
 }
 
+/**
+ * A video hero plays the original straight from storage. Nothing is transcoded
+ * yet (docs/PLAN.md, "Decision: video, for now"), so an iPhone's HEVC clip
+ * won't decode in every browser. When the player gives up — an error, or
+ * metadata with no picture — offer the original instead of a black box. Native
+ * has no in-app player yet and goes straight to the link, which hands the file
+ * to the system player.
+ */
+function VideoHero({ url }: { url: string }) {
+  const [failed, setFailed] = useState(false);
+
+  if (Platform.OS === "web" && !failed) {
+    return createElement("video", {
+      src: url,
+      controls: true,
+      playsInline: true,
+      preload: "metadata",
+      onError: () => setFailed(true),
+      onLoadedMetadata: (e: { currentTarget: { videoWidth: number } }) => {
+        if (e.currentTarget.videoWidth === 0) setFailed(true);
+      },
+      style: { width: "100%", height: "100%", objectFit: "contain", backgroundColor: "#000" },
+    });
+  }
+
+  return (
+    <View style={styles.videoFallback}>
+      <Ionicons name="videocam-outline" size={30} color={colors.muted} />
+      <Text style={[type.caption, { textAlign: "center" }]}>
+        {failed ? "This video can't play here." : "Video"}
+      </Text>
+      <Pressable onPress={() => Linking.openURL(url)} style={styles.editLink}>
+        <Ionicons name="open-outline" size={15} color={colors.accentDeep} />
+        <Text style={styles.editLinkText}>Open original</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 /** Playback needs real recordings first; the card shows what's stored today. */
 function AudioCard({ clip }: { clip: MediaItem }) {
   return (
@@ -251,6 +294,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surfaceAlt,
     marginTop: spacing.sm,
   },
+  videoFallback: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm, padding: spacing.lg },
   metaRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg, marginTop: spacing.lg },
   author: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   toggle: {

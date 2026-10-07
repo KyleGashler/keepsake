@@ -47,6 +47,7 @@ function toAssets(assets: ImagePicker.ImagePickerAsset[]): DraftAsset[] {
     mime: asset.mimeType ?? "image/jpeg",
     width: asset.width,
     height: asset.height,
+    bytes: asset.fileSize,
   }));
 }
 

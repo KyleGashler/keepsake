@@ -1,3 +1,13 @@
+# Where the API reaches the S3 emulator, and as whom. Inert unless
+# STORAGE_PROVIDER=s3 — see the Storage section of the README.
+x-s3-env: &s3-env
+  S3_BUCKET: keepsake-dev
+  S3_REGION: us-east-1
+  S3_ENDPOINT: http://s3:9000
+  S3_FORCE_PATH_STYLE: "1"
+  AWS_ACCESS_KEY_ID: keepsake
+  AWS_SECRET_ACCESS_KEY: keepsake-dev-secret
+
 services:
   db:
     image: postgres:16-alpine
@@ -29,6 +39,12 @@ services:
       # send a token (A8).
       AUTH_MODE: dev
       DEV_DEFAULT_USER: demo@keepsake.local
+      # `local` keeps originals on the `media` volume. To run against the S3
+      # emulator instead: STORAGE_PROVIDER=s3 docker compose --profile s3 up
+      STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
+      <<: *s3-env
+      # Presigned URLs are signed for the host the browser uses, not `s3:9000`.
+      S3_PUBLIC_ENDPOINT: http://localhost:9300
     ports:
       - "4000:4000"
     volumes:
@@ -53,6 +69,37 @@ services:
     depends_on:
       - api
 
+  # S3-compatible emulator (RustFS) for STORAGE_PROVIDER=s3. It validates
+  # SigV4 presigned URLs, conditional writes, versioning and bucket CORS, so
+  # the upload path behaves as it will against AWS. Only starts with
+  # `--profile s3`. Host port 9300 (9090/9191 are commonly taken by s3mock).
+  s3:
+    image: rustfs/rustfs:1.0.1
+    profiles: ["s3"]
+    environment:
+      RUSTFS_ACCESS_KEY: keepsake
+      RUSTFS_SECRET_KEY: keepsake-dev-secret
+    ports:
+      - "9300:9000"
+    volumes:
+      - s3-data:/data
+
+  # One-shot: creates the bucket, enables versioning, sets CORS for the app.
+  s3-init:
+    build: ./server
+    profiles: ["s3"]
+    command: npm run --silent storage:s3-setup
+    environment:
+      <<: *s3-env
+      S3_CORS_ORIGINS: http://localhost:8081
+    volumes:
+      - ./server:/app
+      - /app/node_modules
+    depends_on:
+      - s3
+    restart: on-failure
+
 volumes:
   db-data:
   media:
+  s3-data:

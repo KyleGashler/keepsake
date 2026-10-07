@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import fsp from "node:fs/promises";
 import path from "node:path";
 import cors, { type CorsOptions } from "cors";
 import express from "express";
@@ -20,6 +19,7 @@ import { memoriesRouter } from "./routes/memories.js";
 import { mosaicRouter } from "./routes/mosaic.js";
 import { peopleRouter } from "./routes/people.js";
 import { searchRouter } from "./routes/search.js";
+import { storage } from "./storage/index.js";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -101,7 +101,7 @@ const uploadLimiter = rateLimit({
 // Health sits above the password gate and the limiters so the platform can
 // probe it however often it likes.
 app.get("/api/health", async (_req, res) => {
-  const [db, media] = await Promise.all([checkDatabase(), checkMediaDir()]);
+  const [db, media] = await Promise.all([checkDatabase(), checkMedia()]);
   const ok = db && media;
   if (!ok) logger.warn({ db, media }, "health check failing");
   res.status(ok ? 200 : 503).json({ ok, db, media });
@@ -117,12 +117,12 @@ async function checkDatabase(): Promise<boolean> {
   }
 }
 
-async function checkMediaDir(): Promise<boolean> {
+/** Local: the objects directory is writable. S3: the bucket answers HeadBucket. */
+async function checkMedia(): Promise<boolean> {
   try {
-    await fsp.access(path.join(MEDIA_DIR, "objects"), fs.constants.W_OK);
-    return true;
+    return await storage().healthCheck();
   } catch (err) {
-    logger.error({ err }, "health: media directory not writable");
+    logger.error({ err }, "health: media storage unavailable");
     return false;
   }
 }
