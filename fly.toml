@@ -12,6 +12,10 @@ primary_region = "sjc"
   WEB_DIR = "/app/web"
   MEDIA_DIR = "/data/media"
   SEED_DEMO = "1"
+  # Originals live in S3; MEDIA_DIR still serves pre-A5 /media/uploads files.
+  STORAGE_PROVIDER = "s3"
+  S3_BUCKET = "memories-and-more-memories"
+  S3_REGION = "us-east-2"
   # Dev auth: a bearer token of `dev:<email>` is taken at face value, and a
   # request with no token at all is treated as DEV_DEFAULT_USER. That is not
   # authentication — ALLOW_DEV_AUTH_IN_PROD is the explicit opt-in the server
