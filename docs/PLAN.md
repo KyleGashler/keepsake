@@ -231,9 +231,11 @@ Originals of every type, video included, go to plain S3. Video is accepted as
 is and played back from the original through a presigned URL. Known costs we
 are choosing to live with until real customers are close:
 
-- The 100 MB upload cap stays. Longer or 4K phone videos are rejected; the
-  client must say so clearly before uploading, not after.
-- Single presigned PUT, no multipart or resumable upload.
+- ~~The 100 MB upload cap stays.~~ Raised to 2,000,000,000 bytes on
+  2026-10-16 (C4): Deepgram's per-file limit, and under `Media.bytes`'s
+  32-bit ceiling. Anything larger is still refused before upload.
+- Single presigned PUT, no multipart or resumable upload. A dropped 2 GB
+  upload restarts from zero.
 - No transcoding. HEVC `.mov` from iPhones won't play in some browsers or on
   some Android devices; the memory page shows a download/open fallback.
 - No adaptive streaming and no CDN; playback is slower over cellular.
@@ -327,6 +329,33 @@ and its transcript appears.
 DEEPGRAM_API_KEY=…`. Camera and microphone on web need a secure origin
 (https or localhost), so testing from a phone's browser on the LAN won't
 work; use Expo Go there.
+
+### C4. Long videos (2026-10-16)
+**Do:**
+- `MAX_UPLOAD_BYTES` = 2,000,000,000. Upload URLs live 60 minutes, not 15.
+  Too-large messages read in GB.
+- Recorders drop the 2-minute stop. The only stop is the byte budget near
+  the cap (about 40 minutes native, longer on web).
+- Video over `TRANSCRIBE_MAX_VIDEO_SECONDS` (default 120) is not
+  transcribed: new `TranscriptStatus.SKIPPED`, no job, and the retry route
+  refuses it. The memory page says long-video transcripts are coming. Audio
+  is transcribed at any length. Imported videos send their picker duration;
+  a video with no known duration is transcribed.
+- Finalize stops downloading S3 objects to hash them: it records S3's own
+  full-object checksum (`HeadObject` with `ChecksumMode=ENABLED`, CRC64NVME
+  by default) in a new `Media.checksum` column (`<algorithm>:<base64>`).
+  It streams a sha256 only when the provider has no checksum (local disk,
+  emulators). The MIME sniff stays a small ranged read.
+
+### Later: long media, properly
+- Resumable multipart uploads (S3 `CreateMultipartUpload` + presigned part
+  URLs), so a dropped connection resumes and the cap can go past 2 GB.
+- Transcribe long video: extract the audio track with ffmpeg in the worker,
+  then send only audio to Deepgram. Deepgram handles long files natively, so
+  splitting into chunks is probably unnecessary; revisit only if job
+  timeouts force it.
+- Web recorder: stream chunks to the multipart upload as they're recorded,
+  instead of holding the whole clip in browser memory.
 
 ## Dependency graph
 
