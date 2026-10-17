@@ -243,6 +243,91 @@ cap with multipart uploads; transcode to H.264 MP4/HLS (Mux, Cloudflare Stream,
 MediaConvert or an ffmpeg worker); CloudFront or R2 for egress; lifecycle
 originals to an infrequent-access tier (transition, never expire).
 
+## Capture milestone: record and transcribe (2026-10-16)
+
+Pulled ahead of Wave 3. These tasks replace A9 and the transcription half of
+A13 and B5. Decisions: **Deepgram** for speech-to-text, **web and phone**
+both supported, and an **in-app video recorder** (our UI, length-capped)
+rather than handing off to the system camera. Shipped one vertical at a time:
+audio end to end first, then video.
+
+### Vertical 1: audio, end to end
+
+#### C1. Transcription pipeline (server)
+**Do:**
+- Job queue, built to the A6 spec so A6 only adds handlers later:
+  `server/src/jobs/JobQueue.ts` interface, `PostgresJobQueue` claiming
+  `Job` rows with `FOR UPDATE SKIP LOCKED`, retry with backoff up to
+  `maxAttempts`; `server/src/worker.ts` entrypoint; runs in-process when
+  `WORKER_INLINE=1` (default in dev and on Fly's single machine).
+- `server/src/ai/Transcriber.ts`:
+  `transcribe({ key, mimeType }) => { text, durationS?, speakers? }`.
+  `StubTranscriber` (fixed text after a short delay) is used when
+  `DEEPGRAM_API_KEY` is unset. `DeepgramTranscriber` lives in
+  `server/src/ai/impl/` and calls the REST API with `fetch` (no SDK). It
+  sends `{ url }` when storage returns an absolute https read URL (S3), and
+  streams the bytes otherwise (local disk isn't reachable from Deepgram).
+  Diarized output is formatted as `Speaker 1: …` paragraphs.
+- Migration: `Media.transcript String?` and
+  `Media.transcriptStatus TranscriptStatus?` (`PENDING|READY|FAILED`; null
+  means not applicable, i.e. photos).
+- `POST /memories` sets AUDIO and VIDEO media to `PENDING` and enqueues one
+  `ai.transcribe` job per clip. The handler writes `Media.transcript`. If
+  `Memory.transcript` is empty it fills it from the clip transcripts in sort
+  order; a transcript a person typed or edited is never overwritten.
+  `durationS` is filled from the transcriber when the client didn't send it.
+- DTO: memory gains `transcriptStatus` (PENDING if any clip is pending,
+  else FAILED if any failed, else READY, else null); media items gain
+  `transcriptStatus`.
+- `POST /memories/:id/media/:mediaId/transcribe` re-queues a failed clip.
+- Allowlist: accept `audio/webm;codecs=…`-style declared types by stripping
+  parameters before the lookup.
+**Accept:** create a memory with an audio key; job runs; transcript appears
+on `GET /memories/:id` (stub locally, Deepgram with a key); worker survives a
+throwing transcriber and marks the clip FAILED after retries.
+
+#### C2. Audio recorder and playback (client)
+**Do:**
+- `expo-audio` for recording on iOS, Android **and web** (MediaRecorder
+  underneath). Capture → "Record a conversation" opens a full recorder
+  screen: big record/stop button, elapsed timer, live level meter, pause and
+  resume, discard, "Use recording". Permission denied → plain-language
+  message with a link to settings.
+- Use recording → compose with the clip attached (via `draft`, with
+  `durationS`), audio-mode compose drops the hand-typed transcript field
+  and says the transcript will be written automatically.
+- Memory page: real `AudioCard` playback (`expo-audio` player) with
+  play/pause, scrubber and time; transcript tab shows "Transcribing…" while
+  pending (poll every 3s until settled), a retry on FAILED, and the
+  transcript is editable like the story.
+**Accept:** record in Chrome, Safari and Expo Go; play back from the memory
+page; the transcript appears without a refresh.
+
+### Vertical 2: video, end to end
+
+#### C3. In-app video recorder, playback, transcription
+**Do:**
+- Native: `expo-camera` `CameraView` (video mode) with record/stop, timer,
+  front/back flip, a hard `maxDuration` derived from the upload cap (about
+  2 minutes at default quality), then preview with retake / use.
+- Web: a `.web.tsx` recorder on `getUserMedia` + `MediaRecorder` (expo-camera
+  can't record on web), same UI. Prefer `video/mp4` where the browser
+  supports it, else `video/webm`. Server allowlist and sniff table gain
+  `video/webm`.
+- Capture → "Capture a moment" offers Photo (existing picker) or Video (new
+  recorder).
+- Memory page: native video playback with `expo-video` (replaces the
+  "Open original" fallback where the codec plays); web keeps `<video>`.
+- Transcription is C1's pipeline unchanged: VIDEO clips are already
+  enqueued, and Deepgram takes video containers directly.
+**Accept:** record a clip on web and on a phone; it plays on the memory page
+and its transcript appears.
+
+**Human steps:** create a Deepgram project + API key; `fly secrets set
+DEEPGRAM_API_KEY=…`. Camera and microphone on web need a secure origin
+(https or localhost), so testing from a phone's browser on the LAN won't
+work; use Expo Go there.
+
 ## Dependency graph
 
 ```
