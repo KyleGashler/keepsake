@@ -10,6 +10,8 @@ import {
   assertDeletable,
   assertSafeKey,
   assertUploadable,
+  type ByteRange,
+  type ObjectHead,
   type StorageProvider,
   type UploadTarget,
 } from "./StorageProvider.js";
@@ -110,7 +112,8 @@ export class LocalDiskProvider implements StorageProvider {
     };
   }
 
-  async head(key: string): Promise<{ bytes: number } | null> {
+  /** No checksum: a file on disk has no digest until something reads it all. */
+  async head(key: string): Promise<ObjectHead | null> {
     assertSafeKey(key);
     try {
       const stat = await fsp.stat(this.pathFor(key));
@@ -136,9 +139,10 @@ export class LocalDiskProvider implements StorageProvider {
     return `/media/o/${token}`;
   }
 
-  async stream(key: string): Promise<NodeJS.ReadableStream> {
+  async stream(key: string, range?: ByteRange): Promise<NodeJS.ReadableStream> {
     assertSafeKey(key);
-    return fs.createReadStream(this.pathFor(key));
+    // `end` is inclusive here too, so a range means the same thing on both providers.
+    return fs.createReadStream(this.pathFor(key), range ? { start: range.start, end: range.end } : undefined);
   }
 
   async delete(key: string): Promise<void> {
@@ -165,7 +169,7 @@ export class LocalDiskProvider implements StorageProvider {
   }
 
   /**
-   * Write `source` to `key`, streamed — a 100 MB video must never be held in
+   * Write `source` to `key`, streamed — a 2 GB video must never be held in
    * memory. Writes to a sibling `.part` file and renames, so a dropped
    * connection can't leave a truncated object that `head()` would call real.
    */

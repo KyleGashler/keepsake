@@ -20,7 +20,7 @@ import { memoriesRouter } from "./routes/memories.js";
 import { mosaicRouter } from "./routes/mosaic.js";
 import { peopleRouter } from "./routes/people.js";
 import { searchRouter } from "./routes/search.js";
-import { storage } from "./storage/index.js";
+import { UPLOAD_URL_TTL_SECONDS, localProvider, storage } from "./storage/index.js";
 
 const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
@@ -195,6 +195,17 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 const server = app.listen(PORT, "0.0.0.0", () => {
   logger.info({ port: PORT }, `Keepsake API listening on http://localhost:${PORT}`);
 });
+
+/**
+ * Node ends any request that takes longer than `requestTimeout` (5 minutes by
+ * default) to arrive in full. With the local provider, uploads come through
+ * this server (`PUT /media/local-upload/…`), and a 2 GB video on a slow
+ * uplink takes far longer than that. Give a request as long as an upload URL
+ * lives. Headers still have to arrive within `headersTimeout`, so a client
+ * that opens a socket and says nothing is still cut off quickly. With S3 the
+ * bytes go to the bucket and the default stands.
+ */
+if (localProvider()) server.requestTimeout = UPLOAD_URL_TTL_SECONDS * 1000;
 
 /**
  * One process doing both jobs, for dev and the single Fly machine. Without

@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { jobQueue } from "../jobs/index.js";
-import { TRANSCRIBABLE_TYPES, enqueueTranscriptions } from "../jobs/transcribe.js";
+import { TRANSCRIBABLE_TYPES, enqueueTranscriptions, tooLongToTranscribe } from "../jobs/transcribe.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { memoryCardDtos, memoryDto } from "../lib/serialize.js";
@@ -79,7 +79,14 @@ const mediaInput = z
     storageKey: z.string().min(1).max(512).optional(),
     mimeType: z.string().max(120).optional(),
     bytes: z.number().int().positive().optional(),
-    sha256: z.string().regex(/^[a-f0-9]{64}$/).optional(),
+    sha256: z.string().regex(/^[a-f0-9]{64}$/).nullish(),
+    // Storage's own digest of the object (`<algorithm>:<base64>`), exactly as
+    // finalize returned it. One of this and sha256 is set for an upload.
+    checksum: z
+      .string()
+      .max(200)
+      .regex(/^(crc64nvme|sha256|crc32c|crc32|sha1):[A-Za-z0-9+/]+={0,2}$/)
+      .nullish(),
     caption: z.string().max(280).optional(),
     width: z.number().int().positive().default(1200),
     height: z.number().int().positive().default(900),
@@ -160,13 +167,19 @@ memoriesRouter.post("/memories", async (req, res) => {
             mimeType: m.mimeType ?? null,
             bytes: m.bytes ?? null,
             sha256: m.sha256 ?? null,
+            checksum: m.checksum ?? null,
             status: "READY" as const,
             caption: m.caption ?? null,
             width: m.width,
             height: m.height,
             durationS: m.durationS ?? null,
             // Photos and placeholder clips have nothing to transcribe: null.
-            transcriptStatus: isTranscribable(m) ? ("PENDING" as const) : null,
+            // A video known to be too long is SKIPPED, and gets no job below.
+            transcriptStatus: !isTranscribable(m)
+              ? null
+              : tooLongToTranscribe(m)
+                ? ("SKIPPED" as const)
+                : ("PENDING" as const),
             sortOrder: i,
           })),
         },
@@ -242,6 +255,16 @@ memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", async (req, res) 
     return res
       .status(409)
       .json({ error: "Only uploaded audio and video can be transcribed", code: "not_transcribable" });
+  }
+  // SKIPPED clips are over the limit by definition. This checks the length
+  // rather than the status, so raising TRANSCRIBE_MAX_VIDEO_SECONDS lets a
+  // clip that now fits be queued, and a long video that was transcribed
+  // before its length was known can't be re-run at full cost.
+  if (tooLongToTranscribe(media)) {
+    return res.status(409).json({
+      error: "Videos this long aren't transcribed yet",
+      code: "too_long_to_transcribe",
+    });
   }
 
   await prisma.$transaction(async (tx) => {

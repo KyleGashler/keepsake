@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ShootingStar } from "../../src/components/brand";
 import { AppHeader, Button, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
@@ -18,7 +18,7 @@ const OPTIONS = [
     key: "camera",
     icon: "camera-outline" as const,
     title: "Capture a moment",
-    body: "Take a photo, or film a short video of what's happening right now.",
+    body: "Take a photo, or film a video of what's happening right now.",
   },
   {
     key: "record",
@@ -40,6 +40,21 @@ const OPTIONS = [
   },
 ];
 
+/**
+ * A picked video's length in whole seconds, or undefined when unknown — the
+ * server then transcribes it whatever its length. expo-image-picker documents
+ * `duration` in milliseconds, which is what iOS and Android report; its web
+ * implementation passes the `<video>` element's `duration` through unchanged,
+ * which is seconds (and Infinity for some WebM files).
+ */
+function pickedDurationS(asset: ImagePicker.ImagePickerAsset): number | undefined {
+  if (asset.type !== "video" && !asset.mimeType?.startsWith("video/")) return undefined;
+  const raw = asset.duration;
+  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return undefined;
+  const seconds = Platform.OS === "web" ? raw : raw / 1000;
+  return Math.max(1, Math.round(seconds));
+}
+
 function toAssets(assets: ImagePicker.ImagePickerAsset[]): DraftAsset[] {
   return assets.map((asset, i) => ({
     uri: asset.uri,
@@ -48,6 +63,7 @@ function toAssets(assets: ImagePicker.ImagePickerAsset[]): DraftAsset[] {
     width: asset.width,
     height: asset.height,
     bytes: asset.fileSize,
+    durationS: pickedDurationS(asset),
   }));
 }
 

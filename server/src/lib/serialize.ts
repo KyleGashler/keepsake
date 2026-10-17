@@ -84,7 +84,9 @@ export async function mediaDto(m: Media) {
 /**
  * One status for the whole memory: PENDING while any clip is still being
  * transcribed, else FAILED if any clip failed, else READY if any clip was
- * transcribed, else null (nothing to transcribe).
+ * transcribed, else SKIPPED if every clip was too long to transcribe, else
+ * null (nothing to transcribe). A READY voice note beside a SKIPPED long
+ * video is READY: there's a transcript to read.
  */
 export function aggregateTranscriptStatus(
   media: Pick<Media, "transcriptStatus" | "deletedAt">[],
@@ -93,6 +95,7 @@ export function aggregateTranscriptStatus(
   if (statuses.includes("PENDING")) return "PENDING";
   if (statuses.includes("FAILED")) return "FAILED";
   if (statuses.includes("READY")) return "READY";
+  if (statuses.includes("SKIPPED")) return "SKIPPED";
   return null;
 }
 
