@@ -90,6 +90,14 @@ export function sniffedTypeMatches(declared: string, sniffed: string): boolean {
   return (ACCEPTS_SNIFFED[declared] ?? [declared]).includes(sniffed);
 }
 
+/**
+ * The bare type/subtype, lowercased: `audio/webm;codecs=opus` → `audio/webm`.
+ * Everything in this file is keyed on bare types.
+ */
+export function baseMimeType(declared: string): string {
+  return declared.split(";")[0].trim().toLowerCase();
+}
+
 export function mediaTypeFor(mimeType: string): "PHOTO" | "VIDEO" | "AUDIO" {
   if (mimeType.startsWith("video/")) return "VIDEO";
   if (mimeType.startsWith("audio/")) return "AUDIO";

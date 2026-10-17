@@ -33,6 +33,11 @@ services:
       PORT: "4000"
       MEDIA_DIR: /app/media
       SEED_DEMO: "1"
+      # Run the job worker (transcription) inside the API process.
+      WORKER_INLINE: "1"
+      # Unset → the stub transcriber. Put a key in your shell or a root .env
+      # to transcribe with Deepgram locally.
+      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
       # `Bearer dev:<email>` is the whole credential in dev mode — see the Auth
       # section of the README. DEV_DEFAULT_USER is who an unauthenticated
       # request is treated as, which keeps the app working until it learns to

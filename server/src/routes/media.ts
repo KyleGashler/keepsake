@@ -6,6 +6,7 @@ import { z } from "zod";
 import { logger } from "../lib/logger.js";
 import {
   ALLOWED_MIME_TYPES,
+  baseMimeType,
   contentTypeForKey,
   extensionFor,
   mediaTypeFor,
@@ -191,7 +192,10 @@ mediaApiRouter.post("/init", handle(async (req, res) => {
   const parsed = initBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
 
-  const { mimeType, bytes } = parsed.data;
+  const { bytes } = parsed.data;
+  // `audio/webm;codecs=opus` is what MediaRecorder reports; the parameters
+  // describe the stream inside the container, not the container itself.
+  const mimeType = baseMimeType(parsed.data.mimeType);
   if (bytes > MAX_UPLOAD_BYTES) {
     return res.status(413).json({
       error: `Uploads are limited to ${MAX_UPLOAD_BYTES} bytes`,
@@ -207,7 +211,9 @@ mediaApiRouter.post("/init", handle(async (req, res) => {
   const key = originalKey(family.id, uploadId, extensionFor(mimeType));
   const target = await storage().createUploadTarget({ key, mimeType, bytes });
 
-  res.status(201).json({ uploadId, key, target });
+  // `mimeType` is the normalised type the target was signed for; PUT with
+  // `target.headers` exactly, not the type the client declared.
+  res.status(201).json({ uploadId, key, mimeType, target });
 }));
 
 const finalizeBody = z.object({ key: z.string().min(1).max(512) });

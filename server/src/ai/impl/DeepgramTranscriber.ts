@@ -1,0 +1,145 @@
+import { Readable } from "node:stream";
+import { storage } from "../../storage/index.js";
+import { TranscriptionError, type Transcriber, type TranscriptResult } from "../Transcriber.js";
+
+const ENDPOINT = "https://api.deepgram.com/v1/listen";
+
+/** Long enough for Deepgram to fetch and process a 100 MB original. */
+const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
+
+/** How long the presigned URL Deepgram fetches from stays valid. */
+const READ_URL_TTL_SECONDS = 15 * 60;
+
+/** The parts of a pre-recorded `/v1/listen` response this reads. */
+type ListenResponse = {
+  metadata?: { duration?: number };
+  results?: {
+    channels?: {
+      alternatives?: {
+        transcript?: string;
+        paragraphs?: {
+          transcript?: string;
+          paragraphs?: {
+            speaker?: number;
+            sentences?: { text?: string }[];
+          }[];
+        };
+      }[];
+    }[];
+  };
+};
+
+/**
+ * Deepgram pre-recorded transcription over plain `fetch` — no SDK.
+ *
+ * Deepgram takes either a URL it fetches itself or the raw bytes. A bucket's
+ * presigned URL is the better path (the API process never touches the bytes),
+ * so that's used whenever storage hands back an absolute https URL. The local
+ * provider's URLs are relative paths on this API, which Deepgram can't reach,
+ * so there the object is streamed as the request body instead.
+ *
+ * Request: `model` (nova-3 by default), `smart_format` (punctuation,
+ * numerals, paragraphs), `diarize` (speaker per paragraph), `paragraphs`.
+ */
+export class DeepgramTranscriber implements Transcriber {
+  constructor(
+    private readonly apiKey: string,
+    private readonly model = "nova-3",
+  ) {}
+
+  async transcribe({ key, mimeType }: { key: string; mimeType: string }): Promise<TranscriptResult> {
+    const params = new URLSearchParams({
+      model: this.model,
+      smart_format: "true",
+      diarize: "true",
+      paragraphs: "true",
+    });
+
+    const readUrl = await storage().getReadUrl(key, READ_URL_TTL_SECONDS);
+    const viaUrl = /^https:\/\//i.test(readUrl);
+    const init: RequestInit & { duplex?: "half" } = {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${this.apiKey}`,
+        "Content-Type": viaUrl ? "application/json" : mimeType,
+      },
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    };
+    if (viaUrl) {
+      init.body = JSON.stringify({ url: readUrl });
+    } else {
+      const source = (await storage().stream(key)) as Readable;
+      init.body = Readable.toWeb(source) as unknown as RequestInit["body"];
+      // Node's fetch refuses a streamed body without this.
+      init.duplex = "half";
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${ENDPOINT}?${params}`, init);
+    } catch (err) {
+      throw new TranscriptionError(`Deepgram request failed: ${(err as Error).message}`, true, { cause: err });
+    }
+
+    if (!res.ok) {
+      const detail = await errorDetail(res);
+      // 4xx means this request will never work (bad key, unreadable audio,
+      // unreachable URL) — except 429, which is Deepgram asking us to wait.
+      const retryable = res.status === 429 || res.status >= 500;
+      throw new TranscriptionError(`Deepgram ${res.status}: ${detail}`, retryable);
+    }
+
+    const body = (await res.json()) as ListenResponse;
+    return formatResult(body);
+  }
+}
+
+export function formatResult(body: ListenResponse): TranscriptResult {
+  const alt = body.results?.channels?.[0]?.alternatives?.[0];
+  const durationS = body.metadata?.duration;
+  const paragraphs = (alt?.paragraphs?.paragraphs ?? [])
+    .map((p) => ({
+      speaker: p.speaker,
+      text: (p.sentences ?? [])
+        .map((s) => s.text?.trim() ?? "")
+        .filter(Boolean)
+        .join(" "),
+    }))
+    .filter((p) => p.text);
+
+  // Deepgram numbers speakers from 0 in the order its model clusters them;
+  // relabel by first appearance so "Speaker 1" is whoever talks first.
+  const labels = new Map<number, number>();
+  for (const p of paragraphs) {
+    if (typeof p.speaker === "number" && !labels.has(p.speaker)) labels.set(p.speaker, labels.size + 1);
+  }
+
+  if (labels.size > 1) {
+    const turns: { label: number; text: string }[] = [];
+    for (const p of paragraphs) {
+      const label = labels.get(p.speaker as number) ?? 0;
+      const last = turns[turns.length - 1];
+      if (last && last.label === label) last.text += ` ${p.text}`;
+      else turns.push({ label, text: p.text });
+    }
+    const text = turns.map((t) => (t.label ? `Speaker ${t.label}: ${t.text}` : t.text)).join("\n\n");
+    return { text, durationS, speakers: labels.size };
+  }
+
+  // One voice: plain paragraphs, no labels. (paragraphs.transcript is not
+  // used because with diarize on it carries Deepgram's own 0-based labels.)
+  const text = paragraphs.length
+    ? paragraphs.map((p) => p.text).join("\n\n")
+    : (alt?.transcript ?? "").trim();
+  return { text, durationS, speakers: labels.size || undefined };
+}
+
+async function errorDetail(res: Response): Promise<string> {
+  const raw = await res.text().catch(() => "");
+  try {
+    const parsed = JSON.parse(raw) as { err_msg?: string; message?: string; err_code?: string };
+    return parsed.err_msg ?? parsed.message ?? parsed.err_code ?? raw.slice(0, 300);
+  } catch {
+    return raw.slice(0, 300) || res.statusText;
+  }
+}

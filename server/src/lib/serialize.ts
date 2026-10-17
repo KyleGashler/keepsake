@@ -1,6 +1,6 @@
 import { RENDER_VERSION } from "./placeholder.js";
 import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
-import type { Collection, Media, Memory, Person } from "@prisma/client";
+import type { Collection, Media, Memory, Person, TranscriptStatus } from "@prisma/client";
 
 /**
  * Placeholder media is generated on demand; uploads are served from disk.
@@ -74,7 +74,26 @@ export async function mediaDto(m: Media) {
     height: m.height,
     durationS: m.durationS,
     isOriginal: m.isOriginal,
+    /** Null for media transcription doesn't apply to (photos, placeholders). */
+    transcriptStatus: m.transcriptStatus,
+    /** The machine transcript of this clip. The editable one is `memory.transcript`. */
+    transcript: m.transcript,
   };
+}
+
+/**
+ * One status for the whole memory: PENDING while any clip is still being
+ * transcribed, else FAILED if any clip failed, else READY if any clip was
+ * transcribed, else null (nothing to transcribe).
+ */
+export function aggregateTranscriptStatus(
+  media: Pick<Media, "transcriptStatus" | "deletedAt">[],
+): TranscriptStatus | null {
+  const statuses = media.filter((x) => !x.deletedAt).map((x) => x.transcriptStatus);
+  if (statuses.includes("PENDING")) return "PENDING";
+  if (statuses.includes("FAILED")) return "FAILED";
+  if (statuses.includes("READY")) return "READY";
+  return null;
 }
 
 export function collectionDto(c: Collection & { _count?: { memories: number }; person?: Person | null }) {
@@ -137,6 +156,7 @@ export async function memoryDto(m: MemoryWithRelations) {
     ...(await memoryCardDto(m)),
     story: m.story,
     transcript: m.transcript,
+    transcriptStatus: aggregateTranscriptStatus(m.media ?? []),
     createdAt: m.createdAt.toISOString(),
     author: m.author ? personDto(m.author) : null,
     media: await Promise.all(m.media?.map(mediaDto) ?? []),

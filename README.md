@@ -40,7 +40,7 @@ media, who was there, and inline editing of the narrative.
 These are stubbed and labelled in the UI rather than faked:
 
 - **Auth** — the request context, family scoping and roles are real; the *verification* isn't. A `dev:<email>` token is believed without proof. See [Auth](#auth).
-- **AI** — no narratives, transcription, tagging, or generated prompts. `Memory.transcript` and the prompt table already exist, so the AI phase fills fields rather than reshaping the schema.
+- **AI** — no narratives, tagging, or generated prompts yet. Transcription is real (Deepgram, or a stub without a key) — see [Background jobs and transcription](#background-jobs-and-transcription).
 - **Audio capture** — recording and playback need real files; the written form stands in, and typed transcripts land in the field transcription will eventually populate.
 - **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
 - **Real photographs** — every seeded image is a gradient generated from a string seed ([server/src/lib/placeholder.ts](server/src/lib/placeholder.ts)), so the app looks alive offline and nothing binary lives in git. Photos you upload yourself are real and land on a Docker volume.
@@ -206,6 +206,31 @@ each. `us-west-1` is the region nearest Fly's `sjc`.
 6. **Run the copy again** — picks up anything uploaded between steps 4 and 5;
    everything else reports "already present". Then check `/api/health` shows
    `"media": true` and upload a photo and a video from the web app.
+
+## Background jobs and transcription
+
+Slow work runs through the `Job` table
+([server/src/jobs/](server/src/jobs/)): a route enqueues a row, a worker claims
+it with `FOR UPDATE SKIP LOCKED`, and a handler that throws is retried with
+exponential backoff until `maxAttempts`, then marked `FAILED`. A job left
+`RUNNING` by a worker that died is reclaimed once its lock is 10 minutes old.
+The worker runs inside the API when `WORKER_INLINE=1` (compose and Fly set it),
+or on its own with `npm run worker` (`npm run worker:dev` off TypeScript).
+
+The one job today is `ai.transcribe`. Creating a memory with uploaded AUDIO or
+VIDEO sets each clip's `transcriptStatus` to `PENDING` and queues a job per
+clip; the job writes `Media.transcript`, fills `durationS` if the client didn't,
+and fills `Memory.transcript` from the clips in order — but only while it is
+empty or still exactly what the job wrote. Once a person edits it, it's theirs.
+A clip that fails is `FAILED`; `POST /api/memories/:id/media/:mediaId/transcribe`
+queues it again. With S3 storage Deepgram fetches the original from a presigned
+URL; with local storage the API streams the bytes to Deepgram.
+
+| Variable | Meaning |
+| --- | --- |
+| `WORKER_INLINE` | `1` runs the job worker in the API process. Unset, jobs wait for `npm run worker`. |
+| `DEEPGRAM_API_KEY` | Deepgram key for speech-to-text. Unset, a stub transcriber returns a fixed two-speaker sample after ~1.5 s — fine locally, wrong for a real archive. On Fly: `fly secrets set DEEPGRAM_API_KEY=…`. |
+| `DEEPGRAM_MODEL` | Optional; defaults to `nova-3`. |
 
 ## Running on a phone
 
