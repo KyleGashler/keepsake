@@ -61,7 +61,7 @@ export class DeepgramTranscriber implements Transcriber {
       method: "POST",
       headers: {
         Authorization: `Token ${this.apiKey}`,
-        "Content-Type": viaUrl ? "application/json" : mimeType,
+        "Content-Type": viaUrl ? "application/json" : bodyContentType(mimeType),
       },
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
     };
@@ -92,6 +92,18 @@ export class DeepgramTranscriber implements Transcriber {
     const body = (await res.json()) as ListenResponse;
     return formatResult(body);
   }
+}
+
+/**
+ * The type declared on a streamed body. Deepgram identifies the container
+ * from the bytes and transcribes a video's audio track, so the header is a
+ * hint. Audio keeps its real type. Video goes as `deepgram/audio+video`, the
+ * type Deepgram's own SDKs send for every file upload, rather than
+ * `video/quicktime` or `video/webm`, which its format docs never list.
+ * (The presigned-URL path sends JSON and is unaffected.)
+ */
+export function bodyContentType(mimeType: string): string {
+  return mimeType.startsWith("video/") ? "deepgram/audio+video" : mimeType;
 }
 
 export function formatResult(body: ListenResponse): TranscriptResult {
