@@ -209,7 +209,9 @@ each. `us-west-1` is the region nearest Fly's `sjc`.
    ```
    (Locally: `npm run storage:copy-to-s3 -- --dry-run` in `server/`.) Pre-A5
    files under `MEDIA_DIR/uploads` are counted and left alone — they're served
-   from the volume regardless of provider, so keep the Fly mount.
+   from the volume regardless of provider, so keep the Fly mount until you
+   no longer need them. (The demo dropped its mount on 2026-10-17 after a
+   reset; see `fly.toml`.)
 5. **Flip it** — in `fly.toml` `[env]`: `STORAGE_PROVIDER = "s3"`,
    `S3_BUCKET = "<bucket>"`, `S3_REGION = "us-west-1"`; `fly deploy`.
 6. **Run the copy again** — picks up anything uploaded between steps 4 and 5;

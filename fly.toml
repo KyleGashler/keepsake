@@ -10,13 +10,16 @@ primary_region = "sjc"
 [env]
   PORT = "4000"
   WEB_DIR = "/app/web"
-  MEDIA_DIR = "/data/media"
+  # No volume: every original lives in S3, so the machine's disk is scratch
+  # space only. (A volume pins the machine to one physical host, which is what
+  # failed the 2026-10-17 deploy with "insufficient CPUs".)
+  MEDIA_DIR = "/tmp/media"
   SEED_DEMO = "1"
   # One machine: the job worker (transcription) runs inside the API process.
   # DEEPGRAM_API_KEY is a secret (`fly secrets set`); without it clips are
   # marked FAILED and can be retried from the memory page once it's set.
   WORKER_INLINE = "1"
-  # Originals live in S3; MEDIA_DIR still serves pre-A5 /media/uploads files.
+  # Originals live in S3.
   STORAGE_PROVIDER = "s3"
   S3_BUCKET = "memories-and-more-memories"
   S3_REGION = "us-east-2"
@@ -44,11 +47,6 @@ primary_region = "sjc"
     interval = "15s"
     timeout = "5s"
     grace_period = "40s"
-
-# Uploaded media lives here so redeploys don't erase it.
-[[mounts]]
-  source = "keepsake_data"
-  destination = "/data"
 
 [[vm]]
   size = "shared-cpu-1x"
