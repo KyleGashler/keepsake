@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { createTokenVerifier } from "./auth/index.js";
+import { startWorker, type JobQueue } from "./jobs/index.js";
 import { requireFamily, requireUser } from "./auth/middleware.js";
 import { logger } from "./lib/logger.js";
 import { prisma } from "./lib/prisma.js";
@@ -196,8 +197,15 @@ const server = app.listen(PORT, "0.0.0.0", () => {
 });
 
 /**
+ * One process doing both jobs, for dev and the single Fly machine. Without
+ * it, jobs wait in the table until `npm run worker` picks them up.
+ */
+const worker: JobQueue | null = process.env.WORKER_INLINE === "1" ? startWorker() : null;
+
+/**
  * Fly sends SIGTERM and waits before killing the machine. Stop taking new
- * connections, let in-flight requests finish, then let go of the database.
+ * connections and new jobs, let in-flight work finish, then let go of the
+ * database.
  */
 let shuttingDown = false;
 function shutdown(signal: NodeJS.Signals) {
@@ -211,9 +219,14 @@ function shutdown(signal: NodeJS.Signals) {
   }, 10_000);
   forceExit.unref();
 
+  // Stop claiming at once; a job already running gets until the force-exit,
+  // and one cut off there is reclaimed once its lock goes stale.
+  const workerStopped = worker?.stop().catch((err) => logger.error({ err }, "error stopping job worker"));
+
   server.close(async (err) => {
     if (err) logger.error({ err }, "error closing http server");
     try {
+      await workerStopped;
       await prisma.$disconnect();
     } catch (disconnectErr) {
       logger.error({ err: disconnectErr }, "error disconnecting prisma");

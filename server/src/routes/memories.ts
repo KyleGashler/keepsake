@@ -1,8 +1,15 @@
 import { Router } from "express";
 import { z } from "zod";
+import { jobQueue } from "../jobs/index.js";
+import { TRANSCRIBABLE_TYPES, enqueueTranscriptions } from "../jobs/transcribe.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { memoryCardDtos, memoryDto } from "../lib/serialize.js";
+
+/** An uploaded clip with sound in it — the only media the transcriber is given. */
+function isTranscribable(m: { type: string; storageKey?: string | null }) {
+  return (TRANSCRIBABLE_TYPES as readonly string[]).includes(m.type) && Boolean(m.storageKey);
+}
 
 export const memoriesRouter = Router();
 
@@ -127,41 +134,50 @@ memoriesRouter.post("/memories", async (req, res) => {
   if (foreign) return res.status(403).json({ error: "Storage key does not belong to this family" });
 
   const heroSeed = `memory-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-  const memory = await prisma.memory.create({
-    data: {
-      familyId: family.id,
-      title: input.title,
-      story: input.story ?? null,
-      transcript: input.transcript ?? null,
-      occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-      location: input.location ?? null,
-      authorId: input.authorId ?? null,
-      heroSeed,
-      paletteHue: hueForSeed(heroSeed),
-      brightness: 40 + (heroSeed.length % 40),
-      media: {
-        create: input.media.map((m, i) => ({
-          type: m.type,
-          // Uploads have no stored URL: it's signed per response from the
-          // storage key, because a presigned URL expires and this column
-          // doesn't. See lib/serialize.ts#mediaReadUrl.
-          url: m.storageKey ? "" : (m.url as string),
-          storageKey: m.storageKey ?? null,
-          mimeType: m.mimeType ?? null,
-          bytes: m.bytes ?? null,
-          sha256: m.sha256 ?? null,
-          status: "READY" as const,
-          caption: m.caption ?? null,
-          width: m.width,
-          height: m.height,
-          durationS: m.durationS ?? null,
-          sortOrder: i,
-        })),
+  // The memory and its transcription jobs commit together: a clip marked
+  // PENDING always has a job that will settle it.
+  const memory = await prisma.$transaction(async (tx) => {
+    const created = await tx.memory.create({
+      data: {
+        familyId: family.id,
+        title: input.title,
+        story: input.story ?? null,
+        transcript: input.transcript ?? null,
+        occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+        location: input.location ?? null,
+        authorId: input.authorId ?? null,
+        heroSeed,
+        paletteHue: hueForSeed(heroSeed),
+        brightness: 40 + (heroSeed.length % 40),
+        media: {
+          create: input.media.map((m, i) => ({
+            type: m.type,
+            // Uploads have no stored URL: it's signed per response from the
+            // storage key, because a presigned URL expires and this column
+            // doesn't. See lib/serialize.ts#mediaReadUrl.
+            url: m.storageKey ? "" : (m.url as string),
+            storageKey: m.storageKey ?? null,
+            mimeType: m.mimeType ?? null,
+            bytes: m.bytes ?? null,
+            sha256: m.sha256 ?? null,
+            status: "READY" as const,
+            caption: m.caption ?? null,
+            width: m.width,
+            height: m.height,
+            durationS: m.durationS ?? null,
+            // Photos and placeholder clips have nothing to transcribe: null.
+            transcriptStatus: isTranscribable(m) ? ("PENDING" as const) : null,
+            sortOrder: i,
+          })),
+        },
+        participants: { create: input.participantIds.map((personId) => ({ personId })) },
+        collections: { create: input.collectionIds.map((collectionId) => ({ collectionId })) },
       },
-      participants: { create: input.participantIds.map((personId) => ({ personId })) },
-      collections: { create: input.collectionIds.map((collectionId) => ({ collectionId })) },
-    },
-    include,
+      include,
+    });
+    const clips = created.media.filter((m) => m.transcriptStatus === "PENDING").map((m) => m.id);
+    await enqueueTranscriptions(jobQueue(), clips, tx);
+    return created;
   });
 
   const author = memory.author?.name ?? "Someone";
@@ -204,4 +220,47 @@ memoriesRouter.patch("/memories/:id", async (req, res) => {
   });
 
   res.json({ memory: await memoryDto(memory) });
+});
+
+/**
+ * Transcribe one clip again — the retry behind a FAILED clip, and a way to
+ * re-run a READY one. The memory's own transcript is only replaced if no
+ * person has written it (see jobs/transcribe.ts).
+ */
+memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", async (req, res) => {
+  const memory = await prisma.memory.findFirst({
+    where: { id: req.params.id, familyId: req.ctx.family.id },
+    select: { id: true },
+  });
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+
+  const media = await prisma.media.findFirst({
+    where: { id: req.params.mediaId, memoryId: memory.id, deletedAt: null },
+  });
+  if (!media) return res.status(404).json({ error: "Media not found" });
+  if (!isTranscribable(media)) {
+    return res
+      .status(409)
+      .json({ error: "Only uploaded audio and video can be transcribed", code: "not_transcribable" });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    // A clip already queued or running needs no second job; asking again is a no-op.
+    const active = await tx.job.findFirst({
+      where: {
+        type: "ai.transcribe",
+        status: { in: ["QUEUED", "RUNNING"] },
+        payload: { path: ["mediaId"], equals: media.id },
+      },
+      select: { id: true },
+    });
+    await tx.media.update({ where: { id: media.id }, data: { transcriptStatus: "PENDING" } });
+    if (!active) await enqueueTranscriptions(jobQueue(), [media.id], tx);
+  });
+
+  const updated = await prisma.memory.findFirstOrThrow({
+    where: { id: memory.id, familyId: req.ctx.family.id },
+    include,
+  });
+  res.status(202).json({ memory: await memoryDto(updated) });
 });

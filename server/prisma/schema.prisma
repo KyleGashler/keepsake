@@ -82,6 +82,14 @@ enum StorySource {
   AI_DRAFT
 }
 
+/// Progress of speech-to-text over one AUDIO or VIDEO clip. Null on a Media
+/// row means transcription doesn't apply (photos, placeholders).
+enum TranscriptStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 enum JobStatus {
   QUEUED
   RUNNING
@@ -169,7 +177,8 @@ model Memory {
   title          String
   /// The written narrative. Families always retain editorial control.
   story          String?
-  /// Written record of spoken audio. Populated by hand in v0 (no AI yet).
+  /// Written record of spoken audio. Filled from the clips' Media.transcript
+  /// while empty; once a person types or edits it, the job never touches it.
   transcript     String?
   occurredAt     DateTime
   location       String?
@@ -207,28 +216,33 @@ model Memory {
 
 /// Original assets attached to a Memory. Originals are never overwritten.
 model Media {
-  id         String      @id @default(cuid())
-  memoryId   String
-  type       MediaType
+  id               String            @id @default(cuid())
+  memoryId         String
+  type             MediaType
   /// Either a generated placeholder path or an uploaded file path.
-  url        String
-  caption    String?
-  width      Int         @default(1200)
-  height     Int         @default(900)
-  durationS  Int?
-  sortOrder  Int         @default(0)
-  isOriginal Boolean     @default(true)
+  url              String
+  caption          String?
+  width            Int               @default(1200)
+  height           Int               @default(900)
+  durationS        Int?
+  sortOrder        Int               @default(0)
+  isOriginal       Boolean           @default(true)
   /// Key of the original object in the storage provider. Null for the
   /// generated placeholders the demo family ships with.
-  storageKey String?
-  mimeType   String?
-  bytes      Int?
+  storageKey       String?
+  mimeType         String?
+  bytes            Int?
   /// Hex digest of the original, recorded at finalize.
-  sha256     String?
-  status     MediaStatus @default(READY)
+  sha256           String?
+  status           MediaStatus       @default(READY)
+  /// What the transcriber heard in this clip, written by the `ai.transcribe`
+  /// job. Memory.transcript is the family's editable copy; this one is the
+  /// machine's, kept per clip.
+  transcript       String?
+  transcriptStatus TranscriptStatus?
   /// Soft delete of the row. The original object itself is never deleted.
-  deletedAt  DateTime?
-  createdAt  DateTime    @default(now())
+  deletedAt        DateTime?
+  createdAt        DateTime          @default(now())
 
   memory      Memory       @relation(fields: [memoryId], references: [id], onDelete: Cascade)
   derivatives Derivative[]
