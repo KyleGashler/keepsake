@@ -1,24 +1,23 @@
 /**
  * How the in-app video recorder stays under the upload ceiling.
  *
- * The recorder is length-capped rather than letting someone film for five
- * minutes and then hear the clip can't be kept (docs/PLAN.md, "Decision:
- * video, for now"). The cap is honest because the recording quality is set
- * explicitly, so seconds → bytes is predictable:
+ * The only stop is the byte budget: a recording ends just before it would be
+ * too big to upload, rather than letting someone film and then hear the clip
+ * can't be kept (docs/PLAN.md, "Decision: video, for now"). The recording
+ * quality is set explicitly, so seconds → bytes is predictable and the timer
+ * can say how long is left:
  *
  * - Native: 720p H.264 at a 5 Mbps target, plus the camera's AAC audio. On
  *   iOS the bitrate only applies when a codec is named, so `avc1` is always
  *   passed — which also means the clip is H.264, not HEVC, and plays in every
- *   browser. ~0.65 MB a second, ~77 MB for two minutes.
+ *   browser. ~0.65 MB a second: about 43 minutes under a 2 GB ceiling.
  * - Web: MediaRecorder at 2.5 Mbps video + 128 kbps audio on a 720p stream.
- *   ~0.33 MB a second.
+ *   ~0.33 MB a second: about 86 minutes. The clip is held in browser memory
+ *   until it's uploaded.
  *
  * Bitrates are targets, not ceilings, so the recorders also stop on bytes:
  * native via `maxFileSize`, the web by counting chunks as they arrive.
  */
-
-/** The length a family is promised. The byte budget can only shorten it. */
-export const VIDEO_TARGET_SECONDS = 120;
 
 export const NATIVE_VIDEO = {
   quality: "720p" as const,
@@ -35,17 +34,18 @@ export const WEB_VIDEO = {
 };
 
 /** Used only if `/api/media/limits` can't be read; init still enforces the real one. */
-export const FALLBACK_MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+export const FALLBACK_MAX_UPLOAD_BYTES = 2_000_000_000;
 
 /**
- * Seconds and bytes a recording may run to. Duration is planned against 85%
- * of the ceiling so a scene that encodes heavier than the target still fits;
- * the byte stop sits at 95%, the last line before init would refuse it.
+ * Seconds and bytes a recording may run to, both from the upload ceiling.
+ * Duration is planned against 85% of the ceiling so a scene that encodes
+ * heavier than the target still fits; the byte stop sits at 95%, the last
+ * line before init would refuse it. Whichever comes first ends the take.
  */
 export function recordingBudget(maxUploadBytes: number, bitsPerSecond: number) {
   const plannedSeconds = Math.floor((maxUploadBytes * 0.85 * 8) / bitsPerSecond);
   return {
-    maxDurationS: Math.max(10, Math.min(VIDEO_TARGET_SECONDS, plannedSeconds)),
+    maxDurationS: Math.max(10, plannedSeconds),
     maxFileSize: Math.floor(maxUploadBytes * 0.95),
   };
 }

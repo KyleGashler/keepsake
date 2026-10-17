@@ -110,12 +110,21 @@ originals are served through signed URLs with a one-hour expiry — see
 
 Uploads go through a two-phase handshake — `POST /api/media/init` authorises a
 target, the client `PUT`s the bytes straight to it, `POST /api/media/finalize`
-sniffs the real type and records size and SHA-256 — so the same client code
-works against a local volume and a presigned S3 URL
-([server/src/storage/](server/src/storage/)). Originals of every type, video
-included, are stored as uploaded and capped at 100 MB (`GET /api/media/limits`;
-the capture screen says so before uploading). No transcoding, multipart or CDN
-yet — see "Decision: video, for now" in [docs/PLAN.md](docs/PLAN.md).
+sniffs the real type from the first 4 KB (a ranged read) and records the size
+and a digest — so the same client code works against a local volume and a
+presigned S3 URL ([server/src/storage/](server/src/storage/)). Originals of
+every type, video included, are stored as uploaded and capped at
+2,000,000,000 bytes (`GET /api/media/limits`; the capture screen says so before
+uploading). Upload URLs live 60 minutes. No transcoding, multipart or CDN yet —
+see "Decision: video, for now" in [docs/PLAN.md](docs/PLAN.md).
+
+The digest is S3's own checksum when there is one: S3 computes a full-object
+CRC64NVME for every upload that arrives without a checksum header, and
+finalize reads it with `HeadObject` (`ChecksumMode=ENABLED`) into
+`Media.checksum` as `crc64nvme:<base64>` instead of downloading the object to
+hash it. Where storage has no checksum (local disk, emulators that don't keep
+one) finalize streams the object through SHA-256 into `Media.sha256`. Exactly
+one of the two is set on an upload.
 
 | Variable | Meaning |
 | --- | --- |
@@ -226,11 +235,19 @@ A clip that fails is `FAILED`; `POST /api/memories/:id/media/:mediaId/transcribe
 queues it again. With S3 storage Deepgram fetches the original from a presigned
 URL; with local storage the API streams the bytes to Deepgram.
 
+Videos longer than `TRANSCRIBE_MAX_VIDEO_SECONDS` aren't transcribed yet: the
+clip is `SKIPPED`, no job is queued, and the retry route answers
+`409 too_long_to_transcribe`. Audio is transcribed at any length, and a video
+whose length the client didn't send is transcribed (the job skips it instead
+if it turns out to be known too long by the time it runs). A memory reads
+`SKIPPED` only when every clip in it was skipped.
+
 | Variable | Meaning |
 | --- | --- |
 | `WORKER_INLINE` | `1` runs the job worker in the API process. Unset, jobs wait for `npm run worker`. |
 | `DEEPGRAM_API_KEY` | Deepgram key for speech-to-text. Unset in development, a stub transcriber returns a fixed two-speaker sample after ~1.5 s; unset in production, clips are marked FAILED (retry from the memory page once the key is set). On Fly: `fly secrets set DEEPGRAM_API_KEY=…`. |
 | `DEEPGRAM_MODEL` | Optional; defaults to `nova-3`. |
+| `TRANSCRIBE_MAX_VIDEO_SECONDS` | Optional; defaults to `120`. Videos longer than this many seconds are marked `SKIPPED` rather than sent to the transcriber. Must be a positive whole number, or the server refuses to boot. Served to the app as `transcribeMaxVideoSeconds` from `GET /api/media/limits`. |
 
 ## Running on a phone
 
@@ -282,7 +299,7 @@ family scoping and are live — `FamilyMembership.personId` is the canonical lin
 between a login and the person they are inside one family, and the older
 `Person.userId` (globally unique, so one Person per login) survives only until
 a later migration drops it. `Invite` carries the join flow (A4).
-`Media.storageKey` / `mimeType` / `bytes` / `sha256` / `status` describe an
+`Media.storageKey` / `mimeType` / `bytes` / `checksum` or `sha256` / `status` describe an
 object in a storage provider rather than a path on disk, and `Derivative` holds
 the thumbnails, display renditions, posters and waveforms generated from it
 (A5, A6). `Job` is the durable work queue those derivatives run through (A6),

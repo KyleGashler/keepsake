@@ -8,6 +8,7 @@ import {
   PutObjectCommand,
   S3Client,
   S3ServiceException,
+  type HeadObjectCommandOutput,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
@@ -16,6 +17,8 @@ import {
   assertDeletable,
   assertSafeKey,
   assertUploadable,
+  type ByteRange,
+  type ObjectHead,
   type StorageProvider,
   type UploadTarget,
 } from "./StorageProvider.js";
@@ -83,10 +86,11 @@ const SIGNED_UPLOAD_HEADERS = new Set(["content-type", "content-length", "if-non
  * validate SigV4 — the compose emulator is RustFS).
  *
  * The client talks to the bucket directly through presigned URLs, so this
- * process never proxies upload or playback bytes. It reads an object back only
- * at finalize, streamed, to sniff and hash it.
+ * process never proxies upload or playback bytes. Finalize reads only the
+ * first few KB (a ranged GET, to sniff the type) and takes the object's
+ * digest from S3's own checksum rather than downloading it to hash.
  *
- * ## Why a re-PUT can't swap the bytes under a recorded sha256
+ * ## Why a re-PUT can't swap the bytes under a recorded checksum
  *
  * The local provider refuses a write to an existing key (409). Here the client
  * PUTs straight to the bucket, so the same rule is enforced two ways:
@@ -148,11 +152,21 @@ export class S3StorageProvider implements StorageProvider {
     };
   }
 
-  async head(key: string): Promise<{ bytes: number } | null> {
+  /**
+   * Size plus S3's own checksum of the object. S3 computes a full-object
+   * CRC64NVME for every upload that arrives without a checksum of its own —
+   * which a presigned PUT from the app always does — and returns it from
+   * HeadObject only when asked (`ChecksumMode: ENABLED`). Emulators may not
+   * keep one; then there's no `checksum` and finalize hashes the bytes itself.
+   */
+  async head(key: string): Promise<ObjectHead | null> {
     assertSafeKey(key);
     try {
-      const out = await this.client.send(new HeadObjectCommand({ Bucket: this.bucket, Key: key }));
-      return { bytes: out.ContentLength ?? 0 };
+      const out = await this.client.send(
+        new HeadObjectCommand({ Bucket: this.bucket, Key: key, ChecksumMode: "ENABLED" }),
+      );
+      const checksum = fullObjectChecksum(out);
+      return { bytes: out.ContentLength ?? 0, ...(checksum ? { checksum } : {}) };
     } catch (err) {
       if (isNotFound(err)) return null;
       throw err;
@@ -187,13 +201,19 @@ export class S3StorageProvider implements StorageProvider {
   }
 
   /**
-   * The object body as a Node stream, straight off the socket. Finalize reads
-   * a few KB and destroys it (which aborts the request), then reads it again
-   * end to end through a hash — never all in memory.
+   * The object body as a Node stream, straight off the socket — never all in
+   * memory. With `range`, a ranged GET: S3 sends only those bytes, so the
+   * finalize sniff doesn't open a 2 GB download just to abandon it.
    */
-  async stream(key: string): Promise<NodeJS.ReadableStream> {
+  async stream(key: string, range?: ByteRange): Promise<NodeJS.ReadableStream> {
     assertSafeKey(key);
-    const out = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const out = await this.client.send(
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
+      }),
+    );
     if (!out.Body) throw new Error(`Empty body for ${key}`);
     return out.Body as Readable;
   }
@@ -241,6 +261,34 @@ export class S3StorageProvider implements StorageProvider {
       throw err;
     }
   }
+}
+
+/**
+ * Which checksum HeadObject reported, as `<algorithm>:<base64>`, in order of
+ * preference. S3 attaches CRC64NVME by default; the others appear only when
+ * an uploader asked for them. A COMPOSITE checksum (a multipart upload's
+ * checksum of part checksums, suffixed `-<parts>`) doesn't describe the bytes
+ * as a whole, so it's ignored and finalize hashes the object instead. Our
+ * uploads are single PUTs, which S3 always checksums as FULL_OBJECT.
+ */
+const CHECKSUM_FIELDS = [
+  ["crc64nvme", "ChecksumCRC64NVME"],
+  ["sha256", "ChecksumSHA256"],
+  ["crc32c", "ChecksumCRC32C"],
+  ["crc32", "ChecksumCRC32"],
+  ["sha1", "ChecksumSHA1"],
+] as const;
+
+/** Plain base64, no part-count suffix. */
+const CHECKSUM_VALUE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+export function fullObjectChecksum(out: HeadObjectCommandOutput): string | undefined {
+  if (out.ChecksumType === "COMPOSITE") return undefined;
+  for (const [algorithm, field] of CHECKSUM_FIELDS) {
+    const value = out[field];
+    if (value && CHECKSUM_VALUE.test(value)) return `${algorithm}:${value}`;
+  }
+  return undefined;
 }
 
 function isNotFound(err: unknown) {

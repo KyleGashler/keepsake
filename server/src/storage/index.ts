@@ -3,7 +3,7 @@ import { S3StorageProvider, s3ConfigFromEnv } from "./S3StorageProvider.js";
 import type { StorageProvider } from "./StorageProvider.js";
 
 export { MAX_UPLOAD_BYTES, READ_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS, originalKey, assertSafeKey, StorageKeyError } from "./StorageProvider.js";
-export type { StorageProvider, UploadTarget } from "./StorageProvider.js";
+export type { ByteRange, ObjectHead, StorageProvider, UploadTarget } from "./StorageProvider.js";
 
 /**
  * `STORAGE_PROVIDER` picks the implementation: `local` (the default — a volume)

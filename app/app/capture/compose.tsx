@@ -27,7 +27,7 @@ import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
 import { AppHeader, Button, Loading, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
-import { duration } from "../../src/format";
+import { duration, lengthInWords } from "../../src/format";
 import { colors, radius, spacing, type } from "../../src/theme";
 
 const PILLAR_LABELS: Record<PillarKey, string> = {
@@ -85,6 +85,19 @@ export default function ComposeScreen() {
   const hasVideo = visuals.some((a) => a.mime.startsWith("video/"));
   // Arrived from the video recorder without its clip (a reload drops the draft).
   const missingVideo = params.mode === "video" && !visuals.length;
+  // Long videos are kept but not transcribed yet; the server owns the number.
+  // A video of unknown length is transcribed, so it isn't counted here.
+  const videos = visuals.filter((a) => a.mime.startsWith("video/"));
+  const longVideos = limits
+    ? videos.filter((a) => a.durationS !== undefined && a.durationS > limits.transcribeMaxVideoSeconds)
+    : [];
+  const someTranscribed = recordings.length > 0 || videos.length > longVideos.length || (audioMode && !hasVideo);
+  const skipMessage =
+    longVideos.length && limits
+      ? `Over ${lengthInWords(limits.transcribeMaxVideoSeconds)}, so ${
+          videos.length > 1 ? (longVideos.length > 1 ? "these videos" : "one video") : "this video"
+        } won't be transcribed yet.`
+      : null;
 
   const people = peopleData?.people ?? [];
   const author = authorId ?? people.find((p) => p.role === "PARENT")?.id ?? people[0]?.id ?? null;
@@ -125,7 +138,9 @@ export default function ComposeScreen() {
           storageKey: uploaded.key,
           mimeType: uploaded.mimeType,
           bytes: uploaded.bytes,
-          sha256: uploaded.sha256,
+          // Whichever digest finalize recorded: storage's checksum, or its own sha256.
+          ...(uploaded.checksum ? { checksum: uploaded.checksum } : {}),
+          ...(uploaded.sha256 ? { sha256: uploaded.sha256 } : {}),
           ...(timed && asset.durationS && asset.durationS > 0 ? { durationS: Math.round(asset.durationS) } : {}),
           ...(audio
             ? {}
@@ -236,11 +251,12 @@ export default function ComposeScreen() {
             </View>
           </ScrollView>
         ) : null}
-        {audioMode || hasVideo ? (
+        {(audioMode || hasVideo) && someTranscribed ? (
           <Text style={[type.caption, { marginTop: spacing.sm }]}>
             The transcript will be written automatically after you save.
           </Text>
         ) : null}
+        {skipMessage ? <Text style={[type.caption, { marginTop: spacing.sm }]}>{skipMessage}</Text> : null}
         {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
 
         <Field label="Title">

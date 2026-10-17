@@ -3,6 +3,7 @@ import { Router, type Request, type RequestHandler, type Response } from "expres
 import { fileTypeFromBuffer } from "file-type";
 import { imageSize } from "image-size";
 import { z } from "zod";
+import { TRANSCRIBE_MAX_VIDEO_SECONDS } from "../jobs/transcribe.js";
 import { logger } from "../lib/logger.js";
 import {
   ALLOWED_MIME_TYPES,
@@ -112,7 +113,7 @@ mediaBytesRouter.put("/local-upload/:token", handle(async (req, res) => {
     return res.status(409).json({ error: "An object already exists at this key" });
   }
 
-  // Streamed to disk: a 100 MB video must never sit in this process's heap.
+  // Streamed to disk: a 2 GB video must never sit in this process's heap.
   const written = await provider.writeObject(claims.key, req);
   if (written.bytes !== claims.bytes) {
     await provider.discardObject(claims.key);
@@ -175,7 +176,11 @@ const initBody = z.object({
  * family has written the story. The server stays the one source of the number.
  */
 mediaApiRouter.get("/limits", (_req, res) => {
-  res.json({ maxUploadBytes: MAX_UPLOAD_BYTES });
+  res.json({
+    maxUploadBytes: MAX_UPLOAD_BYTES,
+    // Longer videos are kept but not transcribed yet (TranscriptStatus.SKIPPED).
+    transcribeMaxVideoSeconds: TRANSCRIBE_MAX_VIDEO_SECONDS,
+  });
 });
 
 /**
@@ -245,8 +250,11 @@ mediaApiRouter.post("/finalize", handle(async (req, res) => {
   if (!meta) return res.status(404).json({ error: "Upload not found — PUT the bytes first" });
   if (meta.bytes > MAX_UPLOAD_BYTES) return res.status(413).json({ error: "Object too large" });
 
+  if (meta.bytes <= 0) return res.status(415).json({ error: "The uploaded file is empty" });
+
   const declared = contentTypeForKey(key);
-  const head = await readHead(await provider.stream(key), 4100);
+  // A ranged read: the sniff needs the first few KB, not a 2 GB download.
+  const head = await readHead(await provider.stream(key, { start: 0, end: SNIFF_BYTES - 1 }), SNIFF_BYTES);
   const sniffed = await fileTypeFromBuffer(head);
 
   if (!sniffed) {
@@ -258,7 +266,12 @@ mediaApiRouter.post("/finalize", handle(async (req, res) => {
     });
   }
 
-  const sha256 = await hashObject(await provider.stream(key));
+  // The object's digest. S3 already holds a full-object checksum it computed
+  // as the bytes arrived, so record that rather than download the object to
+  // hash it. Only a provider without one (local disk, emulators) gets read
+  // end to end.
+  const checksum = meta.checksum ?? null;
+  const sha256 = checksum ? null : await hashObject(await provider.stream(key));
 
   // Checked last, so it covers the reads above: if anything wrote over the
   // upload — before finalize or while it was being hashed — the digest might
@@ -278,7 +291,9 @@ mediaApiRouter.post("/finalize", handle(async (req, res) => {
       type: mediaTypeFor(declared),
       mimeType: declared,
       bytes: meta.bytes,
+      // Exactly one of these is set; pass both back to POST /memories as is.
       sha256,
+      checksum,
       ...(dimensions ?? {}),
     },
   });
@@ -287,6 +302,9 @@ mediaApiRouter.post("/finalize", handle(async (req, res) => {
 function keyBelongsTo(key: string, familyId: string) {
   return key.startsWith(`${familyId}/`);
 }
+
+/** How much finalize reads to sniff a type: file-type's own sample size. */
+const SNIFF_BYTES = 4100;
 
 /** Enough of the object to identify it and read an image header. */
 async function readHead(source: NodeJS.ReadableStream, limit: number): Promise<Buffer> {
@@ -297,7 +315,7 @@ async function readHead(source: NodeJS.ReadableStream, limit: number): Promise<B
     total += chunk.length;
     if (total >= limit) break;
   }
-  // The stream is abandoned mid-read; without this the file handle leaks.
+  // The stream may be abandoned mid-read; without this the file handle leaks.
   (source as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
   return Buffer.concat(chunks).subarray(0, limit);
 }

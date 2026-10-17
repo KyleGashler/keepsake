@@ -6,6 +6,35 @@ import { PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js
 
 export const TRANSCRIBABLE_TYPES = ["AUDIO", "VIDEO"] as const;
 
+const DEFAULT_TRANSCRIBE_MAX_VIDEO_SECONDS = 120;
+
+/**
+ * Videos longer than this aren't transcribed yet (`TranscriptStatus.SKIPPED`).
+ * Deepgram is sent the whole container, so a long video means a long upload
+ * of picture nobody listens to; the fix is extracting the audio track first
+ * (docs/PLAN.md, "Later: long media, properly"). Audio is transcribed at any
+ * length. `TRANSCRIBE_MAX_VIDEO_SECONDS` overrides the default.
+ */
+export const TRANSCRIBE_MAX_VIDEO_SECONDS = readMaxVideoSeconds(process.env.TRANSCRIBE_MAX_VIDEO_SECONDS);
+
+function readMaxVideoSeconds(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_TRANSCRIBE_MAX_VIDEO_SECONDS;
+  const n = Number(raw);
+  if (!Number.isInteger(n) || n <= 0) {
+    throw new Error(`TRANSCRIBE_MAX_VIDEO_SECONDS must be a positive whole number of seconds, got "${raw}"`);
+  }
+  return n;
+}
+
+/**
+ * True for a video known to be over the limit. A video whose length nobody
+ * knows yet is transcribed — refusing it would refuse every clip a picker
+ * didn't measure — and audio never is skipped.
+ */
+export function tooLongToTranscribe(m: { type: string; durationS?: number | null }): boolean {
+  return m.type === "VIDEO" && typeof m.durationS === "number" && m.durationS > TRANSCRIBE_MAX_VIDEO_SECONDS;
+}
+
 /**
  * `ai.transcribe`: speech-to-text for one clip.
  *
@@ -28,6 +57,16 @@ export function transcribeHandler(transcriber: Transcriber): JobHandler<"ai.tran
       // Already settled (a duplicate job, or a retry raced a success).
       if (media.transcriptStatus !== "PENDING") return;
       if (!media.storageKey) throw new PermanentJobError("Clip has no stored original to transcribe");
+      // Queued before its length was known (or before the limit was lowered),
+      // and now known to be too long: settle it without calling the transcriber.
+      if (tooLongToTranscribe(media)) {
+        await prisma.media.updateMany({
+          where: { id: media.id, transcriptStatus: "PENDING" },
+          data: { transcriptStatus: "SKIPPED" },
+        });
+        ctx.log.info({ mediaId, durationS: media.durationS }, "video too long to transcribe; skipped");
+        return;
+      }
 
       const mimeType = media.mimeType ?? contentTypeForKey(media.storageKey);
       let result;

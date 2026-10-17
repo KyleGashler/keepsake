@@ -42,17 +42,26 @@ export async function apiSend<T>(path: string, method: "POST" | "PATCH", body: u
 }
 
 /** `GET /api/media/limits` — the server is the one place the upload ceiling lives. */
-export type UploadLimits = { maxUploadBytes: number };
+export type UploadLimits = {
+  maxUploadBytes: number;
+  /** Videos longer than this are kept but not transcribed yet (SKIPPED). */
+  transcribeMaxVideoSeconds: number;
+};
 
 /**
  * The sentence a family sees when a file is over the ceiling. Phrased for
- * video because that's what crosses it — a phone photo never does.
+ * video because that's what crosses it — a phone photo never does. Decimal
+ * units, the way phones and file browsers report sizes: 2,000,000,000 bytes
+ * reads "2 GB".
  */
 export function tooLargeMessage(mime: string, maxUploadBytes: number) {
-  const mb = Math.floor(maxUploadBytes / (1024 * 1024));
+  const size =
+    maxUploadBytes >= 1e9
+      ? `${Math.floor(maxUploadBytes / 1e9)} GB`
+      : `${Math.floor(maxUploadBytes / 1e6)} MB`;
   return mime.startsWith("video/")
-    ? `Videos over ${mb} MB can't be added yet — try a shorter clip.`
-    : `Files over ${mb} MB can't be added yet.`;
+    ? `Videos over ${size} can't be added yet — try a shorter clip.`
+    : `Files over ${size} can't be added yet.`;
 }
 
 /** What `POST /api/media/init` authorises. Mirrors the server's UploadTarget. */
@@ -74,7 +83,12 @@ export type FinalizedMedia = {
   type: "PHOTO" | "VIDEO" | "AUDIO";
   mimeType: string;
   bytes: number;
-  sha256: string;
+  /**
+   * The object's digest — exactly one is set. `checksum` is storage's own
+   * (`crc64nvme:…` on S3); `sha256` is hashed by the API when storage has none.
+   */
+  sha256: string | null;
+  checksum: string | null;
   width?: number;
   height?: number;
 };
@@ -204,7 +218,8 @@ export type MemoryCard = {
   participants: Person[];
 };
 
-export type TranscriptStatus = "PENDING" | "READY" | "FAILED";
+/** SKIPPED: a video over the server's `transcribeMaxVideoSeconds`; not transcribed yet. */
+export type TranscriptStatus = "PENDING" | "READY" | "FAILED" | "SKIPPED";
 
 export type MediaItem = {
   id: string;
@@ -224,7 +239,11 @@ export type MediaItem = {
 export type Memory = MemoryCard & {
   story: string | null;
   transcript: string | null;
-  /** Rolled up from the clips: PENDING if any is, else FAILED if any did, else READY; null with no clips. */
+  /**
+   * Rolled up from the clips: PENDING if any is, else FAILED if any did, else
+   * READY if any was transcribed, else SKIPPED (every clip too long); null
+   * with no clips.
+   */
   transcriptStatus: TranscriptStatus | null;
   createdAt: string;
   author: Person | null;

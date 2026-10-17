@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiSend, mediaUrl, useApi, type Memory } from "../../src/api";
+import { apiSend, mediaUrl, useApi, type Memory, type UploadLimits } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
 import { LittleMoon } from "../../src/components/brand";
@@ -25,7 +25,7 @@ import {
   PreviewNote,
   Screen,
 } from "../../src/components/ui";
-import { duration, longDate } from "../../src/format";
+import { duration, lengthInWords, longDate } from "../../src/format";
 
 /** How often to look again while a recording is being transcribed. */
 const TRANSCRIPT_POLL_MS = 3000;
@@ -38,6 +38,8 @@ import { colors, radius, spacing, type } from "../../src/theme";
 export default function MemoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, loading, refetch } = useApi<{ memory: Memory }>(`/api/memories/${id}`);
+  // Only for the wording of a skipped long video ("over 2 minutes").
+  const { data: limits } = useApi<UploadLimits>("/api/media/limits");
   const [chosenTab, setTab] = useState<"story" | "transcript" | null>(null);
   const [editing, setEditing] = useState<"story" | "transcript" | null>(null);
   const [textDraft, setTextDraft] = useState("");
@@ -66,8 +68,9 @@ export default function MemoryScreen() {
   const photos = memory.media.filter((m) => m.type === "PHOTO" || m.type === "VIDEO");
   const audio = memory.media.filter((m) => m.type === "AUDIO");
   const hero = photos.find((m) => m.id === chosenMediaId) ?? photos[0];
-  // Audio and video clips: anything that is being (or was) transcribed.
-  const clips = memory.media.filter((m) => m.transcriptStatus !== null);
+  // Audio and video clips: anything that is being (or was) transcribed. A
+  // skipped long video is neither, so it doesn't make a failure plural.
+  const clips = memory.media.filter((m) => m.transcriptStatus !== null && m.transcriptStatus !== "SKIPPED");
   const hasTranscript = Boolean(memory.transcript) || transcriptStatus !== null;
   // A fresh recording has no story yet — open on the transcript it's waiting for.
   const tab = !hasTranscript ? "story" : (chosenTab ?? (memory.story ? "story" : "transcript"));
@@ -198,6 +201,19 @@ export default function MemoryScreen() {
                     {memory.transcript
                       ? "Still transcribing a recording — this will update when it's done."
                       : "Transcribing… the words will appear here in a moment."}
+                  </Text>
+                </View>
+              ) : null}
+              {transcriptStatus === "SKIPPED" ? (
+                // Every clip here is a long video. Nothing to retry: it's a
+                // limit, not a failure. Writing one by hand is still offered below.
+                <View style={styles.transcriptState}>
+                  <Ionicons name="time-outline" size={18} color={colors.accentDeep} />
+                  <Text style={[type.caption, { flex: 1 }]}>
+                    {limits
+                      ? `Transcripts for videos over ${lengthInWords(limits.transcribeMaxVideoSeconds)} are coming.`
+                      : "Transcripts for long videos are coming."}{" "}
+                    The video itself is kept in full.
                   </Text>
                 </View>
               ) : null}

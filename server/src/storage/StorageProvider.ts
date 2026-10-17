@@ -27,6 +27,15 @@ export interface UploadTarget {
   expiresAt: string;
 }
 
+/** Inclusive byte offsets, as in an HTTP `Range: bytes=start-end` header. */
+export type ByteRange = { start: number; end: number };
+
+export type ObjectHead = {
+  bytes: number;
+  /** `<algorithm>:<base64>` over the full object; see `head()`. */
+  checksum?: string;
+};
+
 export interface StorageProvider {
   /**
    * Authorise one upload of exactly `bytes` bytes of `mimeType` to `key`.
@@ -35,13 +44,19 @@ export interface StorageProvider {
    */
   createUploadTarget(input: { key: string; mimeType: string; bytes: number }): Promise<UploadTarget>;
 
-  /** Object metadata, or null when nothing is stored at `key`. */
-  head(key: string): Promise<{ bytes: number } | null>;
+  /**
+   * Object metadata, or null when nothing is stored at `key`. `checksum` is the
+   * store's own digest of the whole object, as `<algorithm>:<base64>` (e.g.
+   * `crc64nvme:…` from S3), when the store keeps one. Finalize records it
+   * instead of reading the object back to hash it; a provider that can't vouch
+   * for every byte (local disk, most emulators) leaves it out.
+   */
+  head(key: string): Promise<ObjectHead | null>;
 
   /**
    * False when `key` has held more than one object — i.e. something was
    * written over the upload after init authorised it. Finalize refuses such a
-   * key: the sha256 it records has to describe the only bytes there have ever
+   * key: the digest it records has to describe the only bytes there have ever
    * been. Providers that make an overwrite impossible at write time may still
    * report what they can observe.
    */
@@ -54,8 +69,13 @@ export interface StorageProvider {
    */
   getReadUrl(key: string, ttlSeconds: number): Promise<string>;
 
-  /** Read the object back — used for sniffing, hashing and future derivatives. */
-  stream(key: string): Promise<NodeJS.ReadableStream>;
+  /**
+   * Read the object back — used for sniffing, hashing and future derivatives.
+   * With `range`, only bytes `start..end` (inclusive, like HTTP `Range`) are
+   * read, so a sniff of a 2 GB video costs a few KB rather than an abandoned
+   * download. A range past the end of the object returns what there is.
+   */
+  stream(key: string, range?: ByteRange): Promise<NodeJS.ReadableStream>;
 
   /**
    * Derivatives only. Original media is sacred: nothing in this codebase may
@@ -71,11 +91,23 @@ export interface StorageProvider {
   healthCheck(): Promise<boolean>;
 }
 
-/** Hard ceiling on a single original, enforced at init and again at upload. */
-export const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+/**
+ * Hard ceiling on a single original, enforced at init and again at upload.
+ * 2 GB (decimal) is Deepgram's per-file limit. It must stay at or below
+ * 2,147,483,647: `Media.bytes` is a Postgres `int4`, and a larger upload would
+ * fail at memory creation, after the family has waited for it to finish.
+ * Going past it needs `Media.bytes` as a BigInt and multipart uploads (see
+ * docs/PLAN.md, "Later: long media, properly").
+ */
+export const MAX_UPLOAD_BYTES = 2_000_000_000;
 
-/** How long a client has to actually push the bytes after init. */
-export const UPLOAD_URL_TTL_SECONDS = 15 * 60;
+/**
+ * How long a client has to actually push the bytes after init. A single PUT
+ * of 2 GB on a slow uplink takes a while; S3 checks the expiry when the
+ * request starts, so this bounds when an upload may begin, not how long it
+ * may run.
+ */
+export const UPLOAD_URL_TTL_SECONDS = 60 * 60;
 
 /** How long a DTO's media URL stays good. Matches the Cache-Control we send. */
 export const READ_URL_TTL_SECONDS = 3600;

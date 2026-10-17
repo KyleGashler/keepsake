@@ -33,6 +33,15 @@ export function duration(seconds?: number | null) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** A length limit in words: "2 minutes", "1 minute", "90 seconds". */
+export function lengthInWords(seconds: number) {
+  if (seconds >= 60 && seconds % 60 === 0) {
+    const m = seconds / 60;
+    return `${m} minute${m === 1 ? "" : "s"}`;
+  }
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+}
+
 /** Always-on m:ss for timers and scrubbers — "0:00" rather than nothing. */
 export function clock(seconds: number) {
   const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
