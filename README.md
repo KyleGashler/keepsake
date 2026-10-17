@@ -229,7 +229,7 @@ URL; with local storage the API streams the bytes to Deepgram.
 | Variable | Meaning |
 | --- | --- |
 | `WORKER_INLINE` | `1` runs the job worker in the API process. Unset, jobs wait for `npm run worker`. |
-| `DEEPGRAM_API_KEY` | Deepgram key for speech-to-text. Unset, a stub transcriber returns a fixed two-speaker sample after ~1.5 s — fine locally, wrong for a real archive. On Fly: `fly secrets set DEEPGRAM_API_KEY=…`. |
+| `DEEPGRAM_API_KEY` | Deepgram key for speech-to-text. Unset in development, a stub transcriber returns a fixed two-speaker sample after ~1.5 s; unset in production, clips are marked FAILED (retry from the memory page once the key is set). On Fly: `fly secrets set DEEPGRAM_API_KEY=…`. |
 | `DEEPGRAM_MODEL` | Optional; defaults to `nova-3`. |
 
 ## Running on a phone
