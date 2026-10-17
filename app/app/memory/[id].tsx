@@ -1,11 +1,10 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { createElement, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -15,6 +14,7 @@ import {
 } from "react-native";
 import { apiSend, mediaUrl, useApi, type Memory } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
+import { VideoClip } from "../../src/components/video";
 import { LittleMoon } from "../../src/components/brand";
 import {
   AppHeader,
@@ -25,7 +25,7 @@ import {
   PreviewNote,
   Screen,
 } from "../../src/components/ui";
-import { longDate } from "../../src/format";
+import { duration, longDate } from "../../src/format";
 
 /** How often to look again while a recording is being transcribed. */
 const TRANSCRIPT_POLL_MS = 3000;
@@ -45,6 +45,8 @@ export default function MemoryScreen() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [sharePressed, setSharePressed] = useState(false);
+  // Tapping something in "Original media" puts it in the hero slot.
+  const [chosenMediaId, setChosenMediaId] = useState<string | null>(null);
 
   // The transcript is written in the background after upload; keep looking
   // until it settles so it appears without a refresh.
@@ -63,7 +65,9 @@ export default function MemoryScreen() {
   const memory = data.memory;
   const photos = memory.media.filter((m) => m.type === "PHOTO" || m.type === "VIDEO");
   const audio = memory.media.filter((m) => m.type === "AUDIO");
-  const hero = photos[0];
+  const hero = photos.find((m) => m.id === chosenMediaId) ?? photos[0];
+  // Audio and video clips: anything that is being (or was) transcribed.
+  const clips = memory.media.filter((m) => m.transcriptStatus !== null);
   const hasTranscript = Boolean(memory.transcript) || transcriptStatus !== null;
   // A fresh recording has no story yet — open on the transcript it's waiting for.
   const tab = !hasTranscript ? "story" : (chosenTab ?? (memory.story ? "story" : "transcript"));
@@ -111,7 +115,8 @@ export default function MemoryScreen() {
         <View style={styles.inner}>
           <View style={styles.heroWrap}>
             {hero?.type === "VIDEO" ? (
-              <VideoHero url={mediaUrl(hero.url) as string} />
+              // Keyed by id: a new read URL on each poll must not rebuild the player.
+              <VideoHero key={hero.id} url={mediaUrl(hero.url) as string} autoPlay={chosenMediaId === hero.id} />
             ) : (
               <Image
                 source={{ uri: mediaUrl(hero?.url ?? memory.heroUrl) }}
@@ -200,7 +205,7 @@ export default function MemoryScreen() {
                 <View style={styles.transcriptState}>
                   <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
                   <Text style={[type.caption, { flex: 1 }]}>
-                    We couldn't write the transcript for {audio.length > 1 ? "a recording" : "this recording"}.
+                    We couldn't write the transcript for {clips.length > 1 ? "a recording" : "this recording"}.
                   </Text>
                   <Button
                     label={retrying ? "Trying…" : "Try again"}
@@ -244,14 +249,30 @@ export default function MemoryScreen() {
               <Text style={[type.label, { marginBottom: spacing.md }]}>Original media</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 <View style={{ flexDirection: "row", gap: spacing.sm }}>
-                  {photos.map((photo) => (
-                    <Image
-                      key={photo.id}
-                      source={{ uri: mediaUrl(photo.url) }}
-                      style={styles.thumb}
-                      contentFit="cover"
-                      transition={200}
-                    />
+                  {photos.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => setChosenMediaId(item.id)}
+                      accessibilityRole="button"
+                      accessibilityLabel={item.type === "VIDEO" ? "Play this video" : "Show this photo"}
+                      accessibilityState={{ selected: item.id === hero?.id }}
+                      style={[styles.thumb, item.id === hero?.id && styles.thumbChosen]}
+                    >
+                      {item.type === "VIDEO" ? (
+                        // No poster frames yet (A6), and <Image> can't decode a video.
+                        <View style={styles.videoThumb}>
+                          <Ionicons name="play-circle-outline" size={34} color={colors.accentDeep} />
+                          {item.durationS ? <Text style={type.caption}>{duration(item.durationS)}</Text> : null}
+                        </View>
+                      ) : (
+                        <Image
+                          source={{ uri: mediaUrl(item.url) }}
+                          style={StyleSheet.absoluteFill}
+                          contentFit="cover"
+                          transition={200}
+                        />
+                      )}
+                    </Pressable>
                   ))}
                 </View>
               </ScrollView>
@@ -318,36 +339,31 @@ export default function MemoryScreen() {
 }
 
 /**
- * A video hero plays the original straight from storage. Nothing is transcoded
+ * A video hero plays the original straight from storage — expo-video on a
+ * phone, `<video>` on the web (see components/video). Nothing is transcoded
  * yet (docs/PLAN.md, "Decision: video, for now"), so an iPhone's HEVC clip
- * won't decode in every browser. When the player gives up — an error, or
- * metadata with no picture — offer the original instead of a black box. Native
- * has no in-app player yet and goes straight to the link, which hands the file
- * to the system player.
+ * won't decode everywhere. When the player gives up — an error, or a picture
+ * it can't decode — offer the original instead of a black box; the link hands
+ * the file to the system player or the browser's download.
  */
-function VideoHero({ url }: { url: string }) {
+function VideoHero({ url, autoPlay }: { url: string; autoPlay: boolean }) {
   const [failed, setFailed] = useState(false);
 
-  if (Platform.OS === "web" && !failed) {
-    return createElement("video", {
-      src: url,
-      controls: true,
-      playsInline: true,
-      preload: "metadata",
-      onError: () => setFailed(true),
-      onLoadedMetadata: (e: { currentTarget: { videoWidth: number } }) => {
-        if (e.currentTarget.videoWidth === 0) setFailed(true);
-      },
-      style: { width: "100%", height: "100%", objectFit: "contain", backgroundColor: "#000" },
-    });
+  if (!failed) {
+    return (
+      <VideoClip
+        uri={url}
+        autoPlay={autoPlay}
+        onError={() => setFailed(true)}
+        style={[StyleSheet.absoluteFill, { backgroundColor: "#000" }]}
+      />
+    );
   }
 
   return (
     <View style={styles.videoFallback}>
       <Ionicons name="videocam-outline" size={30} color={colors.muted} />
-      <Text style={[type.caption, { textAlign: "center" }]}>
-        {failed ? "This video can't play here." : "Video"}
-      </Text>
+      <Text style={[type.caption, { textAlign: "center" }]}>This video can't play here.</Text>
       <Pressable onPress={() => Linking.openURL(url)} style={styles.editLink}>
         <Ionicons name="open-outline" size={15} color={colors.accentDeep} />
         <Text style={styles.editLinkText}>Open original</Text>
@@ -425,7 +441,17 @@ const styles = StyleSheet.create({
   editLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md },
   editLinkText: { fontSize: 13.5, color: colors.accentDeep, fontWeight: "600" },
   endMark: { alignItems: "center", marginTop: spacing.xxl, marginBottom: spacing.xl },
-  thumb: { width: 132, height: 132, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
+  thumb: {
+    width: 132,
+    height: 132,
+    borderRadius: radius.sm,
+    backgroundColor: colors.surfaceAlt,
+    overflow: "hidden",
+    borderWidth: 2,
+    borderColor: "transparent",
+  },
+  thumbChosen: { borderColor: colors.accent },
+  videoThumb: { flex: 1, alignItems: "center", justifyContent: "center", gap: 4 },
   people: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
   personRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },

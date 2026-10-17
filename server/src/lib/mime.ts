@@ -16,6 +16,7 @@ export const ALLOWED_MIME_TYPES = new Set([
   "image/heic",
   "video/mp4",
   "video/quicktime",
+  "video/webm",
   "audio/m4a",
   "audio/mp4",
   "audio/mpeg",
@@ -30,6 +31,7 @@ const EXTENSIONS: Record<string, string> = {
   "image/heic": ".heic",
   "video/mp4": ".mp4",
   "video/quicktime": ".mov",
+  "video/webm": ".webm",
   "audio/m4a": ".m4a",
   "audio/mp4": ".m4a",
   "audio/mpeg": ".mp3",
@@ -50,6 +52,7 @@ const BY_EXTENSION: Record<string, string> = {
   ".heic": "image/heic",
   ".mp4": "video/mp4",
   ".mov": "video/quicktime",
+  ".webm": "video/webm",
   ".m4a": "audio/mp4",
   ".mp3": "audio/mpeg",
   ".wav": "audio/wav",
@@ -69,6 +72,10 @@ const ACCEPTS_SNIFFED: Record<string, string[]> = {
   "image/heic": ["image/heic", "image/heif", "image/heic-sequence", "image/heif-sequence"],
   "video/mp4": ["video/mp4", "video/x-m4v", "video/quicktime"],
   "video/quicktime": ["video/quicktime", "video/mp4"],
+  // What a browser's MediaRecorder writes. The sniff reads only the EBML
+  // DocType, which says "webm" with or without a video track — file-type
+  // calls that video/webm today, but audio/webm is the same container.
+  "video/webm": ["video/webm", "audio/webm"],
   "audio/m4a": ["audio/mp4", "audio/x-m4a", "audio/m4a", "video/mp4"],
   "audio/mp4": ["audio/mp4", "audio/x-m4a", "audio/m4a", "video/mp4"],
   "audio/mpeg": ["audio/mpeg"],

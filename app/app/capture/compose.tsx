@@ -24,8 +24,10 @@ import {
   type UploadLimits,
 } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
+import { VideoClip } from "../../src/components/video";
 import { AppHeader, Button, Loading, Screen } from "../../src/components/ui";
-import { draft } from "../../src/draft";
+import { draft, type DraftAsset } from "../../src/draft";
+import { duration } from "../../src/format";
 import { colors, radius, spacing, type } from "../../src/theme";
 
 const PILLAR_LABELS: Record<PillarKey, string> = {
@@ -80,6 +82,9 @@ export default function ComposeScreen() {
   const recordings = assets.filter((a) => a.mime.startsWith("audio/"));
   const visuals = assets.filter((a) => !a.mime.startsWith("audio/"));
   const audioMode = params.mode === "audio" || recordings.length > 0;
+  const hasVideo = visuals.some((a) => a.mime.startsWith("video/"));
+  // Arrived from the video recorder without its clip (a reload drops the draft).
+  const missingVideo = params.mode === "video" && !visuals.length;
 
   const people = peopleData?.people ?? [];
   const author = authorId ?? people.find((p) => p.role === "PARENT")?.id ?? people[0]?.id ?? null;
@@ -111,16 +116,19 @@ export default function ComposeScreen() {
         );
         // Everything but the caption comes from the server's own reading of the
         // bytes; the picker's dimensions only fill in what it couldn't measure.
-        // Audio has no dimensions to send; its length comes from the recorder.
+        // Audio has no dimensions to send; a clip's length comes from the
+        // recorder (or the transcriber fills it in later).
         const audio = uploaded.type === "AUDIO";
+        const timed = audio || uploaded.type === "VIDEO";
         media.push({
           type: uploaded.type,
           storageKey: uploaded.key,
           mimeType: uploaded.mimeType,
           bytes: uploaded.bytes,
           sha256: uploaded.sha256,
+          ...(timed && asset.durationS && asset.durationS > 0 ? { durationS: Math.round(asset.durationS) } : {}),
           ...(audio
-            ? { durationS: asset.durationS && asset.durationS > 0 ? Math.round(asset.durationS) : undefined }
+            ? {}
             : {
                 width: uploaded.width ?? asset.width ?? 1200,
                 height: uploaded.height ?? asset.height ?? 900,
@@ -196,20 +204,42 @@ export default function ComposeScreen() {
             />
           </View>
         ) : null}
-        {audioMode ? (
-          <Text style={[type.caption, { marginTop: spacing.sm }]}>
-            The transcript will be written automatically after you save.
-          </Text>
+        {missingVideo ? (
+          <View style={styles.recordPrompt}>
+            <Text style={[type.body, { flex: 1 }]}>No video attached yet.</Text>
+            <Button
+              label="Record"
+              icon="videocam-outline"
+              onPress={() =>
+                router.replace({
+                  pathname: "/capture/video",
+                  params: {
+                    ...(params.prompt ? { prompt: params.prompt } : {}),
+                    ...(params.collectionId ? { collectionId: params.collectionId } : {}),
+                  },
+                })
+              }
+            />
+          </View>
         ) : null}
 
         {visuals.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              {visuals.map((asset) => (
-                <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.thumb} contentFit="cover" />
-              ))}
+              {visuals.map((asset) =>
+                asset.mime.startsWith("video/") ? (
+                  <VideoThumb key={asset.uri} asset={asset} />
+                ) : (
+                  <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.thumb} contentFit="cover" />
+                ),
+              )}
             </View>
           </ScrollView>
+        ) : null}
+        {audioMode || hasVideo ? (
+          <Text style={[type.caption, { marginTop: spacing.sm }]}>
+            The transcript will be written automatically after you save.
+          </Text>
         ) : null}
         {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
 
@@ -322,6 +352,34 @@ export default function ComposeScreen() {
   );
 }
 
+/**
+ * A video rides as a still frame with a badge, never through <Image> (which
+ * can't decode a video). If the device can't show a frame, the badge alone
+ * still says what's attached.
+ */
+function VideoThumb({ asset }: { asset: DraftAsset }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <View style={[styles.thumb, styles.videoThumb]}>
+      <Ionicons name="videocam-outline" size={26} color={colors.muted} />
+      {failed ? null : (
+        <VideoClip
+          uri={asset.uri}
+          controls={false}
+          muted
+          contentFit="cover"
+          onError={() => setFailed(true)}
+          style={StyleSheet.absoluteFill}
+        />
+      )}
+      <View style={styles.videoBadge}>
+        <Ionicons name="play" size={10} color={colors.surface} />
+        {asset.durationS ? <Text style={styles.videoBadgeText}>{duration(asset.durationS)}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
 function Field({
   label,
   children,
@@ -381,6 +439,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   thumb: { width: 96, height: 96, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
+  videoThumb: { overflow: "hidden", alignItems: "center", justifyContent: "center" },
+  videoBadge: {
+    position: "absolute",
+    left: 6,
+    bottom: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    backgroundColor: colors.overlay,
+    borderRadius: radius.pill,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  videoBadgeText: { color: colors.surface, fontSize: 11, fontWeight: "600" },
   input: {
     backgroundColor: colors.surface,
     borderWidth: 1,

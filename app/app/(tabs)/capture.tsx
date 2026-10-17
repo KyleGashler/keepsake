@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ShootingStar } from "../../src/components/brand";
-import { AppHeader, Screen } from "../../src/components/ui";
+import { AppHeader, Button, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
 import { colors, radius, spacing, type } from "../../src/theme";
 
@@ -18,7 +18,7 @@ const OPTIONS = [
     key: "camera",
     icon: "camera-outline" as const,
     title: "Capture a moment",
-    body: "Take a photo or video of what's happening right now.",
+    body: "Take a photo, or film a short video of what's happening right now.",
   },
   {
     key: "record",
@@ -53,19 +53,27 @@ function toAssets(assets: ImagePicker.ImagePickerAsset[]): DraftAsset[] {
 
 export default function CaptureScreen() {
   const [busy, setBusy] = useState<string | null>(null);
+  // "Capture a moment" opens in place to ask which: a photo or a video.
+  const [momentOpen, setMomentOpen] = useState(false);
 
   async function choose(key: string) {
+    if (key === "camera") return setMomentOpen((open) => !open);
     if (key === "write") return router.push("/capture/compose");
     if (key === "record") return router.push("/capture/record");
+    if (key === "video") {
+      setMomentOpen(false);
+      return router.push("/capture/video");
+    }
 
     setBusy(key);
     try {
       const result =
-        key === "camera"
+        key === "photo"
           ? await (async () => {
               const perm = await ImagePicker.requestCameraPermissionsAsync();
               if (!perm.granted) return null;
-              return ImagePicker.launchCameraAsync({ mediaTypes: ["images", "videos"], quality: 0.9 });
+              // Video has its own recorder, with a length cap the upload can honour.
+              return ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.9 });
             })()
           : await ImagePicker.launchImageLibraryAsync({
               mediaTypes: ["images", "videos"],
@@ -75,6 +83,7 @@ export default function CaptureScreen() {
 
       if (result && !result.canceled && result.assets?.length) {
         draft.set(toAssets(result.assets));
+        setMomentOpen(false);
         router.push("/capture/compose");
       }
     } finally {
@@ -95,23 +104,48 @@ export default function CaptureScreen() {
         </View>
 
         <View style={{ gap: spacing.md }}>
-          {OPTIONS.map((option) => (
-            <Pressable
-              key={option.key}
-              onPress={() => choose(option.key)}
-              disabled={busy !== null}
-              style={({ pressed }) => [styles.option, pressed && { opacity: 0.75 }]}
-            >
-              <View style={styles.optionIcon}>
-                <Ionicons name={option.icon} size={22} color={colors.accentDeep} />
+          {OPTIONS.map((option) => {
+            const open = option.key === "camera" && momentOpen;
+            return (
+              <View key={option.key} style={[styles.option, open && styles.optionOpen]}>
+                <Pressable
+                  onPress={() => choose(option.key)}
+                  disabled={busy !== null}
+                  accessibilityState={option.key === "camera" ? { expanded: open } : undefined}
+                  style={({ pressed }) => [styles.optionRow, pressed && { opacity: 0.75 }]}
+                >
+                  <View style={styles.optionIcon}>
+                    <Ionicons name={option.icon} size={22} color={colors.accentDeep} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={type.heading}>{option.title}</Text>
+                    <Text style={[type.caption, { marginTop: 2 }]}>{option.body}</Text>
+                  </View>
+                  <Ionicons name={open ? "chevron-down" : "chevron-forward"} size={18} color={colors.muted} />
+                </Pressable>
+                {open ? (
+                  <View style={styles.momentChoices}>
+                    <Button
+                      label={busy === "photo" ? "Opening…" : "Photo"}
+                      icon="camera-outline"
+                      variant="secondary"
+                      onPress={() => choose("photo")}
+                      disabled={busy !== null}
+                      style={{ flex: 1 }}
+                    />
+                    <Button
+                      label="Video"
+                      icon="videocam-outline"
+                      variant="secondary"
+                      onPress={() => choose("video")}
+                      disabled={busy !== null}
+                      style={{ flex: 1 }}
+                    />
+                  </View>
+                ) : null}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={type.heading}>{option.title}</Text>
-                <Text style={[type.caption, { marginTop: 2 }]}>{option.body}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-            </Pressable>
-          ))}
+            );
+          })}
         </View>
       </Screen>
     </>
@@ -126,15 +160,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   option: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
     borderWidth: 1,
     borderColor: colors.line,
     padding: spacing.lg,
   },
+  optionOpen: { borderColor: colors.accent },
+  optionRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
+  momentChoices: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
   optionIcon: {
     width: 46,
     height: 46,
