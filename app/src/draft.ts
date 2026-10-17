@@ -6,6 +6,8 @@ export type DraftAsset = {
   height?: number;
   /** As the picker reports it — lets compose refuse an oversized file before uploading. */
   bytes?: number;
+  /** Whole seconds, from the recorder — audio only. */
+  durationS?: number;
 };
 
 /**

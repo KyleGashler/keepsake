@@ -36,7 +36,16 @@
           "photosPermission": "Keepsake needs access to your photos so you can preserve them as memories.",
           "cameraPermission": "Keepsake needs your camera to capture a moment as it happens."
         }
-      ]
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Keepsake uses your microphone to record family conversations.",
+          "enableBackgroundRecording": false,
+          "enableBackgroundPlayback": false
+        }
+      ],
+      "expo-asset"
     ]
   }
 }

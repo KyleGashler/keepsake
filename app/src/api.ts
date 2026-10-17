@@ -204,6 +204,8 @@ export type MemoryCard = {
   participants: Person[];
 };
 
+export type TranscriptStatus = "PENDING" | "READY" | "FAILED";
+
 export type MediaItem = {
   id: string;
   type: "PHOTO" | "VIDEO" | "AUDIO";
@@ -213,11 +215,17 @@ export type MediaItem = {
   height: number;
   durationS: number | null;
   isOriginal: boolean;
+  /** Null for photos; audio and video clips are transcribed after upload. */
+  transcriptStatus: TranscriptStatus | null;
+  /** This clip's own transcript; the memory's transcript is what people read and edit. */
+  transcript: string | null;
 };
 
 export type Memory = MemoryCard & {
   story: string | null;
   transcript: string | null;
+  /** Rolled up from the clips: PENDING if any is, else FAILED if any did, else READY; null with no clips. */
+  transcriptStatus: TranscriptStatus | null;
   createdAt: string;
   author: Person | null;
   media: MediaItem[];
