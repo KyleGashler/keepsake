@@ -1,9 +1,20 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
-import { createElement, useState } from "react";
-import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
-import { apiSend, mediaUrl, useApi, type MediaItem, type Memory } from "../../src/api";
+import { createElement, useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Linking,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from "react-native";
+import { apiSend, mediaUrl, useApi, type Memory } from "../../src/api";
+import { AudioClip } from "../../src/components/audio";
 import { LittleMoon } from "../../src/components/brand";
 import {
   AppHeader,
@@ -14,7 +25,10 @@ import {
   PreviewNote,
   Screen,
 } from "../../src/components/ui";
-import { duration, longDate } from "../../src/format";
+import { longDate } from "../../src/format";
+
+/** How often to look again while a recording is being transcribed. */
+const TRANSCRIPT_POLL_MS = 3000;
 import { colors, radius, spacing, type } from "../../src/theme";
 
 /**
@@ -24,13 +38,25 @@ import { colors, radius, spacing, type } from "../../src/theme";
 export default function MemoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, loading, refetch } = useApi<{ memory: Memory }>(`/api/memories/${id}`);
-  const [tab, setTab] = useState<"story" | "transcript">("story");
-  const [editing, setEditing] = useState(false);
-  const [storyDraft, setStoryDraft] = useState("");
+  const [chosenTab, setTab] = useState<"story" | "transcript" | null>(null);
+  const [editing, setEditing] = useState<"story" | "transcript" | null>(null);
+  const [textDraft, setTextDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
   const [sharePressed, setSharePressed] = useState(false);
 
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
+  // The transcript is written in the background after upload; keep looking
+  // until it settles so it appears without a refresh.
+  const transcriptStatus = data?.memory.transcriptStatus ?? null;
+  useEffect(() => {
+    if (transcriptStatus !== "PENDING") return;
+    const timer = setInterval(() => void refetch(), TRANSCRIPT_POLL_MS);
+    return () => clearInterval(timer);
+  }, [transcriptStatus, refetch]);
+
+  // A failed poll shouldn't blank a page that's already showing the memory.
+  if (error && !data) return <ErrorState error={error} onRetry={refetch} />;
   if (loading && !data) return <Loading />;
   if (!data) return null;
 
@@ -38,15 +64,43 @@ export default function MemoryScreen() {
   const photos = memory.media.filter((m) => m.type === "PHOTO" || m.type === "VIDEO");
   const audio = memory.media.filter((m) => m.type === "AUDIO");
   const hero = photos[0];
+  const hasTranscript = Boolean(memory.transcript) || transcriptStatus !== null;
+  // A fresh recording has no story yet — open on the transcript it's waiting for.
+  const tab = !hasTranscript ? "story" : (chosenTab ?? (memory.story ? "story" : "transcript"));
 
-  async function saveStory() {
+  function startEditing(field: "story" | "transcript") {
+    setTextDraft((field === "story" ? memory.story : memory.transcript) ?? "");
+    setSaveError(null);
+    setEditing(field);
+  }
+
+  async function saveEdit() {
+    if (!editing) return;
     setSaving(true);
+    setSaveError(null);
     try {
-      await apiSend(`/api/memories/${memory.id}`, "PATCH", { story: storyDraft });
+      await apiSend(`/api/memories/${memory.id}`, "PATCH", { [editing]: textDraft });
       await refetch();
-      setEditing(false);
+      setEditing(null);
+    } catch (err) {
+      setSaveError((err as Error).message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function retryTranscripts() {
+    setRetrying(true);
+    try {
+      const failed = memory.media.filter((m) => m.transcriptStatus === "FAILED");
+      await Promise.all(
+        failed.map((m) => apiSend(`/api/memories/${memory.id}/media/${m.id}/transcribe`, "POST", {})),
+      );
+    } catch {
+      // Whatever didn't re-queue still shows as failed after the refetch.
+    } finally {
+      await refetch();
+      setRetrying(false);
     }
   }
 
@@ -83,12 +137,15 @@ export default function MemoryScreen() {
             ) : null}
           </View>
 
-          {memory.transcript ? (
+          {hasTranscript ? (
             <View style={styles.toggle}>
               {(["story", "transcript"] as const).map((key) => (
                 <Pressable
                   key={key}
-                  onPress={() => setTab(key)}
+                  onPress={() => {
+                    setTab(key);
+                    setEditing(null);
+                  }}
                   style={[styles.toggleItem, tab === key && styles.toggleItemActive]}
                 >
                   <Text style={[styles.toggleLabel, tab === key && { color: colors.ink }]}>
@@ -99,56 +156,85 @@ export default function MemoryScreen() {
             </View>
           ) : null}
 
-          {tab === "story" ? (
-            editing ? (
-              <View style={{ marginTop: spacing.lg }}>
-                <TextInput
-                  value={storyDraft}
-                  onChangeText={setStoryDraft}
-                  multiline
-                  style={styles.editor}
-                  placeholder="What happened, and why it mattered…"
-                  placeholderTextColor={colors.muted}
-                />
-                <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.md }}>
-                  <Button label={saving ? "Saving…" : "Save"} onPress={saveStory} disabled={saving} />
-                  <Button label="Cancel" variant="secondary" onPress={() => setEditing(false)} />
-                </View>
+          {editing ? (
+            <View style={{ marginTop: spacing.lg }}>
+              <TextInput
+                value={textDraft}
+                onChangeText={setTextDraft}
+                multiline
+                autoFocus
+                style={[styles.editor, editing === "transcript" && styles.editorTranscript]}
+                placeholder={
+                  editing === "story" ? "What happened, and why it mattered…" : "What was said, in your words…"
+                }
+                placeholderTextColor={colors.muted}
+              />
+              {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
+              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.md }}>
+                <Button label={saving ? "Saving…" : "Save"} onPress={saveEdit} disabled={saving} />
+                <Button label="Cancel" variant="secondary" onPress={() => setEditing(null)} />
               </View>
-            ) : (
-              <Pressable
-                onLongPress={() => {
-                  setStoryDraft(memory.story ?? "");
-                  setEditing(true);
-                }}
-              >
+            </View>
+          ) : tab === "story" ? (
+            <>
+              <Pressable onLongPress={() => startEditing("story")}>
                 <Text style={[type.story, { marginTop: spacing.lg }]}>
                   {memory.story ?? "No story written yet."}
                 </Text>
               </Pressable>
-            )
+              <EditLink label="Edit this story" onPress={() => startEditing("story")} />
+            </>
           ) : (
-            <Text style={[type.body, styles.transcript]}>{memory.transcript}</Text>
+            <>
+              {transcriptStatus === "PENDING" ? (
+                <View style={styles.transcriptState}>
+                  <ActivityIndicator color={colors.accentDeep} size="small" />
+                  <Text style={[type.caption, { flex: 1 }]}>
+                    {memory.transcript
+                      ? "Still transcribing a recording — this will update when it's done."
+                      : "Transcribing… the words will appear here in a moment."}
+                  </Text>
+                </View>
+              ) : null}
+              {transcriptStatus === "FAILED" ? (
+                <View style={styles.transcriptState}>
+                  <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
+                  <Text style={[type.caption, { flex: 1 }]}>
+                    We couldn't write the transcript for {audio.length > 1 ? "a recording" : "this recording"}.
+                  </Text>
+                  <Button
+                    label={retrying ? "Trying…" : "Try again"}
+                    variant="secondary"
+                    onPress={retryTranscripts}
+                    disabled={retrying}
+                  />
+                </View>
+              ) : null}
+              {memory.transcript ? (
+                <Pressable onLongPress={() => startEditing("transcript")}>
+                  <Text style={[type.body, styles.transcript]}>{memory.transcript}</Text>
+                </Pressable>
+              ) : null}
+              {/* Typing one in by hand is always allowed; the pipeline never overwrites it. */}
+              {memory.transcript || transcriptStatus !== "PENDING" ? (
+                <EditLink
+                  label={memory.transcript ? "Edit transcript" : "Write the transcript yourself"}
+                  onPress={() => startEditing("transcript")}
+                />
+              ) : null}
+            </>
           )}
-
-          {!editing && tab === "story" ? (
-            <Pressable
-              onPress={() => {
-                setStoryDraft(memory.story ?? "");
-                setEditing(true);
-              }}
-              style={styles.editLink}
-            >
-              <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
-              <Text style={styles.editLinkText}>Edit this story</Text>
-            </Pressable>
-          ) : null}
 
           {audio.length ? (
             <View style={{ marginTop: spacing.xl, gap: spacing.md }}>
               <Text style={type.label}>Recordings</Text>
               {audio.map((clip) => (
-                <AudioCard key={clip.id} clip={clip} />
+                <AudioClip
+                  key={clip.id}
+                  uri={mediaUrl(clip.url) as string}
+                  title={clip.caption ?? "Voice recording"}
+                  durationS={clip.durationS}
+                />
               ))}
             </View>
           ) : null}
@@ -270,18 +356,12 @@ function VideoHero({ url }: { url: string }) {
   );
 }
 
-/** Playback needs real recordings first; the card shows what's stored today. */
-function AudioCard({ clip }: { clip: MediaItem }) {
+function EditLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <View style={styles.audio}>
-      <View style={styles.audioPlay}>
-        <Ionicons name="play" size={16} color={colors.surface} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: 14.5, color: colors.ink }}>{clip.caption ?? "Voice recording"}</Text>
-        <Text style={type.caption}>{duration(clip.durationS)} · playback coming with capture</Text>
-      </View>
-    </View>
+    <Pressable onPress={onPress} style={styles.editLink}>
+      <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
+      <Text style={styles.editLinkText}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -331,27 +411,20 @@ const styles = StyleSheet.create({
     lineHeight: 28,
     color: colors.ink,
   },
-  editLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md },
-  editLinkText: { fontSize: 13.5, color: colors.accentDeep, fontWeight: "600" },
-  endMark: { alignItems: "center", marginTop: spacing.xxl, marginBottom: spacing.xl },
-  audio: {
+  editorTranscript: { fontFamily: undefined, fontSize: 14.5, lineHeight: 25 },
+  transcriptState: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
+    marginTop: spacing.lg,
+    backgroundColor: colors.surfaceAlt,
     borderRadius: radius.md,
     padding: spacing.md,
   },
-  audioPlay: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentDeep,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  error: { ...type.caption, color: "#9C4A38", marginTop: spacing.sm },
+  editLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.md },
+  editLinkText: { fontSize: 13.5, color: colors.accentDeep, fontWeight: "600" },
+  endMark: { alignItems: "center", marginTop: spacing.xxl, marginBottom: spacing.xl },
   thumb: { width: 132, height: 132, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
   people: { flexDirection: "row", flexWrap: "wrap", gap: spacing.lg },
   personRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },

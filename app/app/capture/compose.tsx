@@ -23,7 +23,8 @@ import {
   tooLargeMessage,
   type UploadLimits,
 } from "../../src/api";
-import { AppHeader, Button, Loading, PreviewNote, Screen } from "../../src/components/ui";
+import { AudioClip } from "../../src/components/audio";
+import { AppHeader, Button, Loading, Screen } from "../../src/components/ui";
 import { draft } from "../../src/draft";
 import { colors, radius, spacing, type } from "../../src/theme";
 
@@ -56,7 +57,6 @@ export default function ComposeScreen() {
   const [assets] = useState(() => draft.take());
   const [title, setTitle] = useState("");
   const [story, setStory] = useState("");
-  const [transcript, setTranscript] = useState("");
   const [date, setDate] = useState(today());
   const [location, setLocation] = useState("");
   const [authorId, setAuthorId] = useState<string | null>(null);
@@ -75,6 +75,11 @@ export default function ComposeScreen() {
   // Assets whose size the picker didn't report are caught by init's 413 instead.
   const oversized = limits ? assets.find((a) => a.bytes !== undefined && a.bytes > limits.maxUploadBytes) : undefined;
   const oversizedMessage = oversized && limits ? tooLargeMessage(oversized.mime, limits.maxUploadBytes) : null;
+
+  // Audio rides as a playable card, never through <Image>.
+  const recordings = assets.filter((a) => a.mime.startsWith("audio/"));
+  const visuals = assets.filter((a) => !a.mime.startsWith("audio/"));
+  const audioMode = params.mode === "audio" || recordings.length > 0;
 
   const people = peopleData?.people ?? [];
   const author = authorId ?? people.find((p) => p.role === "PARENT")?.id ?? people[0]?.id ?? null;
@@ -106,14 +111,20 @@ export default function ComposeScreen() {
         );
         // Everything but the caption comes from the server's own reading of the
         // bytes; the picker's dimensions only fill in what it couldn't measure.
+        // Audio has no dimensions to send; its length comes from the recorder.
+        const audio = uploaded.type === "AUDIO";
         media.push({
           type: uploaded.type,
           storageKey: uploaded.key,
           mimeType: uploaded.mimeType,
           bytes: uploaded.bytes,
           sha256: uploaded.sha256,
-          width: uploaded.width ?? asset.width ?? 1200,
-          height: uploaded.height ?? asset.height ?? 900,
+          ...(audio
+            ? { durationS: asset.durationS && asset.durationS > 0 ? Math.round(asset.durationS) : undefined }
+            : {
+                width: uploaded.width ?? asset.width ?? 1200,
+                height: uploaded.height ?? asset.height ?? 900,
+              }),
         });
       }
       setProgress(assets.length ? "Preserving…" : null);
@@ -121,7 +132,6 @@ export default function ComposeScreen() {
       const res = await apiSend<{ memory: Memory }>("/api/memories", "POST", {
         title: title.trim(),
         story: story.trim() || undefined,
-        transcript: transcript.trim() || undefined,
         occurredAt: toIso(date),
         location: location.trim() || undefined,
         authorId: author ?? undefined,
@@ -155,10 +165,47 @@ export default function ComposeScreen() {
           </View>
         ) : null}
 
-        {assets.length ? (
+        {recordings.length ? (
+          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
+            {recordings.map((asset, i) => (
+              <AudioClip
+                key={asset.uri}
+                uri={asset.uri}
+                title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
+                durationS={asset.durationS}
+              />
+            ))}
+          </View>
+        ) : audioMode ? (
+          // Arrived without a clip (a deep link, or a reload that dropped the
+          // in-memory draft): offer the recorder rather than an empty form.
+          <View style={styles.recordPrompt}>
+            <Text style={[type.body, { flex: 1 }]}>No recording attached yet.</Text>
+            <Button
+              label="Record"
+              icon="mic-outline"
+              onPress={() =>
+                router.replace({
+                  pathname: "/capture/record",
+                  params: {
+                    ...(params.prompt ? { prompt: params.prompt } : {}),
+                    ...(params.collectionId ? { collectionId: params.collectionId } : {}),
+                  },
+                })
+              }
+            />
+          </View>
+        ) : null}
+        {audioMode ? (
+          <Text style={[type.caption, { marginTop: spacing.sm }]}>
+            The transcript will be written automatically after you save.
+          </Text>
+        ) : null}
+
+        {visuals.length ? (
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg }}>
             <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              {assets.map((asset) => (
+              {visuals.map((asset) => (
                 <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.thumb} contentFit="cover" />
               ))}
             </View>
@@ -175,25 +222,6 @@ export default function ComposeScreen() {
             style={styles.input}
           />
         </Field>
-
-        {params.mode === "audio" ? (
-          <>
-            <Field label="Transcript">
-              <TextInput
-                value={transcript}
-                onChangeText={setTranscript}
-                placeholder={"Mae: The moon is following our car.\nAli: It does look like that, doesn't it?"}
-                placeholderTextColor={colors.muted}
-                multiline
-                style={[styles.input, styles.multiline]}
-              />
-            </Field>
-            <PreviewNote>
-              Recording and automatic transcription arrive with the AI phase. Typed transcripts are stored in
-              the same field, so nothing has to be migrated later.
-            </PreviewNote>
-          </>
-        ) : null}
 
         <Field label="The story">
           <TextInput
@@ -339,6 +367,18 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     marginTop: spacing.md,
+  },
+  recordPrompt: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    paddingLeft: spacing.lg,
+    marginTop: spacing.lg,
   },
   thumb: { width: 96, height: 96, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
   input: {

@@ -33,6 +33,15 @@ export function duration(seconds?: number | null) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
+/** Always-on m:ss for timers and scrubbers — "0:00" rather than nothing. */
+export function clock(seconds: number) {
+  const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
 /** "5 years old" / "2 years, 4 months" — used on person cards. */
 export function ageFrom(birthIso?: string | null) {
   if (!birthIso) return null;

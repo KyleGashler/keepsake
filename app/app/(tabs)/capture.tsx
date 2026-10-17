@@ -4,7 +4,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { ShootingStar } from "../../src/components/brand";
-import { AppHeader, PreviewNote, Screen } from "../../src/components/ui";
+import { AppHeader, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
 import { colors, radius, spacing, type } from "../../src/theme";
 
@@ -56,7 +56,7 @@ export default function CaptureScreen() {
 
   async function choose(key: string) {
     if (key === "write") return router.push("/capture/compose");
-    if (key === "record") return router.push({ pathname: "/capture/compose", params: { mode: "audio" } });
+    if (key === "record") return router.push("/capture/record");
 
     setBusy(key);
     try {
@@ -113,11 +113,6 @@ export default function CaptureScreen() {
             </Pressable>
           ))}
         </View>
-
-        <PreviewNote>
-          Audio capture opens the written form for now — recording, transcription, and AI narratives are the
-          next milestone.
-        </PreviewNote>
       </Screen>
     </>
   );
