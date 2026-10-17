@@ -13,8 +13,8 @@ primary_region = "sjc"
   MEDIA_DIR = "/data/media"
   SEED_DEMO = "1"
   # One machine: the job worker (transcription) runs inside the API process.
-  # DEEPGRAM_API_KEY is a secret (`fly secrets set`); without it clips get
-  # the stub transcriber's sample text.
+  # DEEPGRAM_API_KEY is a secret (`fly secrets set`); without it clips are
+  # marked FAILED and can be retried from the memory page once it's set.
   WORKER_INLINE = "1"
   # Originals live in S3; MEDIA_DIR still serves pre-A5 /media/uploads files.
   STORAGE_PROVIDER = "s3"
