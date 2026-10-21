@@ -27,8 +27,7 @@ export function ChildPortrait({
   uri: string | null | undefined;
   style?: StyleProp<ViewStyle>;
 }) {
-  // A just-picked photo is a local blob:/data:/file: URI; only API paths need the host.
-  const resolved = uri && /^[a-z][a-z0-9+.-]*:/i.test(uri) ? uri : mediaUrl(uri);
+  const resolved = mediaUrl(uri);
   return (
     <View
       style={[

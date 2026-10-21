@@ -27,7 +27,9 @@ export function mediaUrl(path: string): string;
 export function mediaUrl(path?: string | null): string | undefined;
 export function mediaUrl(path?: string | null) {
   if (!path) return undefined;
-  return path.startsWith("http") ? path : `${API_URL}${path}`;
+  // Absolute URLs (presigned S3) and local URIs (a just-picked photo's
+  // blob:/data:/file:) are already where the bytes are.
+  return /^(https?|blob|data|file):/.test(path) ? path : `${API_URL}${path}`;
 }
 
 export async function apiGet<T>(path: string): Promise<T> {
