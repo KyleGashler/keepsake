@@ -89,3 +89,25 @@ export function count(n: number, singular: string, plural = `${singular}s`) {
 export function errorMessage(err: unknown, fallback = "") {
   return err instanceof Error ? err.message : fallback;
 }
+
+/** "Sep 2" — a date under a year heading, where the year is already said. */
+export function monthDay(iso: string) {
+  const d = new Date(iso);
+  return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
+}
+
+/**
+ * How old a child was on a given day: "age 4", "18 months", "newborn". Null
+ * without a birthday, or for a day before it.
+ */
+export function ageOn(birthIso: string | null | undefined, atIso: string) {
+  if (!birthIso) return null;
+  const birth = new Date(birthIso);
+  const at = new Date(atIso);
+  let months = (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth());
+  if (at.getDate() < birth.getDate()) months -= 1;
+  if (months < 0) return null;
+  if (months < 1) return "newborn";
+  if (months < 24) return `${months} ${months === 1 ? "month" : "months"}`;
+  return `age ${Math.floor(months / 12)}`;
+}

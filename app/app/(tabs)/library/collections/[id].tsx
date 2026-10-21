@@ -1,87 +1,61 @@
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { useApi, type CollectionArchivePayload } from "../../../../src/api";
-import { Column, IconDisc, PageHeader } from "../../../../src/components/journey";
-import { Button, EmptyState, ErrorState, Loading, MemoryRow } from "../../../../src/components/ui";
-import { routes } from "../../../../src/routes";
-import { colors, spacing } from "../../../../src/theme";
+import { archivePath, NO_FILTERS, type ArchiveFilters } from "../../../../src/archive";
+import { CollectionArchive } from "../../../../src/components/collection-archive";
+import { ErrorState, Loading } from "../../../../src/components/ui";
+import { colors } from "../../../../src/theme";
 
 /**
- * One collection's archive. A stub that proves the route and the data — L4
- * replaces the body with the reusable CollectionArchive (child header, search,
- * year chips, entries rendered by `collection.kind`).
+ * One collection's archive. The filters live here, in the screen, so a memory
+ * opened from a filtered list comes back to the same filters (and scroll):
+ * memory detail is pushed over the tabs and this screen stays mounted.
  */
 export default function CollectionScreen() {
   const { id: collectionId } = useLocalSearchParams<{ id: string }>();
-  const { data, error, loading, refetch } = useApi<CollectionArchivePayload>(
-    `/api/collections/${collectionId}`,
-  );
-  const insets = useSafeAreaInsets();
+  const [filters, setFilters] = useState<ArchiveFilters>(NO_FILTERS);
+  const path = archivePath(collectionId, filters);
+  const { data, error, loading, refetch } = useApi<CollectionArchivePayload>(path);
 
+  // What's on screen was fetched for `shownPath`. The list dims only while new
+  // filters load, not for a quiet refresh on return.
+  const [shownPath, setShownPath] = useState(path);
+  if (!loading && shownPath !== path) setShownPath(path);
+
+  // Back from a memory (edited, moved, deleted) or from Capture: refresh in
+  // place. Only on a return — the first focus is the mount, which useApi has
+  // already fetched for, and a filter change fetches through the new path.
+  const refetchRef = useRef(refetch);
+  useEffect(() => {
+    refetchRef.current = refetch;
+  }, [refetch]);
+  const focusedBefore = useRef(false);
   useFocusEffect(
     useCallback(() => {
-      void refetch();
-    }, [refetch]),
+      if (focusedBefore.current) void refetchRef.current();
+      focusedBefore.current = true;
+    }, []),
   );
 
-  const capture = () =>
-    router.push({ pathname: "/capture/compose", params: { collectionId } });
-
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
-  if (loading && !data) return <Loading />;
-  if (!data) return null;
-
-  const { collection, memories } = data;
-  // `child` is part of the journey contract; older servers don't send it.
-  const child = data.child ?? null;
+  if (!data) {
+    return (
+      <View style={styles.screen}>
+        {error ? <ErrorState error={error} onRetry={refetch} /> : <Loading />}
+      </View>
+    );
+  }
 
   return (
-    <ScrollView
-      style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
-      showsVerticalScrollIndicator={false}
-    >
-      <Column>
-        <PageHeader
-          backLabel={child?.name ?? collection.personName ?? "Library"}
-          backFallback={child ? routes.child(child.id) : routes.library}
-          title={collection.name}
-          subtitle={collection.description ?? undefined}
-        >
-          <IconDisc icon={collection.icon} color={collection.color} size={48} style={styles.disc} />
-        </PageHeader>
-
-        {memories.length === 0 ? (
-          <EmptyState
-            title="Nothing here yet"
-            body="This collection is waiting for its first memory."
-            action={<Button label="Preserve the first one" icon="add" onPress={capture} />}
-          />
-        ) : (
-          <>
-            <View>
-              {memories.map((memory) => (
-                <MemoryRow key={memory.id} memory={memory} />
-              ))}
-            </View>
-            <Button
-              label="Add to this collection"
-              variant="secondary"
-              icon="add"
-              onPress={capture}
-              style={styles.add}
-            />
-          </>
-        )}
-      </Column>
-    </ScrollView>
+    <CollectionArchive
+      data={data}
+      filters={filters}
+      onFiltersChange={setFilters}
+      loading={shownPath !== path}
+    />
   );
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  disc: { marginTop: spacing.md },
-  add: { marginTop: spacing.xl, alignSelf: "center" },
+  screen: { flex: 1, backgroundColor: colors.bg, justifyContent: "center" },
 });
