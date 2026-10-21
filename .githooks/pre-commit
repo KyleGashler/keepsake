@@ -1,0 +1,18 @@
+#!/bin/sh
+# Lints the whole repo before each commit. Type-aware rules read types from
+# app/ and server/ node_modules, so all three installs have to be present.
+# Skip in an emergency with `git commit --no-verify`.
+
+root=$(git rev-parse --show-toplevel)
+cd "$root" || exit 1
+
+missing=""
+for dir in . app server; do
+  [ -d "$dir/node_modules" ] || missing="$missing $dir"
+done
+if [ -n "$missing" ]; then
+  echo "pre-commit: run \`npm install\` in:$missing" >&2
+  exit 1
+fi
+
+exec node_modules/.bin/oxlint

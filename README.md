@@ -347,6 +347,11 @@ so install `app/` and `server/` first; their `node_modules` supply the types.
 npm install && npm run lint   # from the repo root; `npm run lint:fix` applies safe fixes
 ```
 
+The root `npm install` also points git at `.githooks/`, whose `pre-commit` runs
+the same lint and blocks the commit on any error (`git commit --no-verify` skips
+it). A fresh clone or worktree needs `npm install` in the root, `app/` and
+`server/` before it can commit.
+
 `node_modules` lives in an anonymous volume that shadows the image's copy, so a
 new dependency needs the volume thrown away as well as a rebuild — otherwise
 Metro reports it as unresolvable:
