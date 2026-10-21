@@ -357,6 +357,151 @@ work; use Expo Go there.
 - Web recorder: stream chunks to the multipart upload as they're recorded,
   instead of holding the whole clip in browser memory.
 
+## Library journey redesign (2026-10-21)
+
+A visual overhaul, built as one end-to-end journey before anything else is
+restyled: **Library → Child Profiles → a child's Collections → one Collection
+→ one Memory**. Mockups live in `design/mockups/` (gitignored — binaries stay
+out of git):
+
+| File | Screen |
+| --- | --- |
+| `00-journey-overview.png` | Screens 1–3 side by side |
+| `01-library.png` | Library landing: three pillar cards with cover photo, edit pencil, chevron |
+| `02-child-profiles.png` | Child selection: one photo card per child, name + age |
+| `03-child-collections.png` | One child's collections: photo, name, age · N collections · N memories, search, icon list, Create a Collection |
+| `05-memory-detail.png` | Memory detail, annotated, plus full-screen viewer, options menu, edit sheet, transcript view |
+
+There is no mockup for a single collection's archive (screen 4). It is designed
+from the same visual language and adjusted when one arrives.
+
+Ground rules beyond the usual ones:
+
+- **Data-driven.** Names, ages, counts, collection lists come from the API.
+  Nothing about Banks is hardcoded; any number of children works, including zero.
+- **A child's content is theirs.** A child's collections are `Collection` rows
+  with `personId` = the child. A memory shows up under a second child only by
+  being filed in one of that child's collections too (`MemoryCollection` is
+  already many-to-many). Counts are per child, distinct by memory.
+- **Copy never guesses pronouns.** The mockup's "Different parts of her story"
+  becomes "Different parts of Banks's story".
+- **Back preserves place.** Library screens live in a nested stack inside the
+  Library tab, so the tab bar stays visible and each tab keeps its own history.
+  Memory detail is immersive (no tab bar) and is pushed on the root stack over
+  the tabs, so backing out lands on the exact archive it came from.
+
+### Design language (from the mockups)
+
+- Paper `#FBF8F2`, ink a deep teal `#123F45`, softer teal-grey for subtitles,
+  golden-honey accent for the eyebrow ("LITTLE BY LITTLE") and the four-point
+  sparkle. Capture is a raised deep-teal disc in the middle of the tab bar.
+- Display serif for titles and row names (DM Serif Display), humanist sans for
+  everything else (Nunito Sans), both via `@expo-google-fonts/*` + `expo-font`.
+- Five tabs: Home, Library, Capture (center), Timeline, Mosaic. Timeline is a
+  placeholder screen in this milestone.
+- Child collection discs, in order: Milestones gold/sparkles, Day-to-Day Moments
+  sage/rainbow, Quotes & Conversations deep teal/speech bubble, Birthdays
+  terracotta/cake, Kindness & Character forest green/heart, Talents & Hobbies
+  dusk blue/butterfly, Phases & Obsessions pale peach with a gold moon.
+
+### API contract (L1 implements, L2–L5 consume)
+
+Schema (one migration, `library_journey`):
+
+- `Collection.kind String?` — template key (`milestones`, `day_to_day`,
+  `quotes`, `birthdays`, `kindness`, `talents`, `phases`); null for a family's
+  own. `Collection.icon String` and `Collection.color String` — a disc's glyph
+  key and hex. Custom collections pick from the same icon set.
+- `Person.photoKey String?` — storage key of an uploaded profile photo.
+- `PillarCover { familyId, pillar, storageKey }`, `@@id([familyId, pillar])`.
+- `MemoryFavorite { userId, memoryId, createdAt }` — per signed-in user.
+- `MemoryLink { memoryId, linkedId }` — a manual "related memory", stored once
+  with the smaller id first.
+
+The child-collection template lives in one server module and is the only
+source of the seven defaults (name, description, kind, icon, color, order).
+`ensureChildCollections(personId)` is idempotent: it runs when a CHILD is
+created and on boot for existing children, matching existing rows by `kind`,
+then by name (with `Everyday Moments` → Day-to-Day Moments as an alias), and
+creating what's missing. Collections it doesn't recognise are left alone.
+
+Endpoints (all family-scoped):
+
+- `GET /api/library` → `{ pillars: [{ key, name, tagline, coverUrl, customCover }] }`
+- `PUT /api/library/pillars/:key/cover` `{ key }` (a finalized upload key) /
+  `DELETE` to go back to the default.
+- `GET /api/children` → `{ children: ChildSummary[] }`, where
+  `ChildSummary = Person & { photoUrl: string | null, collectionCount, memoryCount }`.
+  `collectionCount` is the child's CHILD_PROFILES collections; `memoryCount` is
+  distinct, non-deleted memories in any collection of theirs.
+- `GET /api/children/:id` → `{ child: ChildSummary, collections: Collection[] }`
+  (CHILD_PROFILES, sorted).
+- `PATCH /api/people/:id` `{ name?, birthDate?, photoKey? | null }`.
+- `POST /api/collections` also takes `icon`, `color`.
+- `GET /api/collections/:id?q=&year=` → `{ collection, child: ChildSummary | null,
+  years: [{ year, count }], memories: MemoryCard[] }`, newest first; `years`
+  ignores the `year` filter so the chips don't vanish.
+- `GET /api/memories/:id` gains `isFavorite` and `related: MemoryCard[]` (manual
+  links first, then suggestions sharing a collection or person, nearest in
+  date, max 8).
+- `PUT|DELETE /api/memories/:id/favorite`; `POST /api/memories/:id/links`
+  `{ linkedId }`, `DELETE /api/memories/:id/links/:linkedId`.
+- `PATCH /api/memories/:id` also takes `collectionIds` (replaces the set; covers
+  "add to another collection" and "move"); `DELETE /api/memories/:id` soft-deletes.
+- `Collection` DTO gains `kind`, `icon`, `color`; `MemoryCard` gains
+  `mediaTypes: ("PHOTO"|"VIDEO"|"AUDIO")[]` and `isTextOnly`.
+
+### Tasks
+
+#### L1. Server: data and API for the journey
+Everything in the contract above, plus the seed: three children — Banks (born
+2020-05-14), Bear (2022-03-02), Collins (2026-02-10) — each with the default
+collections, and a handful of text-only memories across Banks's collections
+(one quote, one milestone, one birthday, one shared with Bear) so every
+screen has content on a fresh database. No fake media.
+
+#### L2. Client foundation
+Theme tokens and fonts; the five-tab bar with the raised Capture button; the
+Timeline placeholder; the nested Library stack (`app/(tabs)/library/…`) with
+routes for landing, children, one child, one collection; shared primitives
+(page header with eyebrow / back label / title + sparkle / subtitle / gear,
+photo card, search field, icon disc, list row); `api.ts` types for the
+contract. Screens may be stubs that prove the navigation.
+
+#### L3. Screens 1–3
+Library landing (pillar cards; pencil picks and uploads a cover), Child
+Profiles (photo cards, empty state, add a child), the child's Collections
+(header, client-side search, list, Create a Collection sheet with name,
+description, icon, colour), and a child edit sheet behind the gear (photo,
+name, birthday). Arrival Stories and Family Life keep working, restyled
+minimally, until their own pass.
+
+#### L4. Collection archive (screen 4)
+One reusable `CollectionArchive`: child header, collection disc + title +
+description, search, year chips, memories grouped by year. Entry rendering is
+picked by `collection.kind` through a small registry — quotes get a pull-quote
+card, everything else a photo-or-text row — so a new kind adds a renderer, not
+a screen. Empty state leads to Capture with the collection preselected.
+
+#### L5. Memory detail (screen 5)
+Rebuild `app/memory/[id].tsx` from the annotated mockup: immersive hero
+(photo, or video with play/scrub/full screen; back, favourite, ⋯ menu over
+it), Story / Original Words toggle, date, title, edit pencil, people, media
+gallery (+N), audio with waveform, Memory Details (season, where, collection),
+Related Memories; full-screen swipeable viewer; options menu (edit, add to
+another collection, link a memory, move date, delete); edit sheet. Every
+section renders only when it has content — a text-only memory is a complete
+page, not a photo memory with holes.
+
+#### L6. Walkthrough
+Fresh database, web and phone: tap through the whole journey for Banks, back
+out step by step, switch to Bear and confirm nothing of Banks's leaks across
+except the shared memory.
+
+Order: **L1 ∥ L2**, then **L3 ∥ L4 ∥ L5**, then L6.
+
+---
+
 ## Dependency graph
 
 ```
