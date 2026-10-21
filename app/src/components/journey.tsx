@@ -3,6 +3,7 @@ import { Image } from "expo-image";
 import { router, type Href } from "expo-router";
 import { useId, type ReactNode } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -116,6 +117,7 @@ export function PageHeader({
   onBack,
   backFallback = "/library",
   sparkle = false,
+  sparkleAtEnd = false,
   onSettings,
   children,
 }: {
@@ -129,6 +131,8 @@ export function PageHeader({
   backFallback?: Href;
   /** The gold four-point star after the title. */
   sparkle?: boolean;
+  /** Puts the sparkle at the far right of the title line, as Child Profiles draws it. */
+  sparkleAtEnd?: boolean;
   /** Shows the gear button top-right. */
   onSettings?: () => void;
   /** Anything that belongs between the subtitle and the page body. */
@@ -163,13 +167,20 @@ export function PageHeader({
             <Text style={styles.title} accessibilityRole="header">
               {title}
             </Text>
-            {sparkle ? <Sparkle size={26} style={styles.titleSparkle} /> : null}
+            {sparkle ? (
+              <Sparkle size={26} style={sparkleAtEnd ? styles.titleSparkleEnd : styles.titleSparkle} />
+            ) : null}
           </View>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
         </View>
         {/* Without a back row, the gear sits level with the title, as on the Library landing. */}
-        {onSettings && !backLabel ? <GearButton onPress={onSettings} /> : null}
+        {onSettings && !backLabel ? (
+          <View style={eyebrow ? styles.gearBesideTitle : undefined}>
+            <GearButton onPress={onSettings} />
+          </View>
+        ) : null}
       </View>
+      {/* Full width, under the gear too, so a one-line subtitle stays one line. */}
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       {children}
     </View>
   );
@@ -205,7 +216,9 @@ export function PhotoCard({
   onPress,
   onEdit,
   editLabel = "Change photo",
-  height = 196,
+  height = 170,
+  backdrop,
+  busy = false,
   style,
 }: {
   title: string;
@@ -217,64 +230,80 @@ export function PhotoCard({
   onEdit?: () => void;
   editLabel?: string;
   height?: number;
+  /** Drawn instead of the photo when there's no `imageUrl` (e.g. a child's monogram). */
+  backdrop?: ReactNode;
+  /** Swaps the pencil for a spinner while a new photo uploads. */
+  busy?: boolean;
   style?: StyleProp<ViewStyle>;
 }) {
   const gradientId = `scrim-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const uri = mediaUrl(imageUrl);
+  // The pencil is the card's sibling, not its child: a button inside a button
+  // is invalid on the web and steals the card's press on native.
   return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
-      style={({ pressed }) => [styles.photoCard, { height }, pressed && styles.cardPressed, style]}
-    >
-      {uri ? (
-        <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
-      ) : null}
-      {/* Paper fading in from the left and the bottom, so ink type reads over any photo. */}
-      <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
-        <Defs>
-          <LinearGradient id={`${gradientId}-x`} x1="0" y1="0" x2="1" y2="0">
-            <Stop offset="0" stopColor={colors.bg} stopOpacity={0.92} />
-            <Stop offset="0.38" stopColor={colors.bg} stopOpacity={0.6} />
-            <Stop offset="0.7" stopColor={colors.bg} stopOpacity={0} />
-          </LinearGradient>
-          <LinearGradient id={`${gradientId}-y`} x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0.45" stopColor={colors.bg} stopOpacity={0} />
-            <Stop offset="1" stopColor={colors.bg} stopOpacity={0.55} />
-          </LinearGradient>
-        </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId}-x)`} />
-        <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId}-y)`} />
-      </Svg>
+    <View style={[styles.photoCardShell, { height }, style]}>
+      <Pressable
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={subtitle ? `${title}, ${subtitle}` : title}
+        style={({ pressed }) => [styles.photoCard, pressed && styles.cardPressed]}
+      >
+        {uri ? (
+          <Image source={{ uri }} style={StyleSheet.absoluteFill} contentFit="cover" transition={250} />
+        ) : (
+          backdrop
+        )}
+        {/* Paper fading in from the left and the bottom, so ink type reads over any photo. */}
+        <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
+          <Defs>
+            <LinearGradient id={`${gradientId}-x`} x1="0" y1="0" x2="1" y2="0">
+              <Stop offset="0" stopColor={colors.bg} stopOpacity={0.92} />
+              <Stop offset="0.38" stopColor={colors.bg} stopOpacity={0.6} />
+              <Stop offset="0.7" stopColor={colors.bg} stopOpacity={0} />
+            </LinearGradient>
+            <LinearGradient id={`${gradientId}-y`} x1="0" y1="0" x2="0" y2="1">
+              <Stop offset="0.45" stopColor={colors.bg} stopOpacity={0} />
+              <Stop offset="1" stopColor={colors.bg} stopOpacity={0.55} />
+            </LinearGradient>
+          </Defs>
+          <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId}-x)`} />
+          <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId}-y)`} />
+        </Svg>
 
-      <View style={styles.photoCardText}>
-        <Text style={styles.photoCardTitle} numberOfLines={2}>
-          {title}
-        </Text>
-        {subtitle ? (
-          <Text style={styles.photoCardSubtitle} numberOfLines={2}>
-            {subtitle}
+        <View style={styles.photoCardText}>
+          <Text style={styles.photoCardTitle} numberOfLines={2}>
+            {title}
           </Text>
-        ) : null}
-      </View>
+          {subtitle ? (
+            <Text style={styles.photoCardSubtitle} numberOfLines={2}>
+              {subtitle}
+            </Text>
+          ) : null}
+        </View>
 
-      <View style={styles.chevronDisc} pointerEvents="none">
-        <Ionicons name="chevron-forward" size={22} color={colors.ink} />
-      </View>
+        <View style={styles.chevronDisc}>
+          <Ionicons name="chevron-forward" size={20} color={colors.ink} />
+        </View>
+      </Pressable>
 
       {onEdit ? (
         <Pressable
           onPress={onEdit}
-          hitSlop={8}
+          disabled={busy}
+          hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel={editLabel}
+          accessibilityState={{ busy }}
           style={({ pressed }) => [styles.pencil, pressed && styles.pressed]}
         >
-          <Ionicons name="pencil" size={16} color={colors.ink} />
+          {busy ? (
+            <ActivityIndicator size="small" color={colors.ink} />
+          ) : (
+            <Ionicons name="pencil" size={15} color={colors.ink} />
+          )}
         </Pressable>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
@@ -397,9 +426,9 @@ const styles = StyleSheet.create({
   back: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: -4 },
   backLabel: { fontFamily: fonts.sans, fontSize: 17, color: colors.ink },
   gear: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.surfaceAlt,
@@ -417,6 +446,9 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   titleSparkle: { marginLeft: 6, marginTop: 2 },
+  /** Level with the title rather than the eyebrow above it. */
+  gearBesideTitle: { marginTop: spacing.md + 2 },
+  titleSparkleEnd: { marginLeft: "auto", paddingLeft: spacing.md, marginTop: 4 },
   subtitle: {
     fontFamily: fonts.sans,
     fontSize: 16.5,
@@ -425,30 +457,36 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
 
+  // Measured off design/mockups/01 and 02 (≈2.07 px per pt).
+  photoCardShell: { width: "100%", borderRadius: 14, backgroundColor: colors.surfaceAlt, ...shadow },
   photoCard: {
-    width: "100%",
-    borderRadius: radius.lg,
+    flex: 1,
+    borderRadius: 14,
     overflow: "hidden",
-    backgroundColor: colors.surfaceAlt,
     justifyContent: "flex-end",
-    ...shadow,
   },
   cardPressed: { opacity: 0.9, transform: [{ scale: 0.995 }] },
   photoCardText: {
-    paddingLeft: spacing.xl,
-    paddingRight: 84,
-    paddingBottom: spacing.xl,
-    gap: 2,
+    paddingLeft: spacing.lg,
+    paddingRight: 72,
+    paddingBottom: spacing.lg,
   },
-  photoCardTitle: { fontFamily: fonts.display, fontSize: 34, lineHeight: 39, color: colors.ink },
-  photoCardSubtitle: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 21, color: colors.inkSoft },
+  photoCardTitle: {
+    fontFamily: fonts.display,
+    fontSize: 33,
+    lineHeight: 38,
+    letterSpacing: -0.5,
+    color: colors.ink,
+  },
+  photoCardSubtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 20, color: colors.inkSoft },
   chevronDisc: {
     position: "absolute",
-    right: spacing.lg,
+    pointerEvents: "none",
+    right: spacing.md,
     bottom: spacing.lg,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -456,11 +494,11 @@ const styles = StyleSheet.create({
   },
   pencil: {
     position: "absolute",
-    top: spacing.md,
-    right: spacing.md,
-    width: 38,
-    height: 38,
-    borderRadius: 19,
+    top: spacing.sm + 2,
+    right: spacing.sm + 2,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
@@ -480,28 +518,31 @@ const styles = StyleSheet.create({
   },
   searchInput: {
     flex: 1,
+    // The web draws a focus ring on the input inside the pill; the pill is the field.
+    outlineWidth: 0,
     height: "100%",
     fontFamily: fonts.sans,
     fontSize: 16,
     color: colors.ink,
   },
 
+  // The mockup's rhythm (03): discs nearly touching, about 58pt a row.
   row: { flexDirection: "row", alignItems: "stretch", gap: spacing.lg },
-  rowLeading: { justifyContent: "center", paddingVertical: spacing.sm },
+  rowLeading: { justifyContent: "center", paddingVertical: 3 },
   rowBody: {
     flex: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingVertical: spacing.md + 2,
+    paddingVertical: spacing.sm,
   },
   rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  rowTitle: { fontFamily: fonts.display, fontSize: 21, lineHeight: 27, color: colors.ink },
+  rowTitle: { fontFamily: fonts.display, fontSize: 20, lineHeight: 25, color: colors.ink },
   rowDescription: {
     fontFamily: fonts.sans,
-    fontSize: 14.5,
-    lineHeight: 20,
+    fontSize: 14,
+    lineHeight: 19,
     color: colors.inkSoft,
-    marginTop: 2,
+    marginTop: 1,
   },
 });
