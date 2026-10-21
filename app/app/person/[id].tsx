@@ -1,4 +1,4 @@
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useApi, type MemoryCard, type Person } from "../../src/api";
 import { DreamCloud } from "../../src/components/brand";
@@ -13,6 +13,7 @@ import {
   SectionHeader,
 } from "../../src/components/ui";
 import { ageFrom } from "../../src/format";
+import { openInLibrary, routes } from "../../src/routes";
 import { colors, radius, spacing, type } from "../../src/theme";
 
 type Payload = {
@@ -59,7 +60,7 @@ export default function PersonScreen() {
               {data.collections.map((collection) => (
                 <Pressable
                   key={collection.id}
-                  onPress={() => router.push(`/collection/${collection.id}`)}
+                  onPress={() => openInLibrary(routes.collection(collection.id))}
                   style={styles.chip}
                 >
                   <Text style={styles.chipLabel}>{collection.name}</Text>

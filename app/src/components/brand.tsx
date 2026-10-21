@@ -1,4 +1,4 @@
-import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, View, type ColorValue, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
 import { colors } from "../theme";
 import {
@@ -120,12 +120,29 @@ export function KeepsakeMark({
 // Whimsical shapes & accents
 // ---------------------------------------------------------------------------
 
-/** Twinkle — the four-point star on its own. */
-export function Twinkle({ size = 14, color = colors.accent, opacity = 1, style }: ShapeProps) {
+/**
+ * Twinkle — the four-point star on its own. Pass `strokeWidth` (in 24-unit
+ * viewBox terms) to draw it outlined, as the redesign's sparkle does.
+ */
+export function Twinkle({
+  size = 14,
+  color = colors.accent,
+  opacity = 1,
+  style,
+  strokeWidth,
+}: Omit<ShapeProps, "color"> & { color?: ColorValue; strokeWidth?: number }) {
+  const outlined = strokeWidth !== undefined;
   return (
     <View style={[styles.shape, { width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
-        <Path d={TWINKLE} fill={color} opacity={opacity} />
+        <Path
+          d={TWINKLE}
+          fill={outlined ? "none" : color}
+          stroke={outlined ? color : undefined}
+          strokeWidth={strokeWidth}
+          strokeLinejoin="round"
+          opacity={opacity}
+        />
       </Svg>
     </View>
   );
