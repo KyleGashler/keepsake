@@ -3,13 +3,13 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useApi, type ChildPayload } from "../../../../src/api";
+import { isNotFound, useApi, type ChildPayload } from "../../../../src/api";
 import { BackRow, ChildHeader } from "../../../../src/components/child-header";
 import { Column, IconDisc, ListRow, SearchField } from "../../../../src/components/journey";
 import { CreateCollectionSheet, EditChildSheet } from "../../../../src/components/library-sheets";
-import { ErrorState, Loading } from "../../../../src/components/ui";
+import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { possessive } from "../../../../src/format";
-import { routes } from "../../../../src/routes";
+import { backTo, routes } from "../../../../src/routes";
 import { colors, fonts, spacing } from "../../../../src/theme";
 
 /**
@@ -40,7 +40,10 @@ export default function ChildCollectionsScreen() {
       c.name.toLowerCase().includes(needle) ||
       (c.description ?? "").toLowerCase().includes(needle),
   );
-  const child = data?.child;
+  // A child removed while you were deeper in the stack 404s on the refresh
+  // back here; don't leave their stale collections up.
+  const gone = isNotFound(error);
+  const child = gone ? undefined : data?.child;
 
   return (
     <ScrollView
@@ -56,7 +59,14 @@ export default function ChildCollectionsScreen() {
           onSettings={child ? () => setEditing(true) : undefined}
           settingsLabel={child ? `Edit ${child.name}` : undefined}
         />
-        {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
+        {gone ? (
+          <NotFoundState
+            title="This profile isn't here anymore"
+            backLabel="Child Profiles"
+            onBack={() => backTo(routes.children)}
+          />
+        ) : null}
+        {!gone && error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
         {loading && !data ? <Loading /> : null}
         {child ? (
           <>

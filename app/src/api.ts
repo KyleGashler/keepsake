@@ -32,9 +32,28 @@ export function mediaUrl(path?: string | null) {
   return /^(https?|blob|data|file):/.test(path) ? path : `${API_URL}${path}`;
 }
 
+/** A request the API answered with an error status — kept, so a screen can tell "gone" from "broken". */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+/**
+ * The thing asked for isn't there: deleted, from another family, or a stale
+ * link. The API answers all three with 404 and doesn't say which.
+ */
+export function isNotFound(err: unknown) {
+  return err instanceof ApiError && err.status === 404;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
   const res = await fetch(`${API_URL}${path}`);
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText} — ${path}`);
+  if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText} — ${path}`);
   return res.json();
 }
 

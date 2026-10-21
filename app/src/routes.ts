@@ -43,3 +43,13 @@ export function openInLibrary(href: string) {
 export function backTo(parent: Href) {
   router.dismissTo(parent);
 }
+
+/**
+ * Back to wherever this screen was opened from, or `fallback` when there's
+ * nothing underneath. For screens with no single parent — a missing
+ * collection could have been reached from a child, a pillar or search.
+ */
+export function goBackOr(fallback: Href) {
+  if (router.canGoBack()) router.back();
+  else router.replace(fallback);
+}

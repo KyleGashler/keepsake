@@ -1,10 +1,12 @@
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
-import { useApi, type CollectionArchivePayload } from "../../../../src/api";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { isNotFound, useApi, type CollectionArchivePayload } from "../../../../src/api";
 import { archivePath, NO_FILTERS, type ArchiveFilters } from "../../../../src/archive";
 import { CollectionArchive } from "../../../../src/components/collection-archive";
-import { ErrorState, Loading } from "../../../../src/components/ui";
+import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
+import { goBackOr, routes } from "../../../../src/routes";
 import { colors } from "../../../../src/theme";
 
 /**
@@ -17,6 +19,7 @@ export default function CollectionScreen() {
   const [filters, setFilters] = useState<ArchiveFilters>(NO_FILTERS);
   const path = archivePath(collectionId, filters);
   const { data, error, loading, refetch } = useApi<CollectionArchivePayload>(path);
+  const insets = useSafeAreaInsets();
 
   // What's on screen was fetched for `shownPath`. The list dims only while new
   // filters load, not for a quiet refresh on return.
@@ -37,6 +40,20 @@ export default function CollectionScreen() {
       focusedBefore.current = true;
     }, []),
   );
+
+  // Checked before `data`: a collection removed while a memory was open
+  // 404s on the refresh back here, and the stale list shouldn't stay up.
+  if (isNotFound(error)) {
+    return (
+      <View style={[styles.screen, { paddingTop: insets.top }]}>
+        <NotFoundState
+          title="This collection isn't here anymore"
+          backLabel="Go back"
+          onBack={() => goBackOr(routes.library)}
+        />
+      </View>
+    );
+  }
 
   if (!data) {
     return (

@@ -16,6 +16,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   apiSend,
+  isNotFound,
   mediaUrl,
   useApi,
   type MediaItem,
@@ -41,9 +42,9 @@ import { DANGER } from "../../src/components/memory/helpers";
 import { MemorySheets, type SheetKind } from "../../src/components/memory/sheets";
 import { MediaViewer } from "../../src/components/memory/viewer";
 import { WaveformPlayer } from "../../src/components/memory/waveform";
-import { Button, ErrorState, Loading } from "../../src/components/ui";
+import { Button, ErrorState, Loading, NotFoundState } from "../../src/components/ui";
 import { errorMessage, lengthInWords, seasonOf, shortDate } from "../../src/format";
-import { openInLibrary, routes } from "../../src/routes";
+import { goBackOr, openInLibrary, routes } from "../../src/routes";
 import { brand, colors, fonts, MAX_WIDTH, radius, shadow, spacing, type } from "../../src/theme";
 
 /** How often to look again while a recording is being transcribed. */
@@ -101,6 +102,20 @@ export default function MemoryScreen() {
     return () => clearInterval(timer);
   }, [transcriptStatus, refetch]);
 
+  // Deleted (here, or by someone else while this was open), from another
+  // family, or a stale link. Checked before `data` so a refresh that finds it
+  // gone doesn't leave the old memory up.
+  if (isNotFound(error)) {
+    return (
+      <View style={[styles.goneScreen, { paddingTop: insets.top }]}>
+        <NotFoundState
+          title="This memory isn't here anymore"
+          backLabel="Go back"
+          onBack={() => goBackOr("/")}
+        />
+      </View>
+    );
+  }
   // A failed poll shouldn't blank a page that's already showing the memory.
   if (error && !data) return <ErrorState error={error} onRetry={refetch} />;
   if (loading && !data) return <Loading />;
@@ -620,6 +635,7 @@ function VideoFallback({ url }: { url: string }) {
 const DISC = 40;
 
 const styles = StyleSheet.create({
+  goneScreen: { flex: 1, backgroundColor: colors.bg, justifyContent: "center" },
   screen: { flex: 1, backgroundColor: colors.bg },
   column: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" },
   hero: { width: "100%", backgroundColor: colors.ink, overflow: "hidden" },

@@ -13,7 +13,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
+import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
 import { colors, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
 import { KeepsakeMark, KeepsakeWordmark } from "./brand";
@@ -282,12 +282,42 @@ export function Loading({ label = "Gathering memories…" }: { label?: string })
 }
 
 export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => void }) {
+  // The API's own message names a status and a request path — useful in a
+  // log, not on a family's screen.
+  let detail = error.message;
+  if (error instanceof ApiError) detail = `The archive couldn't answer just now (${error.status}).`;
+  else if (/failed to fetch|network/i.test(error.message)) detail = "Check your connection and try again.";
   return (
     <View style={styles.centered}>
       <Ionicons name="cloud-offline-outline" size={26} color={colors.muted} />
       <Text style={[type.heading, { marginTop: spacing.md }]}>Can't reach the archive</Text>
-      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>{error.message}</Text>
+      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>{detail}</Text>
       {onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} style={{ marginTop: spacing.lg }} /> : null}
+    </View>
+  );
+}
+
+/**
+ * A 404 from a screen opened by id: the thing was deleted, belongs to another
+ * family, or the link is stale. Not an outage, so no retry — just a way back.
+ */
+export function NotFoundState({
+  title,
+  body = "It may have been removed, or the link is out of date.",
+  backLabel,
+  onBack,
+}: {
+  title: string;
+  body?: string;
+  backLabel: string;
+  onBack: () => void;
+}) {
+  return (
+    <View style={styles.centered} accessibilityRole="summary">
+      <Ionicons name="leaf-outline" size={26} color={colors.muted} />
+      <Text style={[type.title, { marginTop: spacing.md, textAlign: "center" }]}>{title}</Text>
+      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>{body}</Text>
+      <Button label={backLabel} variant="secondary" icon="chevron-back" onPress={onBack} style={{ marginTop: spacing.lg }} />
     </View>
   );
 }
