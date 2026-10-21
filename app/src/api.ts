@@ -281,11 +281,25 @@ export type Memory = MemoryCard & {
   createdAt: string;
   author: Person | null;
   media: MediaItem[];
-  collections: { id: string; name: string; pillar: PillarKey }[];
+  collections: MemoryCollection[];
   /** Favourited by the signed-in user — favourites are per user, not per family. */
   isFavorite: boolean;
   /** Manual links first, then suggestions sharing a collection or person, nearest in date; max 8. */
   related: MemoryCard[];
+  /** Which memories were linked by hand (oldest link first) — the ones that can be unlinked. */
+  linkedIds: string[];
+};
+
+/** A collection a memory is filed in, as the memory detail lists it. */
+export type MemoryCollection = {
+  id: string;
+  name: string;
+  pillar: PillarKey;
+  /** The child whose collection it is; null for a family-wide one (Family Life). */
+  personId: string | null;
+  kind: CollectionKind | null;
+  icon: string;
+  color: string;
 };
 
 export type PillarKey = "ARRIVAL_STORIES" | "CHILD_PROFILES" | "FAMILY_LIFE";

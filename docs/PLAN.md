@@ -513,6 +513,12 @@ another collection, link a memory, move date, delete); edit sheet. Every
 section renders only when it has content — a text-only memory is a complete
 page, not a photo memory with holes.
 
+As built: the memory detail also returns `linkedIds` (which related memories
+were linked by hand, so only those offer "unlink"). No hero when a memory has
+no photo or video (text-only and audio-only alike). Waveforms are drawn from
+the clip id until there's real waveform data; dates are typed YYYY-MM-DD on a
+phone (no native date picker dependency yet). Share is shown disabled.
+
 #### L6. Walkthrough
 Fresh database, web and phone: tap through the whole journey for Banks, back
 out step by step, switch to Bear and confirm nothing of Banks's leaks across

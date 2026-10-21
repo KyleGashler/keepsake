@@ -89,3 +89,36 @@ export function count(n: number, singular: string, plural = `${singular}s`) {
 export function errorMessage(err: unknown, fallback = "") {
   return err instanceof Error ? err.message : fallback;
 }
+
+const SEASONS = ["Winter", "Spring", "Summer", "Fall"] as const;
+
+/**
+ * "Summer 2026" — the season a date fell in, northern hemisphere, by
+ * meteorological season (Dec–Feb winter, Mar–May spring, …). December belongs
+ * to the winter of its own calendar year, so a date never reads as a year it
+ * wasn't.
+ */
+export function seasonOf(iso: string) {
+  const d = new Date(iso);
+  return `${SEASONS[Math.floor(((d.getMonth() + 1) % 12) / 3)]} ${d.getFullYear()}`;
+}
+
+/** "2026-08-18" — the local calendar day, as `<input type="date">` and the date fields use it. */
+export function isoDay(iso: string) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * `iso` moved to the calendar day `day` ("YYYY-MM-DD", local time), keeping
+ * its time of day. Null if `day` isn't a real date.
+ */
+export function withDay(iso: string, day: string) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day.trim());
+  if (!m) return null;
+  const [y, mo, da] = [Number(m[1]), Number(m[2]) - 1, Number(m[3])];
+  const d = new Date(iso);
+  d.setFullYear(y, mo, da);
+  if (d.getFullYear() !== y || d.getMonth() !== mo || d.getDate() !== da) return null;
+  return d.toISOString();
+}
