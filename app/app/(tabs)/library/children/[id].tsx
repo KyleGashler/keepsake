@@ -52,7 +52,7 @@ export default function ChildCollectionsScreen() {
       <Column>
         <BackRow
           label="Child Profiles"
-          fallback={routes.children}
+          parent={routes.children}
           onSettings={child ? () => setEditing(true) : undefined}
           settingsLabel={child ? `Edit ${child.name}` : undefined}
         />

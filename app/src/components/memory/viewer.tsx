@@ -105,7 +105,7 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
         ))}
       </ScrollView>
 
-      <View style={[styles.top, { paddingTop: insets.top + spacing.md }]} pointerEvents="box-none">
+      <View style={[styles.top, { paddingTop: insets.top + spacing.md }]}>
         <Pressable
           onPress={onClose}
           hitSlop={10}
@@ -170,6 +170,7 @@ const styles = StyleSheet.create({
   page: { height: "100%", justifyContent: "center" },
   media: { width: "100%", height: "72%" },
   top: {
+    pointerEvents: "box-none",
     position: "absolute",
     top: 0,
     left: 0,

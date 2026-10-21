@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import type { PillarKey } from "./api";
 
 /**
@@ -29,4 +29,17 @@ export const routes = {
  */
 export function openInLibrary(href: string) {
   router.navigate(href, { withAnchor: true });
+}
+
+/**
+ * Back to a screen's named parent ("‹ Child Profiles", "‹ Banks"), however the
+ * screen was reached. In-app, the parent is underneath and this pops to it,
+ * as back would. On a cold deep link the Library stack is only [landing,
+ * screen] (its anchor), so plain back would skip the parent; `dismissTo`
+ * doesn't find it and replaces the screen with it instead — and that
+ * parent's own back row does the same, so a cold link backs out one level at
+ * a time, the way the labels promise.
+ */
+export function backTo(parent: Href) {
+  router.dismissTo(parent);
 }

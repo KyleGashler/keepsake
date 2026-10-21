@@ -74,7 +74,7 @@ export function AudioClip({
  * A seekable area: tap anywhere to jump, drag to scrub, seek on release, and
  * ±5 s from assistive tech. What it looks like is the children's business —
  * a rail and thumb, a waveform — and they must ignore touches
- * (`pointerEvents="none"`). Plain responders, so it works the same under
+ * (`pointerEvents: "none"` in their style). Plain responders, so it works the same under
  * react-native-web and needs no slider dependency.
  */
 export function ScrubTrack({
@@ -157,10 +157,10 @@ function Scrubber({
   const fraction = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
   return (
     <ScrubTrack value={value} max={max} onScrub={onScrub} onCommit={onCommit} style={styles.hitbox}>
-      <View pointerEvents="none" style={styles.rail}>
+      <View style={styles.rail}>
         <View style={[styles.fill, { width: `${fraction * 100}%` }]} />
       </View>
-      {max > 0 ? <View pointerEvents="none" style={[styles.thumb, { left: `${fraction * 100}%` }]} /> : null}
+      {max > 0 ? <View style={[styles.thumb, { left: `${fraction * 100}%` }]} /> : null}
     </ScrubTrack>
   );
 }
@@ -189,9 +189,10 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 14.5, color: colors.ink },
   hitbox: { height: 22, justifyContent: "center", marginTop: 2 },
-  rail: { height: 4, borderRadius: 2, backgroundColor: colors.surfaceAlt, overflow: "hidden" },
+  rail: { pointerEvents: "none", height: 4, borderRadius: 2, backgroundColor: colors.surfaceAlt, overflow: "hidden" },
   fill: { height: 4, backgroundColor: colors.accent },
   thumb: {
+    pointerEvents: "none",
     position: "absolute",
     width: THUMB,
     height: THUMB,

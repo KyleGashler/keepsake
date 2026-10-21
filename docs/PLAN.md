@@ -465,8 +465,10 @@ As implemented by L1 (where the contract left a response open):
   `DELETE /api/memories/:id` → 204. Every route that returns one memory
   (GET, POST, PATCH, transcribe) returns the detail shape with `isFavorite`
   and `related`.
-- `years` buckets by UTC calendar year; `q` is a case-insensitive substring
-  match on title, story, transcript and location, and does narrow `years`.
+- `years` and `year` use calendar years in `tz` (the viewer's IANA zone, UTC
+  without one; added in L6), so chips agree with the local dates the app
+  shows; `q` is a case-insensitive substring match on title, story,
+  transcript and location, and does narrow `years`.
 - Arrival Stories defaults are created for a new child only when they have
   none; existing unrecognised Child Profile rows (e.g. a legacy "The First 3
   Months") are kept and listed alongside the seven.
@@ -523,6 +525,11 @@ phone (no native date picker dependency yet). Share is shown disabled.
 Fresh database, web and phone: tap through the whole journey for Banks, back
 out step by step, switch to Bear and confirm nothing of Banks's leaks across
 except the shared memory.
+
+As built: a screen's named back row ("‹ Child Profiles", "‹ Banks") uses
+`backTo` (src/routes.ts, `router.dismissTo`), so a cold deep link backs out
+one level at a time instead of jumping to the Library landing. Archive years
+are the viewer's calendar years (`tz`), matching the local dates entries show.
 
 Order: **L1 ∥ L2**, then **L3 ∥ L4 ∥ L5**, then L6.
 

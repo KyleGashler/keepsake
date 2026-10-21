@@ -8,7 +8,7 @@ export type { VideoStillProps };
 /** The first frame of a video, for a thumbnail: a muted `<video>` that never plays. */
 export function VideoStill({ uri }: VideoStillProps) {
   return (
-    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.ink }]} pointerEvents="none">
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: colors.ink, pointerEvents: "none" }]}>
       {createElement("video", {
         // Safari won't paint a frame for preload="metadata" without a nudge past zero.
         src: uri.includes("#") ? uri : `${uri}#t=0.001`,

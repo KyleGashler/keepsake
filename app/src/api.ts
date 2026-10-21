@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { File as FsFile, UploadType } from "expo-file-system";
@@ -193,16 +193,23 @@ export function useApi<T>(path: string | null) {
     if (path) setLoading(true);
   }
 
+  // Only the newest request may land. With the path changing quickly (a
+  // debounced search), an older, slower response would otherwise overwrite
+  // the newer one; a refresh superseded by a new path is dropped the same way.
+  const latestRequest = useRef(0);
   const fetchPath = useCallback(async () => {
+    const request = ++latestRequest.current;
     if (!path) return;
     try {
       const next = await apiGet<T>(path);
+      if (request !== latestRequest.current) return;
       setData(next);
       setError(null);
     } catch (err) {
+      if (request !== latestRequest.current) return;
       setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
-      setLoading(false);
+      if (request === latestRequest.current) setLoading(false);
     }
   }, [path]);
 

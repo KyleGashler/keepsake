@@ -1,11 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
-import { router, type Href } from "expo-router";
+import type { Href } from "expo-router";
 import { useId } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Defs, Line, RadialGradient, Rect, Stop } from "react-native-svg";
 import { mediaUrl, type ChildSummary, type Person } from "../api";
 import { childMeta } from "../format";
+import { backTo } from "../routes";
 import { colors, fonts, spacing } from "../theme";
 import { Sparkle } from "./journey";
 
@@ -76,20 +77,20 @@ export function ChildCardBackdrop({ child }: { child: Pick<Person, "name" | "acc
 /** "‹ Child Profiles" on the left, an optional gear on the right. */
 export function BackRow({
   label,
-  fallback,
+  parent,
   onSettings,
   settingsLabel = "Settings",
 }: {
   label: string;
-  /** Where back goes on a cold deep link, with nothing underneath. */
-  fallback: Href;
+  /** The screen back returns to, even on a cold deep link (routes.ts `backTo`). */
+  parent: Href;
   onSettings?: () => void;
   settingsLabel?: string;
 }) {
   return (
     <View style={styles.backRow}>
       <Pressable
-        onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback))}
+        onPress={() => backTo(parent)}
         hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel={`Back to ${label}`}
@@ -119,7 +120,7 @@ const FLOURISH_PAD = 22;
 
 /**
  * The top of a child's screens (design/mockups/03): the round photo with a
- * small gold sparkle above it and three teal dashes beside it, then the
+ * small teal sparkle above it and three teal dashes beside it, then the
  * child's name and their age and counts. Below a back row the screen draws.
  */
 export function ChildHeader({ child }: { child: ChildSummary }) {
@@ -161,7 +162,7 @@ export function ChildHeader({ child }: { child: ChildSummary }) {
           ))}
         </Svg>
         <ChildPortrait child={child} size={PORTRAIT} uri={child.photoUrl} />
-        <Sparkle size={24} variant="outline" strokeWidth={1.8} style={styles.portraitSparkle} />
+        <Sparkle size={24} color={colors.ink} variant="outline" strokeWidth={1.8} style={styles.portraitSparkle} />
       </View>
       <View style={styles.childText}>
         <Text style={styles.childName} numberOfLines={2} accessibilityRole="header">

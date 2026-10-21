@@ -12,11 +12,27 @@ export type ArchiveFilters = { q: string; year: number | null };
 
 export const NO_FILTERS: ArchiveFilters = { q: "", year: null };
 
-/** `GET /api/collections/:id?q=&year=` for a set of filters. */
+/** This device's IANA time zone, if the runtime will say. */
+function deviceTimeZone(): string | undefined {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * `GET /api/collections/:id?q=&year=&tz=` for a set of filters. Entries show
+ * their date in local time (as memory detail does), so the server buckets
+ * years in this device's zone too: a year chip, the heading an entry sits
+ * under and the date on the entry always agree.
+ */
 export function archivePath(collectionId: string, { q, year }: ArchiveFilters) {
   const params = new URLSearchParams();
   if (q.trim()) params.set("q", q.trim());
   if (year !== null) params.set("year", String(year));
+  const tz = deviceTimeZone();
+  if (tz) params.set("tz", tz);
   const query = params.toString();
   return `/api/collections/${collectionId}${query ? `?${query}` : ""}`;
 }

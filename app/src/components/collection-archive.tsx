@@ -1,5 +1,4 @@
 import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -11,17 +10,12 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  mediaUrl,
-  type ChildSummary,
-  type CollectionArchivePayload,
-  type MemoryCard,
-  type PillarKey,
-} from "../api";
+import type { ChildSummary, CollectionArchivePayload, MemoryCard, PillarKey } from "../api";
 import { childAge, count, possessive } from "../format";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
-import { routes } from "../routes";
+import { backTo, routes } from "../routes";
 import { colors, fonts, radius, spacing } from "../theme";
+import { ChildPortrait } from "./child-header";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
 
 const PILLAR_NAMES: Record<PillarKey, string> = {
@@ -91,7 +85,7 @@ export function CollectionArchive({
   // and Family Life collections back out to their pillar.
   const ownedByChild = collection.pillar === "CHILD_PROFILES" && child !== null;
   const backLabel = ownedByChild ? child.name : PILLAR_NAMES[collection.pillar];
-  const backFallback: Href = ownedByChild ? routes.child(child.id) : routes.pillar(collection.pillar);
+  const backParent: Href = ownedByChild ? routes.child(child.id) : routes.pillar(collection.pillar);
 
   return (
     <ScrollView
@@ -102,7 +96,7 @@ export function CollectionArchive({
     >
       <Column>
         <View style={{ paddingTop: insets.top + spacing.lg }}>
-          <BackRow label={backLabel} fallback={backFallback} />
+          <BackRow label={backLabel} parent={backParent} />
 
           <View style={styles.discWrap}>
             <IconDisc icon={collection.icon} color={collection.color} size={76} />
@@ -170,11 +164,16 @@ export function CollectionArchive({
   );
 }
 
-/** Newest year first; the server already sends memories newest first. Years are UTC, as the server buckets them. */
+/**
+ * Newest year first; the server already sends memories newest first. Years
+ * are local, like the dates the entries show (format.ts reads local time) and
+ * like the server's year chips, which archivePath asks for in this device's
+ * time zone — so an entry never sits under a year its own date contradicts.
+ */
 function groupByYear(memories: MemoryCard[]) {
   const groups: { year: number; memories: MemoryCard[] }[] = [];
   for (const memory of memories) {
-    const year = new Date(memory.occurredAt).getUTCFullYear();
+    const year = new Date(memory.occurredAt).getFullYear();
     const last = groups.at(-1);
     if (last?.year === year) last.memories.push(memory);
     else groups.push({ year, memories: [memory] });
@@ -186,11 +185,11 @@ function groupByYear(memories: MemoryCard[]) {
 // Header pieces
 // ---------------------------------------------------------------------------
 
-function BackRow({ label, fallback }: { label: string; fallback: Href }) {
+function BackRow({ label, parent }: { label: string; parent: Href }) {
   return (
     <View style={styles.backRow}>
       <Pressable
-        onPress={() => (router.canGoBack() ? router.back() : router.replace(fallback))}
+        onPress={() => backTo(parent)}
         hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel={`Back to ${label}`}
@@ -227,13 +226,8 @@ function Identity({
   const age = childAge(child.birthDate);
   return (
     <View style={styles.identity}>
-      <Image
-        source={{ uri: mediaUrl(child.photoUrl ?? child.avatarUrl) }}
-        style={[styles.identityPhoto, { borderColor: child.accentColor }]}
-        contentFit="cover"
-        transition={200}
-        accessibilityIgnoresInvertColors
-      />
+      {/* Their photo, or their monogram — the same face Child Profiles shows, not the generated avatar. */}
+      <ChildPortrait child={child} size={30} uri={child.photoUrl} />
       <Text style={styles.identityText} numberOfLines={1}>
         <Text style={styles.identityName}>{child.name}</Text>
         {[age, memories].filter(Boolean).map((part) => ` · ${part}`).join("")}
@@ -438,13 +432,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
   },
   identity: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg },
-  identityPhoto: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: 1.5,
-    backgroundColor: colors.surfaceAlt,
-  },
   identityText: { flexShrink: 1, fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft },
   identityName: { fontFamily: fonts.sansBold, color: colors.ink },
 

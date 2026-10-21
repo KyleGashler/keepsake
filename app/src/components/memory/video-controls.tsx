@@ -45,7 +45,7 @@ export function VideoControls({
   const fraction = total > 0 ? Math.min(1, Math.max(0, shown / total)) : 0;
 
   return (
-    <View style={styles.bar} pointerEvents="box-none">
+    <View style={styles.bar}>
       {/* A soft dark fade so white controls read over a bright frame. */}
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none" pointerEvents="none">
         <Defs>
@@ -73,11 +73,11 @@ export function VideoControls({
         label="Video position"
         style={styles.track}
       >
-        <View pointerEvents="none" style={styles.rail}>
+        <View style={styles.rail}>
           <View style={[styles.fill, { width: `${fraction * 100}%` }]} />
         </View>
         {total > 0 ? (
-          <View pointerEvents="none" style={[styles.thumb, { left: `${fraction * 100}%` }]} />
+          <View style={[styles.thumb, { left: `${fraction * 100}%` }]} />
         ) : null}
       </ScrubTrack>
       <Text style={styles.time}>
@@ -101,6 +101,7 @@ const THUMB = 13;
 
 const styles = StyleSheet.create({
   bar: {
+    pointerEvents: "box-none",
     position: "absolute",
     left: 0,
     right: 0,
@@ -115,9 +116,10 @@ const styles = StyleSheet.create({
   },
   iconButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
   track: { flex: 1, height: 28, justifyContent: "center" },
-  rail: { height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.45)", overflow: "hidden" },
+  rail: { pointerEvents: "none", height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.45)", overflow: "hidden" },
   fill: { height: 3, backgroundColor: "#fff" },
   thumb: {
+    pointerEvents: "none",
     position: "absolute",
     width: THUMB,
     height: THUMB,

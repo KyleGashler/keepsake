@@ -72,7 +72,6 @@ export function WaveformPlayer({
           {bars.map((bar, i) => (
             <View
               key={bar.key}
-              pointerEvents="none"
               style={[
                 styles.bar,
                 {
@@ -110,7 +109,7 @@ const styles = StyleSheet.create({
     gap: GAP,
     overflow: "hidden",
   },
-  bar: { width: BAR, borderRadius: BAR / 2 },
+  bar: { pointerEvents: "none", width: BAR, borderRadius: BAR / 2 },
   time: {
     fontFamily: fonts.sansSemiBold,
     fontSize: 13.5,

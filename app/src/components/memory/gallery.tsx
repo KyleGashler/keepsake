@@ -35,7 +35,7 @@ export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (i
             >
               <Thumb item={item} />
               {item.type === "VIDEO" ? (
-                <View style={styles.videoBadge} pointerEvents="none">
+                <View style={styles.videoBadge}>
                   <View style={styles.playDisc}>
                     <Ionicons name="play" size={14} color="#fff" style={{ marginLeft: 2 }} />
                   </View>
@@ -78,6 +78,7 @@ const styles = StyleSheet.create({
   tile: { borderRadius: radius.sm - 2, overflow: "hidden", backgroundColor: colors.surfaceAlt },
   pressed: { opacity: 0.8 },
   videoBadge: {
+    pointerEvents: "none",
     position: "absolute",
     left: 6,
     right: 6,
@@ -100,8 +101,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.sansBold,
     fontSize: 12,
     color: "#fff",
-    textShadowColor: "rgba(0,0,0,0.5)",
-    textShadowRadius: 3,
+    // A scrim like the play disc's rather than a text shadow: react-native-web
+    // warns on the textShadow* longhands, and native has nothing else.
+    backgroundColor: "rgba(0,0,0,0.35)",
+    paddingHorizontal: 5,
+    borderRadius: 6,
+    overflow: "hidden",
   },
   more: { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceAlt },
   moreLabel: { fontFamily: fonts.sansSemiBold, fontSize: 17, color: colors.inkSoft },

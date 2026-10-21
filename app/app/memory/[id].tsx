@@ -321,7 +321,6 @@ export default function MemoryScreen() {
         // the buttons so they don't sit on top of the words.
         <View
           style={[styles.floating, { paddingTop: insets.top + spacing.sm }, pastHero && styles.floatingSettled]}
-          pointerEvents="box-none"
         >
           {actions}
         </View>
@@ -425,7 +424,7 @@ function TopActions({
 }) {
   const disc = [styles.disc, floating ? styles.discFloating : styles.discFlat];
   return (
-    <View style={[styles.actions, !floating && styles.actionsBar]} pointerEvents="box-none">
+    <View style={[styles.actions, !floating && styles.actionsBar]}>
       <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back" style={disc}>
         <Ionicons name="chevron-back" size={22} color={colors.ink} style={{ marginLeft: -2 }} />
       </Pressable>
@@ -644,13 +643,14 @@ const styles = StyleSheet.create({
   title: { flex: 1, fontFamily: fonts.display, fontSize: 31, lineHeight: 37, color: colors.ink },
   titleLarge: { fontSize: 36, lineHeight: 42 },
   pencil: { paddingTop: 8 },
-  floating: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center", paddingBottom: spacing.sm },
+  floating: { pointerEvents: "box-none", position: "absolute", top: 0, left: 0, right: 0, alignItems: "center", paddingBottom: spacing.sm },
   floatingSettled: {
     backgroundColor: colors.surface,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.line,
   },
   actions: {
+    pointerEvents: "box-none",
     width: "100%",
     maxWidth: MAX_WIDTH,
     flexDirection: "row",
