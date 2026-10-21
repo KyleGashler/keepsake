@@ -91,11 +91,11 @@ export async function mediaDto(m: Media) {
 export function aggregateTranscriptStatus(
   media: Pick<Media, "transcriptStatus" | "deletedAt">[],
 ): TranscriptStatus | null {
-  const statuses = media.filter((x) => !x.deletedAt).map((x) => x.transcriptStatus);
-  if (statuses.includes("PENDING")) return "PENDING";
-  if (statuses.includes("FAILED")) return "FAILED";
-  if (statuses.includes("READY")) return "READY";
-  if (statuses.includes("SKIPPED")) return "SKIPPED";
+  const statuses = new Set(media.filter((x) => !x.deletedAt).map((x) => x.transcriptStatus));
+  if (statuses.has("PENDING")) return "PENDING";
+  if (statuses.has("FAILED")) return "FAILED";
+  if (statuses.has("READY")) return "READY";
+  if (statuses.has("SKIPPED")) return "SKIPPED";
   return null;
 }
 

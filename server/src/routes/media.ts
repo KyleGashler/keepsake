@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
-import { Router, type Request, type RequestHandler, type Response } from "express";
+import type { Readable } from "node:stream";
+import { Router } from "express";
 import { fileTypeFromBuffer } from "file-type";
 import { imageSize } from "image-size";
 import { z } from "zod";
@@ -37,29 +38,18 @@ storage();
 export const mediaBytesRouter = Router();
 export const mediaApiRouter = Router();
 
-/**
- * Express 4 doesn't catch a rejected async handler — the rejection goes
- * unhandled and Node takes the whole process down. Every handler here awaits
- * storage (a disk, or a bucket across the network) and reads client sockets
- * that can drop mid-upload, so each one routes its failures to the error
- * handler instead.
- */
-function handle(fn: (req: Request, res: Response) => Promise<unknown>): RequestHandler {
-  return (req, res, next) => {
-    fn(req, res).catch(next);
-  };
+/** A query-string dimension, kept to a size worth drawing. */
+function clampDimension(v: unknown, fallback: number) {
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.min(2000, Math.max(16, Math.round(n))) : fallback;
 }
 
 /** Generated stand-in imagery — see lib/placeholder.ts for why these exist. */
 mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
-  const seed = String(req.params.seed ?? "keepsake");
-  const clamp = (v: unknown, d: number) => {
-    const n = Number(v);
-    return Number.isFinite(n) ? Math.min(2000, Math.max(16, Math.round(n))) : d;
-  };
+  const seed = req.params.seed;
   // `c` pins the gradient to one colour — avatars pass the person's own.
   const base = typeof req.query.c === "string" ? req.query.c : null;
-  const png = placeholderPng(seed, clamp(req.query.w, 1200), clamp(req.query.h, 900), base);
+  const png = placeholderPng(seed, clampDimension(req.query.w, 1200), clampDimension(req.query.h, 900), base);
   res.setHeader("Content-Type", "image/png");
   res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
   res.send(png);
@@ -79,13 +69,13 @@ mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
  * and the exact byte count, so the only thing left to check is that the client
  * sent what it said it would.
  */
-mediaBytesRouter.put("/local-upload/:token", handle(async (req, res) => {
+mediaBytesRouter.put("/local-upload/:token", async (req, res) => {
   const provider = localProvider();
   if (!provider) return res.status(404).json({ error: "Local uploads are not enabled" });
 
   let claims;
   try {
-    claims = provider.verifyUploadToken(String(req.params.token));
+    claims = provider.verifyUploadToken(req.params.token);
   } catch (err) {
     if (err instanceof SignatureError || err instanceof StorageKeyError) {
       return res.status(403).json({ error: err.message });
@@ -123,16 +113,16 @@ mediaBytesRouter.put("/local-upload/:token", handle(async (req, res) => {
   }
 
   res.status(201).json({ key: claims.key, bytes: written.bytes });
-}));
+});
 
 /** Serve a stored object for the life of its read token. */
-mediaBytesRouter.get("/o/:token", handle(async (req, res) => {
+mediaBytesRouter.get("/o/:token", async (req, res) => {
   const provider = localProvider();
   if (!provider) return res.status(404).json({ error: "Local reads are not enabled" });
 
   let claims;
   try {
-    claims = provider.verifyReadToken(String(req.params.token));
+    claims = provider.verifyReadToken(req.params.token);
   } catch (err) {
     if (err instanceof SignatureError || err instanceof StorageKeyError) {
       return res.status(403).json({ error: err.message });
@@ -156,7 +146,7 @@ mediaBytesRouter.get("/o/:token", handle(async (req, res) => {
     res.destroy(err);
   });
   body.pipe(res);
-}));
+});
 
 // ---------------------------------------------------------------------------
 // Two-phase upload. These sit under /api, so they run after auth.
@@ -192,7 +182,7 @@ mediaApiRouter.get("/limits", (_req, res) => {
  * the only thing that has to survive between the two calls, and it's derived,
  * not stored — the family prefix is what proves ownership at finalize.
  */
-mediaApiRouter.post("/init", handle(async (req, res) => {
+mediaApiRouter.post("/init", async (req, res) => {
   const family = req.ctx.family;
   const parsed = initBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -219,7 +209,7 @@ mediaApiRouter.post("/init", handle(async (req, res) => {
   // `mimeType` is the normalised type the target was signed for; PUT with
   // `target.headers` exactly, not the type the client declared.
   res.status(201).json({ uploadId, key, mimeType, target });
-}));
+});
 
 const finalizeBody = z.object({ key: z.string().min(1).max(512) });
 
@@ -236,7 +226,7 @@ const finalizeBody = z.object({ key: z.string().min(1).max(512) });
  * the delete path never runs against an `original.*` key; a sweeper that knows
  * which keys no `Media` row claims is the right owner of that cleanup.
  */
-mediaApiRouter.post("/finalize", handle(async (req, res) => {
+mediaApiRouter.post("/finalize", async (req, res) => {
   const family = req.ctx.family;
   const parsed = finalizeBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -294,10 +284,10 @@ mediaApiRouter.post("/finalize", handle(async (req, res) => {
       // Exactly one of these is set; pass both back to POST /memories as is.
       sha256,
       checksum,
-      ...(dimensions ?? {}),
+      ...dimensions,
     },
   });
-}));
+});
 
 function keyBelongsTo(key: string, familyId: string) {
   return key.startsWith(`${familyId}/`);
@@ -307,22 +297,23 @@ function keyBelongsTo(key: string, familyId: string) {
 const SNIFF_BYTES = 4100;
 
 /** Enough of the object to identify it and read an image header. */
-async function readHead(source: NodeJS.ReadableStream, limit: number): Promise<Buffer> {
+async function readHead(source: Readable, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
-  for await (const chunk of source as AsyncIterable<Buffer>) {
+  for await (const chunk of source) {
+    if (!Buffer.isBuffer(chunk)) throw new TypeError("Expected a byte stream");
     chunks.push(chunk);
     total += chunk.length;
     if (total >= limit) break;
   }
   // The stream may be abandoned mid-read; without this the file handle leaks.
-  (source as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+  source.destroy();
   return Buffer.concat(chunks).subarray(0, limit);
 }
 
-async function hashObject(source: NodeJS.ReadableStream): Promise<string> {
+async function hashObject(source: Readable): Promise<string> {
   const hash = crypto.createHash("sha256");
-  for await (const chunk of source as AsyncIterable<Buffer>) hash.update(chunk);
+  for await (const chunk of source) hash.update(chunk);
   return hash.digest("hex");
 }
 

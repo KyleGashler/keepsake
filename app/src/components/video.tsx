@@ -55,7 +55,7 @@ export function VideoClip({
   useEventListener(player, "sourceLoad", ({ duration, availableVideoTracks }) => {
     const tracks = availableVideoTracks ?? [];
     // Android says outright when it has no decoder for the track.
-    if (tracks.length && tracks.every((t) => t.isSupported === false)) {
+    if (tracks.length && tracks.every((t) => !t.isSupported)) {
       onError?.();
       return;
     }

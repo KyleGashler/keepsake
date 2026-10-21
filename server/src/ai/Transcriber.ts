@@ -7,7 +7,7 @@
  * internet, a local volume isn't).
  */
 export interface Transcriber {
-  transcribe(input: { key: string; mimeType: string }): Promise<TranscriptResult>;
+  transcribe: (input: { key: string; mimeType: string }) => Promise<TranscriptResult>;
 }
 
 export interface TranscriptResult {

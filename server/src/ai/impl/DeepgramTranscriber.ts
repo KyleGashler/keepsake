@@ -1,4 +1,6 @@
 import { Readable } from "node:stream";
+import { z } from "zod";
+import { errorMessage } from "../../lib/errors.js";
 import { storage } from "../../storage/index.js";
 import { TranscriptionError, type Transcriber, type TranscriptResult } from "../Transcriber.js";
 
@@ -10,24 +12,20 @@ const REQUEST_TIMEOUT_MS = 5 * 60 * 1000;
 /** How long the presigned URL Deepgram fetches from stays valid. */
 const READ_URL_TTL_SECONDS = 15 * 60;
 
-/** The parts of a pre-recorded `/v1/listen` response this reads. */
-type ListenResponse = {
-  metadata?: { duration?: number };
-  results?: {
-    channels?: {
-      alternatives?: {
-        transcript?: string;
-        paragraphs?: {
-          transcript?: string;
-          paragraphs?: {
-            speaker?: number;
-            sentences?: { text?: string }[];
-          }[];
-        };
-      }[];
-    }[];
-  };
-};
+// The parts of a pre-recorded `/v1/listen` response this reads, innermost first.
+const sentence = z.object({ text: z.string().optional() });
+const paragraph = z.object({ speaker: z.number().optional(), sentences: z.array(sentence).optional() });
+const alternative = z.object({
+  transcript: z.string().optional(),
+  paragraphs: z.object({ transcript: z.string().optional(), paragraphs: z.array(paragraph).optional() }).optional(),
+});
+const channel = z.object({ alternatives: z.array(alternative).optional() });
+const listenResponse = z.object({
+  metadata: z.object({ duration: z.number().optional() }).optional(),
+  results: z.object({ channels: z.array(channel).optional() }).optional(),
+});
+
+type ListenResponse = z.infer<typeof listenResponse>;
 
 /**
  * Deepgram pre-recorded transcription over plain `fetch` — no SDK.
@@ -68,17 +66,16 @@ export class DeepgramTranscriber implements Transcriber {
     if (viaUrl) {
       init.body = JSON.stringify({ url: readUrl });
     } else {
-      const source = (await storage().stream(key)) as Readable;
-      init.body = Readable.toWeb(source) as unknown as RequestInit["body"];
+      init.body = Readable.toWeb(await storage().stream(key));
       // Node's fetch refuses a streamed body without this.
       init.duplex = "half";
     }
 
     let res: Response;
     try {
-      res = await fetch(`${ENDPOINT}?${params}`, init);
+      res = await fetch(`${ENDPOINT}?${params.toString()}`, init);
     } catch (err) {
-      throw new TranscriptionError(`Deepgram request failed: ${(err as Error).message}`, true, { cause: err });
+      throw new TranscriptionError(`Deepgram request failed: ${errorMessage(err)}`, true, { cause: err });
     }
 
     if (!res.ok) {
@@ -89,8 +86,9 @@ export class DeepgramTranscriber implements Transcriber {
       throw new TranscriptionError(`Deepgram ${res.status}: ${detail}`, retryable);
     }
 
-    const body = (await res.json()) as ListenResponse;
-    return formatResult(body);
+    const body = listenResponse.safeParse(await res.json());
+    if (!body.success) throw new TranscriptionError(`Deepgram response unreadable: ${body.error.message}`, false);
+    return formatResult(body.data);
   }
 }
 
@@ -129,7 +127,7 @@ export function formatResult(body: ListenResponse): TranscriptResult {
   if (labels.size > 1) {
     const turns: { label: number; text: string }[] = [];
     for (const p of paragraphs) {
-      const label = labels.get(p.speaker as number) ?? 0;
+      const label = p.speaker === undefined ? 0 : (labels.get(p.speaker) ?? 0);
       const last = turns[turns.length - 1];
       if (last && last.label === label) last.text += ` ${p.text}`;
       else turns.push({ label, text: p.text });
@@ -149,7 +147,7 @@ export function formatResult(body: ListenResponse): TranscriptResult {
 async function errorDetail(res: Response): Promise<string> {
   const raw = await res.text().catch(() => "");
   try {
-    const parsed = JSON.parse(raw) as { err_msg?: string; message?: string; err_code?: string };
+    const parsed: { err_msg?: string; message?: string; err_code?: string } = JSON.parse(raw);
     return parsed.err_msg ?? parsed.message ?? parsed.err_code ?? raw.slice(0, 300);
   } catch {
     return raw.slice(0, 300) || res.statusText;

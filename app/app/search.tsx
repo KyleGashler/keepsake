@@ -24,11 +24,13 @@ export default function SearchScreen() {
   const [results, setResults] = useState<Results | null>(null);
   const [searching, setSearching] = useState(false);
 
+  const changeQuery = (next: string) => {
+    setQuery(next);
+    if (next.trim().length < 2) setResults(null);
+  };
+
   useEffect(() => {
-    if (query.trim().length < 2) {
-      setResults(null);
-      return;
-    }
+    if (query.trim().length < 2) return;
     let cancelled = false;
     const timer = setTimeout(async () => {
       setSearching(true);
@@ -53,7 +55,7 @@ export default function SearchScreen() {
           <Ionicons name="search" size={17} color={colors.muted} />
           <TextInput
             value={query}
-            onChangeText={setQuery}
+            onChangeText={changeQuery}
             autoFocus
             placeholder="A person, a place, something someone said…"
             placeholderTextColor={colors.muted}
@@ -61,7 +63,7 @@ export default function SearchScreen() {
             returnKeyType="search"
           />
           {query ? (
-            <Pressable onPress={() => setQuery("")} hitSlop={8}>
+            <Pressable onPress={() => changeQuery("")} hitSlop={8}>
               <Ionicons name="close-circle" size={17} color={colors.muted} />
             </Pressable>
           ) : null}
@@ -72,18 +74,22 @@ export default function SearchScreen() {
             <Text style={type.label}>Try</Text>
             <View style={styles.chipWrap}>
               {SUGGESTIONS.map((suggestion) => (
-                <Pressable key={suggestion} onPress={() => setQuery(suggestion)} style={styles.chip}>
+                <Pressable key={suggestion} onPress={() => changeQuery(suggestion)} style={styles.chip}>
                   <Text style={styles.chipLabel}>{suggestion}</Text>
                 </Pressable>
               ))}
             </View>
           </View>
-        ) : results.total === 0 ? (
+        ) : null}
+
+        {results && results.total === 0 ? (
           <EmptyState
             title={searching ? "Looking…" : "Nothing found"}
             body={searching ? undefined : `No memories match "${results.q}" yet.`}
           />
-        ) : (
+        ) : null}
+
+        {results && results.total !== 0 ? (
           <>
             {results.people.length ? (
               <View style={{ marginTop: spacing.xl }}>
@@ -135,7 +141,7 @@ export default function SearchScreen() {
               </View>
             ) : null}
           </>
-        )}
+        ) : null}
       </Screen>
     </>
   );

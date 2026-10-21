@@ -1,11 +1,11 @@
 import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
 import type { ReactNode } from "react";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clock } from "../format";
-import { colors, radius, spacing, type } from "../theme";
-import { AppHeader, Button, MAX_WIDTH } from "./ui";
+import { colors, MAX_WIDTH, radius, spacing, type } from "../theme";
+import { AppHeader, Button } from "./ui";
 import { VideoClip, type VideoMeta } from "./video";
 
 /**
@@ -47,13 +47,7 @@ export function RecorderNotice({
               {state === "unavailable" ? "The camera didn't start" : "Keepsake can't see you yet"}
             </Text>
             <Text style={[type.body, { textAlign: "center", marginTop: spacing.sm, maxWidth: 420 }]}>
-              {state === "insecure"
-                ? "This page isn't on a secure connection, so the browser won't share the camera. Open Keepsake over https (or on this computer at localhost) to record."
-                : state === "unavailable"
-                  ? message
-                  : web
-                    ? "Your browser is blocking the camera or microphone for this site. Click the icon beside the address bar, allow both, then come back here."
-                    : "To record a video, Keepsake needs the camera and the microphone. You can turn them on in Settings."}
+              {noticeBody(state, web, message)}
             </Text>
             {state === "insecure" ? null : (
               <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xl }}>
@@ -73,6 +67,22 @@ export function RecorderNotice({
       </View>
     </>
   );
+}
+
+function noticeBody(state: "denied" | "insecure" | "unavailable", web: boolean, message?: string) {
+  if (state === "insecure") {
+    return "This page isn't on a secure connection, so the browser won't share the camera. Open Keepsake over https (or on this computer at localhost) to record.";
+  }
+  if (state === "unavailable") return message;
+  if (web) {
+    return "Your browser is blocking the camera or microphone for this site. Click the icon beside the address bar, allow both, then come back here.";
+  }
+  return "To record a video, Keepsake needs the camera and the microphone. You can turn them on in Settings.";
+}
+
+function stageHint(recording: boolean, nearlyDone: boolean, maxDurationS: number) {
+  if (!recording) return `Up to ${clock(maxDurationS)}. Tap to start.`;
+  return nearlyDone ? "Almost out of time — it stops on its own." : "Recording…";
 }
 
 /**
@@ -134,13 +144,7 @@ export function RecorderStage({
               {clock(remaining)} left
             </Text>
           </View>
-          <Text style={styles.hint}>
-            {recording
-              ? nearlyDone
-                ? "Almost out of time — it stops on its own."
-                : "Recording…"
-              : `Up to ${clock(maxDurationS)}. Tap to start.`}
-          </Text>
+          <Text style={styles.hint}>{stageHint(recording, nearlyDone, maxDurationS)}</Text>
           <View style={styles.controls}>
             <View style={styles.controlsSide}>
               <RoundButton icon="close" label="Close" onPress={onClose} />
@@ -214,24 +218,6 @@ export function RecorderReview({
         </View>
       </View>
     </View>
-  );
-}
-
-/** Alert has no web implementation, so the browser's own dialog stands in. */
-export function confirmDiscard(): Promise<boolean> {
-  const title = "Discard this video?";
-  const message = "It hasn't been saved anywhere yet.";
-  if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
-  return new Promise((resolve) =>
-    Alert.alert(
-      title,
-      message,
-      [
-        { text: "Keep it", style: "cancel", onPress: () => resolve(false) },
-        { text: "Discard", style: "destructive", onPress: () => resolve(true) },
-      ],
-      { cancelable: true, onDismiss: () => resolve(false) },
-    ),
   );
 }
 

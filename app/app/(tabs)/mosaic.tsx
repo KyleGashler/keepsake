@@ -5,8 +5,8 @@ import { useMemo } from "react";
 import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
 import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
 import { StardustCluster } from "../../src/components/brand";
-import { AppHeader, ErrorState, Loading, MAX_WIDTH, Screen } from "../../src/components/ui";
-import { colors, radius, spacing, type } from "../../src/theme";
+import { AppHeader, ErrorState, Loading, Screen } from "../../src/components/ui";
+import { colors, MAX_WIDTH, radius, spacing, type } from "../../src/theme";
 
 const GAP = 10;
 const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
@@ -55,6 +55,7 @@ export default function MosaicScreen() {
         </View>
         <View style={{ flexDirection: "row", gap: GAP }}>
           {columns.map((column, i) => (
+            // oxlint-disable-next-line react/no-array-index-key -- columns are positions; tiles move between them
             <View key={i} style={{ width: columnWidth, gap: GAP }}>
               {column.tiles.map((tile) => (
                 <Pressable

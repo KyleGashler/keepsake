@@ -19,9 +19,7 @@ mosaicRouter.get("/mosaic", async (req, res) => {
 
   const tiles = await Promise.all(memories.map(async (m, i) => {
     const hero = m.media.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
-    // A repeating 7-beat rhythm: mostly small tiles, occasional wide/tall ones.
-    const beat = i % 7;
-    const span = beat === 0 ? "wide" : beat === 3 ? "tall" : "single";
+    const span = tileSpan(i);
     return {
       id: m.id,
       title: m.title,
@@ -36,3 +34,11 @@ mosaicRouter.get("/mosaic", async (req, res) => {
 
   res.json({ tiles });
 });
+
+/** A repeating 7-beat rhythm: mostly small tiles, occasional wide/tall ones. */
+function tileSpan(index: number) {
+  const beat = index % 7;
+  if (beat === 0) return "wide";
+  if (beat === 3) return "tall";
+  return "single";
+}

@@ -1,3 +1,4 @@
+import type { TranscriptStatus } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { jobQueue } from "../jobs/index.js";
@@ -8,7 +9,20 @@ import { memoryCardDtos, memoryDto } from "../lib/serialize.js";
 
 /** An uploaded clip with sound in it — the only media the transcriber is given. */
 function isTranscribable(m: { type: string; storageKey?: string | null }) {
-  return (TRANSCRIBABLE_TYPES as readonly string[]).includes(m.type) && Boolean(m.storageKey);
+  return TRANSCRIBABLE_TYPES.some((t) => t === m.type) && Boolean(m.storageKey);
+}
+
+/**
+ * Photos and placeholder clips have nothing to transcribe: null. A video
+ * known to be too long is SKIPPED, and gets no job.
+ */
+function initialTranscriptStatus(m: {
+  type: string;
+  storageKey?: string | null;
+  durationS?: number | null;
+}): TranscriptStatus | null {
+  if (!isTranscribable(m)) return null;
+  return tooLongToTranscribe(m) ? "SKIPPED" : "PENDING";
 }
 
 export const memoriesRouter = Router();
@@ -162,7 +176,7 @@ memoriesRouter.post("/memories", async (req, res) => {
             // Uploads have no stored URL: it's signed per response from the
             // storage key, because a presigned URL expires and this column
             // doesn't. See lib/serialize.ts#mediaReadUrl.
-            url: m.storageKey ? "" : (m.url as string),
+            url: m.storageKey ? "" : (m.url ?? ""),
             storageKey: m.storageKey ?? null,
             mimeType: m.mimeType ?? null,
             bytes: m.bytes ?? null,
@@ -173,13 +187,7 @@ memoriesRouter.post("/memories", async (req, res) => {
             width: m.width,
             height: m.height,
             durationS: m.durationS ?? null,
-            // Photos and placeholder clips have nothing to transcribe: null.
-            // A video known to be too long is SKIPPED, and gets no job below.
-            transcriptStatus: !isTranscribable(m)
-              ? null
-              : tooLongToTranscribe(m)
-                ? ("SKIPPED" as const)
-                : ("PENDING" as const),
+            transcriptStatus: initialTranscriptStatus(m),
             sortOrder: i,
           })),
         },

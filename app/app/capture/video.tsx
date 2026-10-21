@@ -5,14 +5,15 @@ import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { useApi, type UploadLimits } from "../../src/api";
 import type { VideoMeta } from "../../src/components/video";
+import { confirmDiscard } from "../../src/confirm";
 import {
-  confirmDiscard,
   RecorderNotice,
   RecorderReview,
   RecorderStage,
   type Facing,
 } from "../../src/components/video-recorder";
 import { draft } from "../../src/draft";
+import { errorMessage } from "../../src/format";
 import { FALLBACK_MAX_UPLOAD_BYTES, NATIVE_VIDEO, normalizeVideoType, recordingBudget } from "../../src/video";
 
 type Phase = "asking" | "denied" | "ready" | "recording" | "stopping" | "review";
@@ -74,31 +75,33 @@ export default function VideoScreen() {
 
   async function askForAccess() {
     setPhase("asking");
-    const camera = await requestCamera()
-      .then((perm) => perm.granted)
-      .catch(() => false);
-    const microphone = camera
-      ? await requestMicrophone()
-          .then((perm) => perm.granted)
-          .catch(() => false)
-      : false;
-    if (mountedRef.current) setPhase(camera && microphone ? "ready" : "denied");
+    const granted = await accessGranted(requestCamera, requestMicrophone);
+    if (mountedRef.current) setPhase(granted ? "ready" : "denied");
   }
 
   useEffect(() => {
-    void askForAccess();
-  }, []);
+    let cancelled = false;
+    const ask = async () => {
+      const granted = await accessGranted(requestCamera, requestMicrophone);
+      if (!cancelled) setPhase(granted ? "ready" : "denied");
+    };
+    void ask();
+    return () => {
+      cancelled = true;
+    };
+  }, [requestCamera, requestMicrophone]);
 
   // The clock, and a backstop in case the native cap is ever late.
+  const maxDurationS = budget?.maxDurationS;
   useEffect(() => {
-    if (phase !== "recording" || !budget) return;
+    if (phase !== "recording" || maxDurationS === undefined) return;
     const timer = setInterval(() => {
       const ms = Date.now() - startedAtRef.current;
       setElapsedMs(ms);
-      if (ms > (budget.maxDurationS + 2) * 1000) stop();
+      if (ms > (maxDurationS + 2) * 1000) stop();
     }, 250);
     return () => clearInterval(timer);
-  }, [phase, budget?.maxDurationS]);
+  }, [phase, maxDurationS]);
 
   async function start() {
     const camera = cameraRef.current;
@@ -128,7 +131,7 @@ export default function VideoScreen() {
     } catch (err) {
       liveCameraRef.current = null;
       if (!mountedRef.current || discardedRef.current) return;
-      setError(`The video couldn't be saved. ${(err as Error).message ?? ""}`.trim());
+      setError(`The video couldn't be saved. ${errorMessage(err)}`.trim());
       setPhase("ready");
     }
   }
@@ -139,11 +142,6 @@ export default function VideoScreen() {
     const wait = MIN_RECORDING_MS - (Date.now() - startedAtRef.current);
     if (wait > 0) setTimeout(() => liveCameraRef.current?.stopRecording(), wait);
     else liveCameraRef.current?.stopRecording();
-  }
-
-  function close() {
-    if (router.canGoBack()) router.back();
-    else router.replace("/capture");
   }
 
   async function closeAsked() {
@@ -257,4 +255,23 @@ export default function VideoScreen() {
       error={error}
     />
   );
+}
+
+/** Camera first; the microphone is only asked for once the camera is allowed. */
+async function accessGranted(
+  requestCamera: () => Promise<{ granted: boolean }>,
+  requestMicrophone: () => Promise<{ granted: boolean }>,
+) {
+  const camera = await requestCamera()
+    .then((perm) => perm.granted)
+    .catch(() => false);
+  if (!camera) return false;
+  return requestMicrophone()
+    .then((perm) => perm.granted)
+    .catch(() => false);
+}
+
+function close() {
+  if (router.canGoBack()) router.back();
+  else router.replace("/capture");
 }

@@ -1,9 +1,19 @@
+import type { PersonRole } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
 import { personDto } from "../lib/serialize.js";
 
 export const familyRouter = Router();
+
+// Permissions are display-only until accounts exist.
+const PERMISSION_LABELS: Record<PersonRole, string> = {
+  PARENT: "Owner",
+  CHILD: "No access yet",
+  GRANDPARENT: "Can add memories",
+  RELATIVE: "Can add memories",
+  COLLABORATOR: "Can add memories",
+};
 
 /** Family Hub: administrative rather than emotional, hence its own modal. */
 familyRouter.get("/family", async (req, res) => {
@@ -27,8 +37,7 @@ familyRouter.get("/family", async (req, res) => {
     },
     members: people.map((p) => ({
       ...personDto(p),
-      // Permissions are display-only until accounts exist.
-      permission: p.role === "PARENT" ? "Owner" : p.role === "CHILD" ? "No access yet" : "Can add memories",
+      permission: PERMISSION_LABELS[p.role],
     })),
     stats: { memoryCount, mediaCount, collectionCount, personCount: people.length },
     subscription: { plan: "Keepsake Family (preview)", status: "Not billed in this build" },

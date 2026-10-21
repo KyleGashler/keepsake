@@ -8,18 +8,23 @@ import { File as FsFile, UploadType } from "expo-file-system";
  * single family until accounts exist.
  */
 function resolveBaseUrl() {
-  const configured = process.env.EXPO_PUBLIC_API_URL;
+  const configured: string | undefined = process.env.EXPO_PUBLIC_API_URL;
   if (configured) return configured.replace(/\/$/, "");
   // On a phone, "localhost" is the phone. Borrow the LAN host Metro is served
   // from so a device on the same network reaches the API without config.
-  const hostUri = Constants.expoConfig?.hostUri ?? (Constants as any).expoGoConfig?.debuggerHost;
-  if (hostUri) return `http://${String(hostUri).split(":")[0]}:4000`;
+  // Expo Go's config is typed by expo-manifests, which isn't installed.
+  const goConfig: { debuggerHost?: unknown } | null = Constants.expoGoConfig;
+  const debuggerHost = typeof goConfig?.debuggerHost === "string" ? goConfig.debuggerHost : undefined;
+  const hostUri = Constants.expoConfig?.hostUri ?? debuggerHost;
+  if (hostUri) return `http://${hostUri.split(":")[0]}:4000`;
   return "http://localhost:4000";
 }
 
 export const API_URL = resolveBaseUrl();
 
 /** Media paths come back relative so the host can change without a migration. */
+export function mediaUrl(path: string): string;
+export function mediaUrl(path?: string | null): string | undefined;
 export function mediaUrl(path?: string | null) {
   if (!path) return undefined;
   return path.startsWith("http") ? path : `${API_URL}${path}`;
@@ -121,7 +126,7 @@ export async function uploadFile(
     // Over the ceiling: say so in words, with the server's own number. Nothing
     // has been uploaded yet.
     if (res.status === 413) {
-      const body = (await res.json().catch(() => null)) as Partial<UploadLimits> | null;
+      const body: Partial<UploadLimits> | null = await res.json().catch(() => null);
       if (body?.maxUploadBytes) throw new Error(tooLargeMessage(type, body.maxUploadBytes));
     }
     if (!res.ok) throw new Error((await res.text()) || res.statusText);
@@ -133,7 +138,7 @@ export async function uploadFile(
     // and, more importantly, their exact length — which init has to authorise.
     const blob = await (await fetch(uri)).blob();
     const { key, target } = await init(blob.size);
-    const res = await fetch(mediaUrl(target.url) as string, {
+    const res = await fetch(mediaUrl(target.url), {
       method: target.method,
       headers: target.headers,
       body: blob,
@@ -147,7 +152,7 @@ export async function uploadFile(
   // video never has to be materialised in JS memory the way a Blob would.
   const file = new FsFile(uri);
   const { key, target } = await init(file.size);
-  const result = await file.upload(mediaUrl(target.url) as string, {
+  const result = await file.upload(mediaUrl(target.url), {
     httpMethod: target.method,
     uploadType: UploadType.BINARY_CONTENT,
     headers: target.headers,
@@ -166,27 +171,41 @@ async function finalizeUpload(key: string) {
 }
 
 /** Small stand-in for a data layer; swap for React Query when caching matters. */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- T is the caller's word for the response's shape
 export function useApi<T>(path: string | null) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
+  // A new path is loading from the render that brings it, not one render later.
+  const [shownPath, setShownPath] = useState(path);
+  if (path !== shownPath) {
+    setShownPath(path);
+    if (path) setLoading(true);
+  }
 
-  const load = useCallback(async () => {
+  const fetchPath = useCallback(async () => {
     if (!path) return;
-    setLoading(true);
     try {
-      setData(await apiGet<T>(path));
+      const next = await apiGet<T>(path);
+      setData(next);
       setError(null);
     } catch (err) {
-      setError(err as Error);
+      setError(err instanceof Error ? err : new Error(String(err)));
     } finally {
       setLoading(false);
     }
   }, [path]);
 
+  const load = useCallback(async () => {
+    if (!path) return;
+    setLoading(true);
+    await fetchPath();
+  }, [path, fetchPath]);
+
   useEffect(() => {
-    void load();
-  }, [load]);
+    // oxlint-disable-next-line react/set-state-in-effect -- fetchPath only sets state once its request settles
+    void fetchPath();
+  }, [fetchPath]);
 
   return { data, error, loading, refetch: load };
 }

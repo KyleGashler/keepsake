@@ -1,3 +1,4 @@
+import type { Readable } from "node:stream";
 /**
  * Where original media lives.
  *
@@ -42,7 +43,7 @@ export interface StorageProvider {
    * The size and type are part of what's authorised, so a client can't be
    * handed a target for a 2 MB JPEG and use it to store a 2 GB anything.
    */
-  createUploadTarget(input: { key: string; mimeType: string; bytes: number }): Promise<UploadTarget>;
+  createUploadTarget: (input: { key: string; mimeType: string; bytes: number }) => Promise<UploadTarget>;
 
   /**
    * Object metadata, or null when nothing is stored at `key`. `checksum` is the
@@ -51,7 +52,7 @@ export interface StorageProvider {
    * instead of reading the object back to hash it; a provider that can't vouch
    * for every byte (local disk, most emulators) leaves it out.
    */
-  head(key: string): Promise<ObjectHead | null>;
+  head: (key: string) => Promise<ObjectHead | null>;
 
   /**
    * False when `key` has held more than one object — i.e. something was
@@ -60,14 +61,14 @@ export interface StorageProvider {
    * been. Providers that make an overwrite impossible at write time may still
    * report what they can observe.
    */
-  writtenOnce(key: string): Promise<boolean>;
+  writtenOnce: (key: string) => Promise<boolean>;
 
   /**
    * A URL a client can GET for `ttlSeconds`. May be a relative path (the local
    * provider returns `/media/o/<token>`); callers resolve it against the API
    * origin the way they already do for `/media/gen/...`.
    */
-  getReadUrl(key: string, ttlSeconds: number): Promise<string>;
+  getReadUrl: (key: string, ttlSeconds: number) => Promise<string>;
 
   /**
    * Read the object back — used for sniffing, hashing and future derivatives.
@@ -75,20 +76,20 @@ export interface StorageProvider {
    * read, so a sniff of a 2 GB video costs a few KB rather than an abandoned
    * download. A range past the end of the object returns what there is.
    */
-  stream(key: string, range?: ByteRange): Promise<NodeJS.ReadableStream>;
+  stream: (key: string, range?: ByteRange) => Promise<Readable>;
 
   /**
    * Derivatives only. Original media is sacred: nothing in this codebase may
    * call this with an original's key, and implementations refuse if asked.
    */
-  delete(key: string): Promise<void>;
+  delete: (key: string) => Promise<void>;
 
   /**
    * Whether the backing store is reachable — `/api/health` asks this. May
    * throw instead of returning false; the caller counts a throw as unhealthy
    * and logs it, which keeps the reason.
    */
-  healthCheck(): Promise<boolean>;
+  healthCheck: () => Promise<boolean>;
 }
 
 /**

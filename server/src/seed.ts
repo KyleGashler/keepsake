@@ -1,4 +1,4 @@
-import { Pillar, PrismaClient, type Person } from "@prisma/client";
+import { PrismaClient, type Person, type Pillar } from "@prisma/client";
 import { hueForSeed } from "./lib/placeholder.js";
 
 const prisma = new PrismaClient();
@@ -241,9 +241,11 @@ async function main() {
   console.log(`Seeded "${family.name}":`, counts);
 }
 
-main()
-  .catch((err) => {
-    console.error(err);
-    process.exitCode = 1;
-  })
-  .finally(() => prisma.$disconnect());
+try {
+  await main();
+} catch (err) {
+  console.error(err);
+  process.exitCode = 1;
+} finally {
+  await prisma.$disconnect();
+}

@@ -3,7 +3,6 @@ import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
   useAudioRecorder,
-  useAudioRecorderState,
   type AudioRecorder,
 } from "expo-audio";
 import { File as FsFile } from "expo-file-system";
@@ -14,10 +13,10 @@ import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Tex
 import { levelFromMetering, normalizeAudioType, VOICE_RECORDING } from "../../src/audio";
 import { AudioClip } from "../../src/components/audio";
 import { StardustCluster } from "../../src/components/brand";
-import { AppHeader, Button, MAX_WIDTH } from "../../src/components/ui";
+import { AppHeader, Button } from "../../src/components/ui";
 import { draft } from "../../src/draft";
-import { clock } from "../../src/format";
-import { colors, radius, spacing, type } from "../../src/theme";
+import { clock, errorMessage } from "../../src/format";
+import { colors, MAX_WIDTH, radius, spacing, type } from "../../src/theme";
 
 type Phase = "asking" | "denied" | "ready" | "starting" | "recording" | "paused" | "stopping" | "review";
 
@@ -47,7 +46,7 @@ export default function RecordScreen() {
       const recorder = recorderRef.current;
       if (liveRef.current && recorder) {
         liveRef.current = false;
-        recorder.stop().catch(() => {});
+        void stopQuietly(recorder);
       }
       void resetAudioMode();
     },
@@ -55,8 +54,9 @@ export default function RecordScreen() {
   );
 
   const recorder = useAudioRecorder(VOICE_RECORDING);
-  recorderRef.current = recorder;
-  const state = useAudioRecorderState(recorder, POLL_MS);
+  useEffect(() => {
+    recorderRef.current = recorder;
+  }, [recorder]);
 
   const [phase, setPhase] = useState<Phase>("asking");
   const [levels, setLevels] = useState<number[]>(() => Array(BARS).fill(0));
@@ -64,31 +64,39 @@ export default function RecordScreen() {
   const [error, setError] = useState<string | null>(null);
   const [handingOff, setHandingOff] = useState(false);
   // The recorder's own clock resets to zero on stop, so keep the last reading.
-  const elapsedRef = useRef(0);
+  const [recordedMs, setRecordedMs] = useState(0);
 
   async function askForMicrophone() {
     setPhase("asking");
-    const granted = await requestRecordingPermissionsAsync()
-      .then((perm) => perm.granted)
-      .catch(() => false);
+    const granted = await microphoneGranted();
     if (mountedRef.current) setPhase(granted ? "ready" : "denied");
   }
 
   useEffect(() => {
-    void askForMicrophone();
+    let cancelled = false;
+    const ask = async () => {
+      const granted = await microphoneGranted();
+      if (!cancelled) setPhase(granted ? "ready" : "denied");
+    };
+    void ask();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  // Feed the meter. Paused shows a flat line rather than a frozen spike.
+  // Feed the meter and the clock while recording. Pausing flattens the meter
+  // rather than leaving a frozen spike.
   useEffect(() => {
-    if (phase !== "recording" && phase !== "paused") return;
-    const level = phase === "recording" ? levelFromMetering(state.metering) : 0;
-    setLevels((prev) => [...prev.slice(1), level]);
-  }, [state.metering, state.durationMillis, phase]);
+    if (phase !== "recording") return;
+    const timer = setInterval(() => {
+      const status = recorder.getStatus();
+      setLevels((prev) => [...prev.slice(1), levelFromMetering(status.metering)]);
+      setRecordedMs((prev) => Math.max(prev, status.durationMillis));
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [phase, recorder]);
 
-  if (phase === "recording" || phase === "paused") {
-    elapsedRef.current = Math.max(elapsedRef.current, state.durationMillis);
-  }
-  const elapsedMs = phase === "review" && clip ? clip.durationS * 1000 : elapsedRef.current;
+  const elapsedMs = phase === "review" && clip ? clip.durationS * 1000 : recordedMs;
 
   async function start() {
     setError(null);
@@ -100,17 +108,17 @@ export default function RecordScreen() {
       recorder.record();
       if (!mountedRef.current) {
         // Left while the microphone was still opening: close it again.
-        await recorder.stop().catch(() => {});
+        await stopQuietly(recorder);
         return;
       }
       liveRef.current = true;
-      elapsedRef.current = 0;
+      setRecordedMs(0);
       setLevels(Array(BARS).fill(0));
       setPhase("recording");
     } catch (err) {
       liveRef.current = false;
       await resetAudioMode();
-      setError(`The microphone didn't start. ${(err as Error).message ?? ""}`.trim());
+      setError(`The microphone didn't start. ${errorMessage(err)}`.trim());
       setPhase("ready");
     }
   }
@@ -128,7 +136,7 @@ export default function RecordScreen() {
 
   async function stop() {
     setPhase("stopping");
-    const lastMs = Math.max(elapsedRef.current, recorder.getStatus().durationMillis);
+    const lastMs = Math.max(recordedMs, recorder.getStatus().durationMillis);
     try {
       await recorder.stop();
       liveRef.current = false;
@@ -138,7 +146,7 @@ export default function RecordScreen() {
       setPhase("review");
     } catch (err) {
       liveRef.current = false;
-      setError(`The recording couldn't be saved. ${(err as Error).message ?? ""}`.trim());
+      setError(`The recording couldn't be saved. ${errorMessage(err)}`.trim());
       setPhase("ready");
     } finally {
       await resetAudioMode();
@@ -150,11 +158,11 @@ export default function RecordScreen() {
     if (!ok) return;
     if (liveRef.current) {
       liveRef.current = false;
-      await recorder.stop().catch(() => {});
+      await stopQuietly(recorder);
       await resetAudioMode();
     }
     setClip(null);
-    elapsedRef.current = 0;
+    setRecordedMs(0);
     setLevels(Array(BARS).fill(0));
     setPhase("ready");
   }
@@ -190,7 +198,7 @@ export default function RecordScreen() {
         },
       });
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
       setHandingOff(false);
     }
   }
@@ -206,21 +214,13 @@ export default function RecordScreen() {
             <ActivityIndicator color={colors.accentDeep} />
             <Text style={[type.caption, { marginTop: spacing.md }]}>Asking for the microphone…</Text>
           </View>
-        ) : phase === "denied" ? (
-          <Denied onRetry={askForMicrophone} />
-        ) : (
+        ) : null}
+        {phase === "denied" ? <Denied onRetry={askForMicrophone} /> : null}
+        {phase === "asking" || phase === "denied" ? null : (
           <View style={styles.stage}>
             <View style={{ alignItems: "center", gap: spacing.sm }}>
               <StardustCluster size={40} opacity={live ? 1 : 0.6} />
-              <Text style={[type.caption, { textAlign: "center" }]}>
-                {phase === "review"
-                  ? "Have a listen, then keep it or start over."
-                  : phase === "paused"
-                    ? "Paused. Pick up where you left off."
-                    : phase === "recording"
-                      ? "Listening…"
-                      : "Put the phone between you and just talk."}
-              </Text>
+              <Text style={[type.caption, { textAlign: "center" }]}>{caption(phase)}</Text>
             </View>
 
             <Text style={styles.timer} accessibilityLabel={`Elapsed ${clock(elapsedMs / 1000)}`}>
@@ -276,6 +276,25 @@ export default function RecordScreen() {
   );
 }
 
+/** The line under the cluster, for whichever phase the recorder is in. */
+function caption(phase: Phase) {
+  if (phase === "review") return "Have a listen, then keep it or start over.";
+  if (phase === "paused") return "Paused. Pick up where you left off.";
+  if (phase === "recording") return "Listening…";
+  return "Put the phone between you and just talk.";
+}
+
+function microphoneGranted() {
+  return requestRecordingPermissionsAsync()
+    .then((perm) => perm.granted)
+    .catch(() => false);
+}
+
+/** Stop a recorder that may already have stopped; there's nothing to recover. */
+function stopQuietly(recorder: AudioRecorder) {
+  return recorder.stop().catch(() => undefined);
+}
+
 /** Put iOS back on the speaker for playback; a no-op elsewhere. */
 async function resetAudioMode() {
   try {
@@ -309,11 +328,7 @@ function Denied({ onRetry }: { onRetry: () => void }) {
         Keepsake can't hear you yet
       </Text>
       <Text style={[type.body, { textAlign: "center", marginTop: spacing.sm, maxWidth: 420 }]}>
-        {insecure
-          ? "This page isn't on a secure connection, so the browser won't share the microphone. Open Keepsake over https (or on this computer at localhost) to record."
-          : web
-            ? "Your browser is blocking the microphone for this site. Click the icon beside the address bar, allow the microphone, then come back here."
-            : "To record a conversation, Keepsake needs to use the microphone. You can turn it on in Settings."}
+        {deniedAdvice(web, insecure)}
       </Text>
       <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xl }}>
         {web ? null : (
@@ -325,12 +340,23 @@ function Denied({ onRetry }: { onRetry: () => void }) {
   );
 }
 
+function deniedAdvice(web: boolean, insecure: boolean) {
+  if (insecure) {
+    return "This page isn't on a secure connection, so the browser won't share the microphone. Open Keepsake over https (or on this computer at localhost) to record.";
+  }
+  if (web) {
+    return "Your browser is blocking the microphone for this site. Click the icon beside the address bar, allow the microphone, then come back here.";
+  }
+  return "To record a conversation, Keepsake needs to use the microphone. You can turn it on in Settings.";
+}
+
 /** A rolling level: newest bar on the right, each one a ~90 ms sample. */
 function Meter({ levels, active }: { levels: number[]; active: boolean }) {
   return (
     <View style={styles.meter} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {levels.map((level, i) => (
         <View
+          // oxlint-disable-next-line react/no-array-index-key -- bars are fixed slots the levels scroll through
           key={i}
           style={[
             styles.bar,

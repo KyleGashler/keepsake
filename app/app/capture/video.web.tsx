@@ -2,14 +2,15 @@ import { router, useLocalSearchParams } from "expo-router";
 import { createElement, useEffect, useRef, useState } from "react";
 import { useApi, type UploadLimits } from "../../src/api";
 import type { VideoMeta } from "../../src/components/video";
+import { confirmDiscard } from "../../src/confirm";
 import {
-  confirmDiscard,
   RecorderNotice,
   RecorderReview,
   RecorderStage,
   type Facing,
 } from "../../src/components/video-recorder";
 import { draft } from "../../src/draft";
+import { errorMessage } from "../../src/format";
 import {
   FALLBACK_MAX_UPLOAD_BYTES,
   normalizeVideoType,
@@ -41,8 +42,8 @@ export default function VideoWebScreen() {
   const maxBytes = limits?.maxUploadBytes ?? (limitsError ? FALLBACK_MAX_UPLOAD_BYTES : null);
   const budget = maxBytes ? recordingBudget(maxBytes, BITS_PER_SECOND) : null;
 
-  const [phase, setPhase] = useState<Phase>("asking");
-  const [unavailable, setUnavailable] = useState("");
+  const [phase, setPhase] = useState<Phase>(() => unsupported()?.phase ?? "asking");
+  const [unavailable, setUnavailable] = useState(() => unsupported()?.message ?? "");
   const [facing, setFacing] = useState<Facing>("back");
   // What the browser actually opened: a laptop webcam reports no facing at all.
   const [mirrored, setMirrored] = useState(true);
@@ -60,8 +61,6 @@ export default function VideoWebScreen() {
   const startedAtRef = useRef(0);
   const clipUrlRef = useRef<string | null>(null);
   const handedOffRef = useRef(false);
-  const budgetRef = useRef(budget);
-  budgetRef.current = budget;
 
   function releaseCamera() {
     streamRef.current?.getTracks().forEach((track) => track.stop());
@@ -90,17 +89,17 @@ export default function VideoWebScreen() {
     setPhase("asking");
     setError(null);
     releaseCamera();
-    // Browsers only expose the camera on https or localhost; on plain http the
-    // API simply isn't there.
-    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
-      setPhase("insecure");
+    const reason = unsupported();
+    if (reason) {
+      setUnavailable(reason.message);
+      setPhase(reason.phase);
       return;
     }
-    if (!pickWebVideoMimeType()) {
-      setUnavailable("This browser can't record video. Try a recent Chrome, Safari, Edge or Firefox.");
-      setPhase("unavailable");
-      return;
-    }
+    await connectCamera(which);
+  }
+
+  /** Ask for the camera and microphone; the browser's checks have already passed. */
+  async function connectCamera(which: Facing) {
     let media: MediaStream;
     try {
       media = await navigator.mediaDevices.getUserMedia({
@@ -113,18 +112,12 @@ export default function VideoWebScreen() {
       });
     } catch (err) {
       if (!mountedRef.current) return;
-      const name = (err as DOMException).name;
+      const name = err instanceof Error ? err.name : "";
       if (name === "NotAllowedError" || name === "SecurityError") {
         setPhase("denied");
         return;
       }
-      setUnavailable(
-        name === "NotFoundError" || name === "OverconstrainedError"
-          ? "No camera or microphone was found. Plug one in, or try another device."
-          : name === "NotReadableError"
-            ? "Another app is using the camera. Close it, then try again."
-            : `${(err as Error).message ?? "Something went wrong."}`,
-      );
+      setUnavailable(cameraFailure(name, err));
       setPhase("unavailable");
       return;
     }
@@ -142,25 +135,29 @@ export default function VideoWebScreen() {
       .then((devices) => {
         if (mountedRef.current) setCanFlip(devices.filter((d) => d.kind === "videoinput").length > 1);
       })
-      .catch(() => {});
+      .catch(() => {
+        // Without the device list there's no flip button, which is safe.
+      });
     setPhase("ready");
   }
 
   useEffect(() => {
     // The back camera on a phone ("capture a moment"); a desktop has only one.
-    void openCamera("back");
+    // An unsupported browser already says so from the first render.
+    if (!unsupported()) void connectCamera("back");
   }, []);
 
   // The clock, and the length cap: the browser has no maxDuration of its own.
+  const maxDurationS = budget?.maxDurationS;
   useEffect(() => {
-    if (phase !== "recording" || !budget) return;
+    if (phase !== "recording" || maxDurationS === undefined) return;
     const timer = setInterval(() => {
       const ms = Date.now() - startedAtRef.current;
       setElapsedMs(ms);
-      if (ms >= budget.maxDurationS * 1000) stop();
+      if (ms >= maxDurationS * 1000) stop();
     }, 250);
     return () => clearInterval(timer);
-  }, [phase, budget?.maxDurationS]);
+  }, [phase, maxDurationS]);
 
   function start() {
     const media = streamRef.current;
@@ -177,7 +174,7 @@ export default function VideoWebScreen() {
         audioBitsPerSecond: WEB_VIDEO.audioBitsPerSecond,
       });
     } catch (err) {
-      setError(`Recording didn't start. ${(err as Error).message ?? ""}`.trim());
+      setError(`Recording didn't start. ${errorMessage(err)}`.trim());
       return;
     }
 
@@ -188,17 +185,17 @@ export default function VideoWebScreen() {
     const byteStop = budget.maxFileSize - (BITS_PER_SECOND / 8) * (TIMESLICE_MS / 1000) * 2;
     const settings = media.getVideoTracks()[0]?.getSettings();
 
-    recorder.ondataavailable = (event) => {
+    recorder.addEventListener("dataavailable", (event) => {
       if (!event.data.size) return;
       chunks.push(event.data);
       bytes += event.data.size;
       if (bytes >= byteStop && recorder.state === "recording") stop();
-    };
-    recorder.onerror = () => {
+    });
+    recorder.addEventListener("error", () => {
       if (!mountedRef.current) return;
       setError("Recording stopped unexpectedly.");
-    };
-    recorder.onstop = () => {
+    });
+    recorder.addEventListener("stop", () => {
       recorderRef.current = null;
       const ms = Date.now() - startedAtRef.current;
       // The review plays the file, so the camera can go dark now.
@@ -222,7 +219,7 @@ export default function VideoWebScreen() {
         height: settings?.height,
       });
       setPhase("review");
-    };
+    });
 
     recorderRef.current = recorder;
     startedAtRef.current = Date.now();
@@ -236,11 +233,6 @@ export default function VideoWebScreen() {
     if (!recorder || recorder.state === "inactive") return;
     setPhase("stopping");
     recorder.stop();
-  }
-
-  function close() {
-    if (router.canGoBack()) router.back();
-    else router.replace("/capture");
   }
 
   async function closeAsked() {
@@ -339,6 +331,36 @@ export default function VideoWebScreen() {
 }
 
 /**
+ * Why this browser can't record at all, before anything is asked of the user.
+ * Browsers only expose the camera on https or localhost; on plain http the API
+ * simply isn't there.
+ */
+function unsupported(): { phase: "insecure" | "unavailable"; message: string } | null {
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return { phase: "insecure", message: "" };
+  if (!pickWebVideoMimeType()) {
+    return {
+      phase: "unavailable",
+      message: "This browser can't record video. Try a recent Chrome, Safari, Edge or Firefox.",
+    };
+  }
+  return null;
+}
+
+/** What to say when `getUserMedia` fails for a reason other than a refusal. */
+function cameraFailure(name: string, err: unknown) {
+  if (name === "NotFoundError" || name === "OverconstrainedError") {
+    return "No camera or microphone was found. Plug one in, or try another device.";
+  }
+  if (name === "NotReadableError") return "Another app is using the camera. Close it, then try again.";
+  return errorMessage(err, "Something went wrong.");
+}
+
+function close() {
+  if (router.canGoBack()) router.back();
+  else router.replace("/capture");
+}
+
+/**
  * The live picture. Muted so the room doesn't echo back through the
  * speakers, and mirrored for a camera facing you the way every selfie view is —
  * the recording itself is not mirrored.
@@ -352,8 +374,13 @@ function Preview({ stream, mirrored }: { stream: MediaStream | null; mirrored: b
     // element, and Safari won't autoplay a stream without it.
     el.muted = true;
     el.srcObject = stream;
-    if (stream) el.play().catch(() => {});
+    if (stream) {
+      el.play().catch(() => {
+        // Interrupted by the next stream, or autoplay refused: nothing to undo.
+      });
+    }
   }, [stream]);
+  // oxlint-disable-next-line react/refs -- handing the ref to the element is how it attaches; nothing reads it here
   return createElement("video", {
     ref,
     autoPlay: true,

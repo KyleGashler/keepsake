@@ -27,8 +27,10 @@ import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
 import { AppHeader, Button, Loading, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
-import { duration, lengthInWords } from "../../src/format";
+import { duration, errorMessage, lengthInWords } from "../../src/format";
 import { colors, radius, spacing, type } from "../../src/theme";
+
+const PILLARS: PillarKey[] = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"];
 
 const PILLAR_LABELS: Record<PillarKey, string> = {
   ARRIVAL_STORIES: "Arrival",
@@ -39,14 +41,27 @@ const PILLAR_LABELS: Record<PillarKey, string> = {
 /** Local date, not UTC — an evening capture belongs to today, not tomorrow. */
 function today() {
   const now = new Date();
-  const pad = (n: number) => String(n).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+function pad(n: number) {
+  return String(n).padStart(2, "0");
 }
 
 /** Accepts YYYY-MM-DD; falls back to now so a typo can't lose the memory. */
 function toIso(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
+}
+
+function toggle(list: string[], id: string) {
+  return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
+}
+
+/** Which videos the skip notice is about, out of how many were picked. */
+function skippedVideos(total: number, long: number) {
+  if (total <= 1) return "this video";
+  return long > 1 ? "these videos" : "one video";
 }
 
 export default function ComposeScreen() {
@@ -64,7 +79,7 @@ export default function ComposeScreen() {
   const [authorId, setAuthorId] = useState<string | null>(null);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
   const [collectionIds, setCollectionIds] = useState<string[]>(
-    params.collectionId ? [String(params.collectionId)] : [],
+    params.collectionId ? [params.collectionId] : [],
   );
   const [pillar, setPillar] = useState<PillarKey>("FAMILY_LIFE");
   const [saving, setSaving] = useState(false);
@@ -95,7 +110,7 @@ export default function ComposeScreen() {
   const skipMessage =
     longVideos.length && limits
       ? `Over ${lengthInWords(limits.transcribeMaxVideoSeconds)}, so ${
-          videos.length > 1 ? (longVideos.length > 1 ? "these videos" : "one video") : "this video"
+          skippedVideos(videos.length, longVideos.length)
         } won't be transcribed yet.`
       : null;
 
@@ -111,10 +126,6 @@ export default function ComposeScreen() {
     [collectionsData, collectionIds],
   );
 
-  function toggle(list: string[], id: string) {
-    return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-  }
-
   async function save() {
     if (!title.trim()) return setError("Give the memory a title so it can be found again.");
     setSaving(true);
@@ -123,7 +134,7 @@ export default function ComposeScreen() {
       const media = [];
       for (const [i, asset] of assets.entries()) {
         const label = assets.length > 1 ? `${i + 1} of ${assets.length}` : "";
-        setProgress(`Uploading ${label}`.trim() + "…");
+        setProgress(label ? `Uploading ${label}…` : "Uploading…");
         const uploaded = await uploadFile(asset.uri, asset.name, asset.mime, (fraction) =>
           setProgress(`Uploading ${label} ${Math.round(fraction * 100)}%`.replace(/\s+/g, " ").trim()),
         );
@@ -165,7 +176,7 @@ export default function ComposeScreen() {
 
       router.replace(`/memory/${res.memory.id}`);
     } catch (err) {
-      setError((err as Error).message);
+      setError(errorMessage(err));
     } finally {
       setSaving(false);
       setProgress(null);
@@ -199,7 +210,8 @@ export default function ComposeScreen() {
               />
             ))}
           </View>
-        ) : audioMode ? (
+        ) : null}
+        {audioMode && !recordings.length ? (
           // Arrived without a clip (a deep link, or a reload that dropped the
           // in-memory draft): offer the recorder rather than an empty form.
           <View style={styles.recordPrompt}>
@@ -331,7 +343,7 @@ export default function ComposeScreen() {
 
         <Field label="Where it belongs">
           <View style={[styles.chipWrap, { marginBottom: spacing.sm }]}>
-            {(Object.keys(PILLAR_LABELS) as PillarKey[]).map((key) => (
+            {PILLARS.map((key) => (
               <Chip key={key} label={PILLAR_LABELS[key]} selected={pillar === key} onPress={() => setPillar(key)} />
             ))}
           </View>

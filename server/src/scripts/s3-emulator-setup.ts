@@ -15,6 +15,7 @@ import {
   PutBucketCorsCommand,
   PutBucketVersioningCommand,
   S3Client,
+  S3ServiceException,
 } from "@aws-sdk/client-s3";
 import { s3ConfigFromEnv } from "../storage/S3StorageProvider.js";
 
@@ -40,8 +41,7 @@ async function bucketState(): Promise<"exists" | "missing"> {
     await client.send(new HeadBucketCommand({ Bucket }));
     return "exists";
   } catch (err) {
-    const status = (err as { $metadata?: { httpStatusCode?: number } }).$metadata?.httpStatusCode;
-    if (status === 404) return "missing";
+    if (err instanceof S3ServiceException && err.$metadata.httpStatusCode === 404) return "missing";
     throw err;
   }
 }
@@ -52,8 +52,8 @@ async function waitForEmulator() {
       return await bucketState();
     } catch (err) {
       if (attempt >= 30) throw err;
-      console.log(`waiting for ${config.endpoint} (${(err as Error).name})…`);
-      await new Promise((r) => setTimeout(r, 1000));
+      console.log(`waiting for ${config.endpoint} (${err instanceof Error ? err.name : String(err)})…`);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
   }
 }

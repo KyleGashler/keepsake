@@ -33,7 +33,7 @@ const LOGO_INK = "#141716";
 
 /** Ratios come from the traced viewBoxes, so each lockup keeps its proportions. */
 function ratio(viewBox: string) {
-  const [, , w, h] = viewBox.split(" ").map(Number);
+  const [w, h] = viewBox.split(" ").slice(2).map(Number);
   return w / h;
 }
 

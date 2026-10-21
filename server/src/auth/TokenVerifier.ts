@@ -18,5 +18,5 @@ export interface TokenVerifier {
    * Returns null for anything it can't vouch for — never throws for a bad
    * token, so a malformed header is a 401 rather than a 500.
    */
-  verify(bearer: string): Promise<VerifiedIdentity | null>;
+  verify: (bearer: string) => Promise<VerifiedIdentity | null>;
 }

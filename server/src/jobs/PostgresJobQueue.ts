@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
 import {
   PermanentJobError,
+  jobPayloadSchemas,
   type EnqueueOptions,
   type JobContext,
   type JobHandler,
@@ -27,6 +28,15 @@ export interface PostgresJobQueueOptions {
   backoffMaxMs?: number;
 }
 
+/**
+ * A handler with its payload type erased, so handlers of every job type fit
+ * one map. Each wrapper parses the raw payload before calling through.
+ */
+type RegisteredHandler = {
+  run: (payload: Prisma.JsonValue, ctx: JobContext) => Promise<void>;
+  onFinalFailure?: (payload: Prisma.JsonValue, error: unknown, ctx: JobContext) => Promise<void>;
+};
+
 type ClaimedJob = {
   id: string;
   type: JobType;
@@ -51,7 +61,7 @@ type ClaimedJob = {
  * raw SQL in agreement whatever the session's time zone is.
  */
 export class PostgresJobQueue implements JobQueue {
-  private readonly handlers = new Map<JobType, JobHandler<JobType>>();
+  private readonly handlers = new Map<JobType, RegisteredHandler>();
   private readonly sleepers = new Set<() => void>();
   private loops: Promise<void>[] = [];
   private running = false;
@@ -79,7 +89,7 @@ export class PostgresJobQueue implements JobQueue {
     const job = await (options.db ?? this.db).job.create({
       data: {
         type,
-        payload: payload as Prisma.InputJsonObject,
+        payload,
         ...(options.runAt ? { runAt: options.runAt } : {}),
         ...(options.maxAttempts ? { maxAttempts: options.maxAttempts } : {}),
       },
@@ -90,7 +100,17 @@ export class PostgresJobQueue implements JobQueue {
 
   register<T extends JobType>(type: T, handler: JobHandler<T>) {
     if (this.running) throw new Error(`register("${type}") after start()`);
-    this.handlers.set(type, handler as unknown as JobHandler<JobType>);
+    const schema = jobPayloadSchemas[type];
+    const parse = (raw: Prisma.JsonValue) => {
+      const parsed = schema.safeParse(raw);
+      if (!parsed.success) throw new PermanentJobError(`Malformed ${type} payload: ${parsed.error.message}`);
+      return parsed.data;
+    };
+    const { onFinalFailure } = handler;
+    this.handlers.set(type, {
+      run: (raw, ctx) => handler.run(parse(raw), ctx),
+      ...(onFinalFailure ? { onFinalFailure: (raw, err, ctx) => onFinalFailure(parse(raw), err, ctx) } : {}),
+    });
   }
 
   start() {
@@ -163,26 +183,21 @@ export class PostgresJobQueue implements JobQueue {
       maxAttempts: job.maxAttempts,
       log,
     };
-    const payload = job.payload as unknown as JobPayloads[JobType];
-
     if (!handler) return; // unreachable: claim filters by registered type
 
     // Only a job recovered from a dead worker can get here: its last
     // permitted attempt was spent by the run that never reported back.
     if (job.attempts > job.maxAttempts) {
-      await this.giveUp(job, handler, payload, new Error("Worker stopped during the final attempt"), ctx);
+      await this.giveUp(job, handler, new Error("Worker stopped during the final attempt"), ctx);
       return;
     }
 
     const started = Date.now();
     try {
-      await handler.run(payload, ctx);
+      await handler.run(job.payload, ctx);
     } catch (err) {
-      if (err instanceof PermanentJobError || job.attempts >= job.maxAttempts) {
-        await this.giveUp(job, handler, payload, err, ctx);
-      } else {
-        await this.retryLater(job, err, log);
-      }
+      const final = err instanceof PermanentJobError || job.attempts >= job.maxAttempts;
+      await (final ? this.giveUp(job, handler, err, ctx) : this.retryLater(job, err, log));
       return;
     }
 
@@ -206,13 +221,7 @@ export class PostgresJobQueue implements JobQueue {
     log.warn({ err, retryAt: runAt.toISOString() }, "job failed; will retry");
   }
 
-  private async giveUp(
-    job: ClaimedJob,
-    handler: JobHandler<JobType>,
-    payload: JobPayloads[JobType],
-    err: unknown,
-    ctx: JobContext,
-  ) {
+  private async giveUp(job: ClaimedJob, handler: RegisteredHandler, err: unknown, ctx: JobContext) {
     const failed = await this.db.job.updateMany({
       where: { id: job.id, lockedAt: job.lockedAt },
       data: { status: "FAILED", lockedAt: null, lastError: describe(err) },
@@ -220,7 +229,7 @@ export class PostgresJobQueue implements JobQueue {
     ctx.log.error({ err }, "job failed permanently");
     if (failed.count === 0 || !handler.onFinalFailure) return;
     try {
-      await handler.onFinalFailure(payload, err, ctx);
+      await handler.onFinalFailure(job.payload, err, ctx);
     } catch (hookErr) {
       ctx.log.error({ err: hookErr }, "onFinalFailure hook threw");
     }

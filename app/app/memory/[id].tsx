@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { apiSend, mediaUrl, useApi, type Memory, type UploadLimits } from "../../src/api";
+import { apiSend, mediaUrl, useApi, type Memory, type TranscriptStatus, type UploadLimits } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
 import { LittleMoon } from "../../src/components/brand";
@@ -25,11 +25,11 @@ import {
   PreviewNote,
   Screen,
 } from "../../src/components/ui";
-import { duration, lengthInWords, longDate } from "../../src/format";
+import { duration, errorMessage, lengthInWords, longDate } from "../../src/format";
+import { colors, radius, spacing, type } from "../../src/theme";
 
 /** How often to look again while a recording is being transcribed. */
 const TRANSCRIPT_POLL_MS = 3000;
-import { colors, radius, spacing, type } from "../../src/theme";
 
 /**
  * The immersive memory page: hero, the family's words, the original media, and
@@ -90,7 +90,7 @@ export default function MemoryScreen() {
       await refetch();
       setEditing(null);
     } catch (err) {
-      setSaveError((err as Error).message);
+      setSaveError(errorMessage(err));
     } finally {
       setSaving(false);
     }
@@ -119,7 +119,7 @@ export default function MemoryScreen() {
           <View style={styles.heroWrap}>
             {hero?.type === "VIDEO" ? (
               // Keyed by id: a new read URL on each poll must not rebuild the player.
-              <VideoHero key={hero.id} url={mediaUrl(hero.url) as string} autoPlay={chosenMediaId === hero.id} />
+              <VideoHero key={hero.id} url={mediaUrl(hero.url)} autoPlay={chosenMediaId === hero.id} />
             ) : (
               <Image
                 source={{ uri: mediaUrl(hero?.url ?? memory.heroUrl) }}
@@ -183,7 +183,8 @@ export default function MemoryScreen() {
                 <Button label="Cancel" variant="secondary" onPress={() => setEditing(null)} />
               </View>
             </View>
-          ) : tab === "story" ? (
+          ) : null}
+          {!editing && tab === "story" ? (
             <>
               <Pressable onLongPress={() => startEditing("story")}>
                 <Text style={[type.story, { marginTop: spacing.lg }]}>
@@ -192,59 +193,18 @@ export default function MemoryScreen() {
               </Pressable>
               <EditLink label="Edit this story" onPress={() => startEditing("story")} />
             </>
-          ) : (
-            <>
-              {transcriptStatus === "PENDING" ? (
-                <View style={styles.transcriptState}>
-                  <ActivityIndicator color={colors.accentDeep} size="small" />
-                  <Text style={[type.caption, { flex: 1 }]}>
-                    {memory.transcript
-                      ? "Still transcribing a recording — this will update when it's done."
-                      : "Transcribing… the words will appear here in a moment."}
-                  </Text>
-                </View>
-              ) : null}
-              {transcriptStatus === "SKIPPED" ? (
-                // Every clip here is a long video. Nothing to retry: it's a
-                // limit, not a failure. Writing one by hand is still offered below.
-                <View style={styles.transcriptState}>
-                  <Ionicons name="time-outline" size={18} color={colors.accentDeep} />
-                  <Text style={[type.caption, { flex: 1 }]}>
-                    {limits
-                      ? `Transcripts for videos over ${lengthInWords(limits.transcribeMaxVideoSeconds)} are coming.`
-                      : "Transcripts for long videos are coming."}{" "}
-                    The video itself is kept in full.
-                  </Text>
-                </View>
-              ) : null}
-              {transcriptStatus === "FAILED" ? (
-                <View style={styles.transcriptState}>
-                  <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
-                  <Text style={[type.caption, { flex: 1 }]}>
-                    We couldn't write the transcript for {clips.length > 1 ? "a recording" : "this recording"}.
-                  </Text>
-                  <Button
-                    label={retrying ? "Trying…" : "Try again"}
-                    variant="secondary"
-                    onPress={retryTranscripts}
-                    disabled={retrying}
-                  />
-                </View>
-              ) : null}
-              {memory.transcript ? (
-                <Pressable onLongPress={() => startEditing("transcript")}>
-                  <Text style={[type.body, styles.transcript]}>{memory.transcript}</Text>
-                </Pressable>
-              ) : null}
-              {/* Typing one in by hand is always allowed; the pipeline never overwrites it. */}
-              {memory.transcript || transcriptStatus !== "PENDING" ? (
-                <EditLink
-                  label={memory.transcript ? "Edit transcript" : "Write the transcript yourself"}
-                  onPress={() => startEditing("transcript")}
-                />
-              ) : null}
-            </>
-          )}
+          ) : null}
+          {!editing && tab === "transcript" ? (
+            <TranscriptPanel
+              memory={memory}
+              status={transcriptStatus}
+              limits={limits}
+              severalClips={clips.length > 1}
+              retrying={retrying}
+              onRetry={retryTranscripts}
+              onEdit={() => startEditing("transcript")}
+            />
+          ) : null}
 
           {audio.length ? (
             <View style={{ marginTop: spacing.xl, gap: spacing.md }}>
@@ -252,7 +212,7 @@ export default function MemoryScreen() {
               {audio.map((clip) => (
                 <AudioClip
                   key={clip.id}
-                  uri={mediaUrl(clip.url) as string}
+                  uri={mediaUrl(clip.url)}
                   title={clip.caption ?? "Voice recording"}
                   durationS={clip.durationS}
                 />
@@ -362,6 +322,79 @@ export default function MemoryScreen() {
  * it can't decode — offer the original instead of a black box; the link hands
  * the file to the system player or the browser's download.
  */
+/** The transcript side: where transcription stands, the words, and a way to edit them. */
+function TranscriptPanel({
+  memory,
+  status,
+  limits,
+  severalClips,
+  retrying,
+  onRetry,
+  onEdit,
+}: {
+  memory: Memory;
+  status: TranscriptStatus | null;
+  limits: UploadLimits | null;
+  severalClips: boolean;
+  retrying: boolean;
+  onRetry: () => void;
+  onEdit: () => void;
+}) {
+  return (
+    <>
+      {status === "PENDING" ? (
+        <View style={styles.transcriptState}>
+          <ActivityIndicator color={colors.accentDeep} size="small" />
+          <Text style={[type.caption, { flex: 1 }]}>
+            {memory.transcript
+              ? "Still transcribing a recording — this will update when it's done."
+              : "Transcribing… the words will appear here in a moment."}
+          </Text>
+        </View>
+      ) : null}
+      {status === "SKIPPED" ? (
+        // Every clip here is a long video. Nothing to retry: it's a
+        // limit, not a failure. Writing one by hand is still offered below.
+        <View style={styles.transcriptState}>
+          <Ionicons name="time-outline" size={18} color={colors.accentDeep} />
+          <Text style={[type.caption, { flex: 1 }]}>
+            {limits
+              ? `Transcripts for videos over ${lengthInWords(limits.transcribeMaxVideoSeconds)} are coming.`
+              : "Transcripts for long videos are coming."}{" "}
+            The video itself is kept in full.
+          </Text>
+        </View>
+      ) : null}
+      {status === "FAILED" ? (
+        <View style={styles.transcriptState}>
+          <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
+          <Text style={[type.caption, { flex: 1 }]}>
+            We couldn't write the transcript for {severalClips ? "a recording" : "this recording"}.
+          </Text>
+          <Button
+            label={retrying ? "Trying…" : "Try again"}
+            variant="secondary"
+            onPress={onRetry}
+            disabled={retrying}
+          />
+        </View>
+      ) : null}
+      {memory.transcript ? (
+        <Pressable onLongPress={onEdit}>
+          <Text style={[type.body, styles.transcript]}>{memory.transcript}</Text>
+        </Pressable>
+      ) : null}
+      {/* Typing one in by hand is always allowed; the pipeline never overwrites it. */}
+      {memory.transcript || status !== "PENDING" ? (
+        <EditLink
+          label={memory.transcript ? "Edit transcript" : "Write the transcript yourself"}
+          onPress={onEdit}
+        />
+      ) : null}
+    </>
+  );
+}
+
 function VideoHero({ url, autoPlay }: { url: string; autoPlay: boolean }) {
   const [failed, setFailed] = useState(false);
 

@@ -11,7 +11,7 @@ import zlib from "node:zlib";
  * storage (S3/R2 + a CDN) when uploads become the primary path.
  */
 
-const PALETTES: Array<[string, string]> = [
+const PALETTES: [string, string][] = [
   ["#E9EBE3", "#A3AA9A"], // sage
   ["#D3D8CB", "#78826E"], // sage, deep
   ["#E4EAEB", "#8FA1A6"], // dusk blue
@@ -71,7 +71,8 @@ export const RENDER_VERSION = hash(
 function shade(rgb: [number, number, number], t: number): [number, number, number] {
   const target = t >= 0 ? 255 : 0;
   const k = Math.abs(t);
-  return rgb.map((v) => v + (target - v) * k) as [number, number, number];
+  const mix = (v: number) => v + (target - v) * k;
+  return [mix(rgb[0]), mix(rgb[1]), mix(rgb[2])];
 }
 
 /**
@@ -96,7 +97,7 @@ function ramp(seed: string, baseHex?: string | null) {
 
 /** Stable 0-360 hue for a seed, so Mosaic can sort tiles by "palette". */
 export function hueForSeed(seed: string): number {
-  const [a, b] = PALETTES[hash(seed) % PALETTES.length];
+  const [, b] = PALETTES[hash(seed) % PALETTES.length];
   const [r, g, bl] = hexToRgb(b);
   const max = Math.max(r, g, bl);
   const min = Math.min(r, g, bl);
@@ -111,8 +112,8 @@ export function hueForSeed(seed: string): number {
 
 function crc32(buf: Buffer): number {
   let c = ~0;
-  for (let i = 0; i < buf.length; i++) {
-    c ^= buf[i];
+  for (const byte of buf) {
+    c ^= byte;
     for (let k = 0; k < 8; k++) c = (c >>> 1) ^ (0xedb88320 & -(c & 1));
   }
   return ~c >>> 0;
@@ -188,7 +189,7 @@ export function placeholderPng(
       const nx = x / width;
       // Project onto the gradient axis, normalised to 0..1.
       let t = (nx - 0.5) * dx + (ny - 0.5) * dy + 0.5;
-      t = t < 0 ? 0 : t > 1 ? 1 : t;
+      t = Math.min(1, Math.max(0, t));
       // Ease so the midpoint doesn't look like a hard band.
       t = t * t * (3 - 2 * t);
       const bloom = Math.max(0, 1 - Math.hypot(nx - bx, ny - by) * 2.1) * bloomAmt;
@@ -197,13 +198,14 @@ export function placeholderPng(
       for (let c = 0; c < 3; c++) {
         let v = light[c] + (dark[c] - light[c]) * t;
         v = v + (255 - v) * bloom - v * vignette;
-        rgb[i + c] = v < 0 ? 0 : v > 255 ? 255 : v;
+        rgb[i + c] = Math.min(255, Math.max(0, v));
       }
     }
   }
 
   const png = encodePng(width, height, rgb);
-  if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
+  const oldest = cache.keys().next();
+  if (cache.size >= CACHE_LIMIT && !oldest.done) cache.delete(oldest.value);
   cache.set(key, png);
   return png;
 }

@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
+import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { logger } from "../lib/logger.js";
 import {
@@ -56,7 +57,7 @@ function sign(payload: Payload): string {
 }
 
 function verify(token: string, scope: TokenScope): Payload {
-  const [body, sig] = String(token).split(".");
+  const [body, sig] = token.split(".");
   if (!body || !sig) throw new SignatureError("Malformed token");
 
   const expected = crypto.createHmac("sha256", SIGNING_SECRET).update(body).digest("base64url");
@@ -139,7 +140,7 @@ export class LocalDiskProvider implements StorageProvider {
     return `/media/o/${token}`;
   }
 
-  async stream(key: string, range?: ByteRange): Promise<NodeJS.ReadableStream> {
+  async stream(key: string, range?: ByteRange): Promise<Readable> {
     assertSafeKey(key);
     // `end` is inclusive here too, so a range means the same thing on both providers.
     return fs.createReadStream(this.pathFor(key), range ? { start: range.start, end: range.end } : undefined);
@@ -159,8 +160,8 @@ export class LocalDiskProvider implements StorageProvider {
 
   verifyUploadToken(token: string): UploadClaims {
     const p = verify(token, "u");
-    if (!p.m || !Number.isInteger(p.b)) throw new SignatureError("Incomplete upload token");
-    return { key: p.k, mimeType: p.m, bytes: p.b as number, expiresAt: new Date(p.e * 1000) };
+    if (!p.m || p.b === undefined || !Number.isInteger(p.b)) throw new SignatureError("Incomplete upload token");
+    return { key: p.k, mimeType: p.m, bytes: p.b, expiresAt: new Date(p.e * 1000) };
   }
 
   verifyReadToken(token: string): ReadClaims {

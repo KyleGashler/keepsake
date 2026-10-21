@@ -89,7 +89,7 @@ export function extensionFor(mimeType: string): string {
 
 export function contentTypeForKey(key: string): string {
   const dot = key.lastIndexOf(".");
-  if (dot < 0) return "application/octet-stream";
+  if (dot === -1) return "application/octet-stream";
   return BY_EXTENSION[key.slice(dot).toLowerCase()] ?? "application/octet-stream";
 }
 

@@ -36,6 +36,7 @@ export default function HomeScreen() {
   if (error) return <ErrorState error={error} onRetry={refetch} />;
   if (loading && !data) return <Loading />;
   if (!data) return null;
+  const { prompt } = data;
 
   return (
     <>
@@ -61,17 +62,17 @@ export default function HomeScreen() {
           ))}
         </ScrollView>
 
-        {data.prompt ? (
+        {prompt ? (
           <>
             <SectionHeader label="Today's Moment to Capture" />
             <Pressable
               onPress={() =>
-                router.push({ pathname: "/capture/compose", params: { prompt: data.prompt!.text } })
+                router.push({ pathname: "/capture/compose", params: { prompt: prompt.text } })
               }
               style={({ pressed }) => [styles.hero, pressed && { opacity: 0.85 }]}
             >
               <Image
-                source={{ uri: mediaUrl(data.prompt.imageUrl) }}
+                source={{ uri: mediaUrl(prompt.imageUrl) }}
                 style={StyleSheet.absoluteFill}
                 contentFit="cover"
                 transition={300}
@@ -80,8 +81,8 @@ export default function HomeScreen() {
               {/* Whimsical shape 1/6 — twinkle, on the one moment worth capturing today. */}
               <Twinkle size={22} color="#FFF7EF" opacity={0.9} style={styles.heroTwinkle} />
               <View style={styles.heroBody}>
-                <Text style={styles.heroText}>{data.prompt.text}</Text>
-                {data.prompt.subtitle ? <Text style={styles.heroSub}>{data.prompt.subtitle}</Text> : null}
+                <Text style={styles.heroText}>{prompt.text}</Text>
+                {prompt.subtitle ? <Text style={styles.heroSub}>{prompt.subtitle}</Text> : null}
                 <View style={styles.heroCta}>
                   <Ionicons name="add" size={16} color={colors.ink} />
                   <Text style={styles.heroCtaText}>Preserve this</Text>

@@ -63,12 +63,15 @@ export const radius = {
   pill: 999,
 };
 
+/** Content is capped so the phone layout stays intact on a wide browser. */
+export const MAX_WIDTH = 720;
+
 /** Georgia ships on iOS and the web; Android falls back to its own serif. */
 export const serif = Platform.select({
   ios: "Georgia",
   android: "serif",
   default: 'Georgia, "Iowan Old Style", "Times New Roman", serif',
-}) as string;
+});
 
 export const type = {
   display: { fontFamily: serif, fontSize: 30, lineHeight: 37, color: colors.ink },
@@ -95,4 +98,4 @@ export const shadow = Platform.select({
   },
   android: { elevation: 3 },
   default: { boxShadow: "0 8px 24px rgba(47,54,46,0.10)" },
-}) as object;
+});

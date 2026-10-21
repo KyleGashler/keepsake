@@ -22,8 +22,9 @@
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import { prisma } from "../lib/prisma.js";
+import { errorMessage } from "../lib/errors.js";
 import { contentTypeForKey } from "../lib/mime.js";
+import { prisma } from "../lib/prisma.js";
 import { MEDIA_DIR, OBJECTS_DIR } from "../storage/LocalDiskProvider.js";
 import { S3StorageProvider, s3ConfigFromEnv } from "../storage/S3StorageProvider.js";
 import { assertSafeKey } from "../storage/StorageProvider.js";
@@ -36,7 +37,7 @@ async function* walk(dir: string, prefix = ""): AsyncGenerator<string> {
   try {
     entries = await fsp.readdir(dir, { withFileTypes: true });
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return;
+    if (err instanceof Error && "code" in err && err.code === "ENOENT") return;
     throw err;
   }
   for (const entry of entries) {
@@ -72,7 +73,7 @@ async function main() {
     where: { storageKey: { not: null } },
     select: { storageKey: true, mimeType: true },
   });
-  const mimeByKey = new Map(rows.map((r) => [r.storageKey as string, r.mimeType]));
+  const mimeByKey = new Map(rows.flatMap((r) => (r.storageKey ? [[r.storageKey, r.mimeType] as const] : [])));
 
   console.log(`${dryRun ? "[dry run] " : ""}copying ${OBJECTS_DIR} → s3://${config.bucket}`);
 
@@ -90,7 +91,7 @@ async function main() {
       assertSafeKey(key);
     } catch (err) {
       summary.skipped++;
-      console.log(`skip  ${key} (${(err as Error).message})`);
+      console.log(`skip  ${key} (${errorMessage(err)})`);
       continue;
     }
 
@@ -128,7 +129,7 @@ async function main() {
       }
     } catch (err) {
       summary.failed++;
-      console.error(`FAIL  ${key}: ${(err as Error).name}: ${(err as Error).message}`);
+      console.error(`FAIL  ${key}: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`);
     }
   }
 

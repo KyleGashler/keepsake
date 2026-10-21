@@ -1,4 +1,4 @@
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import {
   DeleteObjectCommand,
   GetObjectCommand,
@@ -205,7 +205,7 @@ export class S3StorageProvider implements StorageProvider {
    * memory. With `range`, a ranged GET: S3 sends only those bytes, so the
    * finalize sniff doesn't open a 2 GB download just to abandon it.
    */
-  async stream(key: string, range?: ByteRange): Promise<NodeJS.ReadableStream> {
+  async stream(key: string, range?: ByteRange): Promise<Readable> {
     assertSafeKey(key);
     const out = await this.client.send(
       new GetObjectCommand({
@@ -214,8 +214,9 @@ export class S3StorageProvider implements StorageProvider {
         ...(range ? { Range: `bytes=${range.start}-${range.end}` } : {}),
       }),
     );
-    if (!out.Body) throw new Error(`Empty body for ${key}`);
-    return out.Body as Readable;
+    // On Node the SDK's body is the HTTP response stream itself.
+    if (!(out.Body instanceof Readable)) throw new Error(`Empty or non-stream body for ${key}`);
+    return out.Body;
   }
 
   async delete(key: string): Promise<void> {

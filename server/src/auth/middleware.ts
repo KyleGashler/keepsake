@@ -76,8 +76,9 @@ export function requireUser(verifier: TokenVerifier): RequestHandler {
 
     try {
       const user = await upsertUser(identity);
-      // Cast: `family` and `role` land in `requireFamily`, one middleware
-      // later. See the note on RequestContext in src/types/express.d.ts.
+      // `family` and `role` land in `requireFamily`, one middleware later.
+      // See the note on RequestContext in src/types/express.d.ts.
+      // oxlint-disable-next-line typescript/consistent-type-assertions -- half-built until requireFamily runs
       req.ctx = { user } as Request["ctx"];
       next();
     } catch (err) {

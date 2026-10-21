@@ -176,7 +176,7 @@ if (WEB_DIR && fs.existsSync(WEB_DIR)) {
   app.use(express.static(WEB_DIR, { index: false, maxAge: "1h" }));
   // expo-router is a single-page app: any non-API path renders the same shell
   // and the client resolves the route.
-  app.get("*", (req, res, next) => {
+  app.get("/{*splat}", (req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/media")) return next();
     res.sendFile(indexHtml);
   });
@@ -186,7 +186,8 @@ if (WEB_DIR && fs.existsSync(WEB_DIR)) {
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
 app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const requestId = req.id === undefined ? undefined : String(req.id);
+  // `genReqId` above only ever mints strings.
+  const requestId = typeof req.id === "string" ? req.id : undefined;
   (req.log ?? logger).error({ err, requestId }, "unhandled error");
   // A stack trace is a map of the server; developers get it, the internet doesn't.
   res.status(500).json({ error: isProduction ? "Internal server error" : err.message, requestId });
@@ -232,7 +233,7 @@ function shutdown(signal: NodeJS.Signals) {
 
   // Stop claiming at once; a job already running gets until the force-exit,
   // and one cut off there is reclaimed once its lock goes stale.
-  const workerStopped = worker?.stop().catch((err) => logger.error({ err }, "error stopping job worker"));
+  const workerStopped = worker?.stop().catch((err: unknown) => logger.error({ err }, "error stopping job worker"));
 
   server.close(async (err) => {
     if (err) logger.error({ err }, "error closing http server");

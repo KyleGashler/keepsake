@@ -339,6 +339,14 @@ so the hosted image starts compiled JavaScript.
 cd server && npm run build && npm start   # compiled, as production runs it
 ```
 
+Linting is [oxlint](https://oxc.rs/docs/guide/usage/linter), configured once at
+the root in `oxlint.config.ts` for both `app/` and `server/`. It's type-aware,
+so install `app/` and `server/` first; their `node_modules` supply the types.
+
+```bash
+npm install && npm run lint   # from the repo root; `npm run lint:fix` applies safe fixes
+```
+
 `node_modules` lives in an anonymous volume that shadows the image's copy, so a
 new dependency needs the volume thrown away as well as a rebuild — otherwise
 Metro reports it as unresolvable:

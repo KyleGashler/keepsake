@@ -62,3 +62,8 @@ export function ageFrom(birthIso?: string | null) {
   const years = Math.floor(months / 12);
   return `${years} years`;
 }
+
+/** What a caught error says, or `fallback` when what was thrown isn't an Error. */
+export function errorMessage(err: unknown, fallback = "") {
+  return err instanceof Error ? err.message : fallback;
+}

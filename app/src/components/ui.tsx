@@ -15,11 +15,8 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
-import { colors, radius, shadow, spacing, type } from "../theme";
+import { colors, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
 import { KeepsakeMark, KeepsakeWordmark } from "./brand";
-
-/** Content is capped so the phone layout stays intact on a wide browser. */
-export const MAX_WIDTH = 720;
 
 export function Screen({
   children,
@@ -354,7 +351,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     padding: spacing.lg,
-    ...(shadow as object),
+    ...shadow,
   },
   pressed: { opacity: 0.72 },
   personChip: { width: 74, alignItems: "center", gap: 6 },
