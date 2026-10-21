@@ -277,10 +277,12 @@ itself.
 
 ```
 app/                     Expo + expo-router
-  app/(tabs)/              the four primary destinations
+  app/(tabs)/              the five tabs; library/ is a nested stack (landing → children → child → collection)
   app/memory/[id].tsx      the immersive memory page
   src/api.ts               API client + response types
-  src/theme.ts             brand palette, type scale, spacing
+  src/theme.ts             palette, fonts, type scale, spacing
+  src/components/journey.tsx  redesign primitives: PageHeader, PhotoCard, SearchField, IconDisc, ListRow, Sparkle
+  src/routes.ts            route paths + openInLibrary
   src/components/brand.tsx logo lockups + the six whimsical shapes
   src/components/brand-artwork.ts   generated — see design/
 server/                  Express + Prisma

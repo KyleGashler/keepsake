@@ -63,6 +63,28 @@ export function ageFrom(birthIso?: string | null) {
   return `${years} years`;
 }
 
+/** "Age 5", "Age 8 months", "Newborn" — how a child's card and header read. */
+export function childAge(birthIso?: string | null) {
+  if (!birthIso) return null;
+  const birth = new Date(birthIso);
+  const now = new Date();
+  let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
+  if (now.getDate() < birth.getDate()) months -= 1;
+  if (months < 1) return "Newborn";
+  if (months < 24) return `Age ${months} ${months === 1 ? "month" : "months"}`;
+  return `Age ${Math.floor(months / 12)}`;
+}
+
+/** "Banks's" — copy names a child rather than guessing a pronoun. */
+export function possessive(name: string) {
+  return `${name}'s`;
+}
+
+/** "1 memory", "248 memories". */
+export function count(n: number, singular: string, plural = `${singular}s`) {
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 /** What a caught error says, or `fallback` when what was thrown isn't an Error. */
 export function errorMessage(err: unknown, fallback = "") {
   return err instanceof Error ? err.message : fallback;

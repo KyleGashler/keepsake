@@ -1,50 +1,60 @@
 import { Platform } from "react-native";
 
 /**
- * Keepsake should feel like a warm room, not a dashboard: paper tones, ink,
- * one terracotta accent, and a serif reserved for the family's own words.
+ * Keepsake should feel like a warm room, not a dashboard: paper, a deep-teal
+ * ink, one golden-honey accent, and a display serif for the names of things.
  */
 
 /**
- * The five approved brand colours, verbatim from the brand guide (v1.0).
- * Nothing else in the app should invent a hue — everything below is either one
- * of these or a tint/shade derived from them.
+ * The palette of the Library journey redesign (design/mockups/, 2026-10-21).
+ *
+ * Brand guide v1.0 named five colours (sage, dusk blue, golden honey,
+ * terracotta, forest) and asked that nothing else invent a hue. The redesign
+ * supersedes that: its ink is a deep teal the guide never had, its paper is
+ * cooler, and the guide's hues come back retuned as the collection discs'
+ * colours. Values were sampled from the mockups. The logo lockups still draw
+ * in the ink they were traced with (LOGO_INK in components/brand.tsx).
  */
 export const brand = {
-  sage: "#A3AA9A",
-  duskBlue: "#8FA1A6",
-  goldenHoney: "#D49A4A",
-  terracotta: "#D68A75",
-  forest: "#2F362E",
+  paper: "#FBF8F2",
+  deepTeal: "#123F45",
+  /** Subtitles and descriptions — a teal-grey that holds 5.2:1 on paper. */
+  tealGrey: "#4E6E73",
+  goldenHoney: "#D4994A",
+  sage: "#8E9A74",
+  terracotta: "#D56947",
+  forest: "#1D543D",
+  duskBlue: "#7DA2B3",
+  peach: "#F0DCC8",
 } as const;
 
 export const colors = {
-  /** The guide's paper, sampled from the brand sheet. */
-  bg: "#FAF5F1",
+  bg: brand.paper,
   surface: "#FFFFFF",
-  surfaceAlt: "#F0EAE0",
+  /** Warm fill for image placeholders, chips and quiet panels. */
+  surfaceAlt: "#F3EEE5",
+  ink: brand.deepTeal,
+  inkSoft: brand.tealGrey,
+  /** Captions and meta — 4.6:1 on paper. */
+  muted: "#56757A",
+  /** Hairlines between rows and around outlined controls. */
+  line: "#E6E2D9",
+  /** Golden honey: the eyebrow, the sparkle, small moments of delight. */
+  accent: "#C8893B",
   /**
-   * App type is Forest — warmer and softer than black, and on-palette. The
-   * logo is deliberately not this; it keeps the near-black it's drawn in
-   * (see LOGO_INK in components/brand.tsx), because the guide says not to
-   * alter the lockups.
-   */
-  ink: brand.forest,
-  inkSoft: "#555B50",
-  muted: "#6F6E64",
-  line: "#E4DDD1",
-  accent: brand.goldenHoney,
-  /**
-   * Golden Honey is too light to carry white text (2.2:1), so filled controls
-   * use this deeper shade of the same hue — 4.8:1, which clears AA.
+   * Honey is too light to carry small text (2.8:1 on paper), so the eyebrow
+   * and any honey-coloured words use this deeper shade of it — 4.6:1, AA.
    */
   accentDeep: "#9E6526",
-  accentSoft: "#F7EBD8",
+  accentSoft: "#F6EAD6",
+  /** Filled controls — the Capture disc, primary buttons, selected toggles. */
+  primary: brand.deepTeal,
+  onPrimary: "#FFFFFF",
   sage: brand.sage,
   duskBlue: brand.duskBlue,
   terracotta: brand.terracotta,
   forest: brand.forest,
-  overlay: "rgba(47,54,46,0.55)",
+  overlay: "rgba(18,63,69,0.55)",
 };
 
 export const spacing = {
@@ -66,36 +76,62 @@ export const radius = {
 /** Content is capped so the phone layout stays intact on a wide browser. */
 export const MAX_WIDTH = 720;
 
-/** Georgia ships on iOS and the web; Android falls back to its own serif. */
-export const serif = Platform.select({
-  ios: "Georgia",
-  android: "serif",
-  default: 'Georgia, "Iowan Old Style", "Times New Roman", serif',
-});
+/**
+ * Family names as expo-font registers them (app/_layout.tsx loads them). On
+ * the web the name is a CSS stack, so text still reads if a font fails to
+ * load. Custom fonts ignore `fontWeight` on Android, so each weight is its
+ * own family — use `fonts.sansBold`, not `fontWeight: "700"`.
+ */
+const stack = (family: string, fallback: string) =>
+  Platform.OS === "web" ? `${family}, ${fallback}` : family;
+
+const SERIF_FALLBACK = 'Georgia, "Times New Roman", serif';
+const SANS_FALLBACK = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+
+export const fonts = {
+  /** DM Serif Display — titles, names of children, collections and memories. */
+  display: stack("DMSerifDisplay_400Regular", SERIF_FALLBACK),
+  /** Nunito Sans — everything else. */
+  sans: stack("NunitoSans_400Regular", SANS_FALLBACK),
+  sansSemiBold: stack("NunitoSans_600SemiBold", SANS_FALLBACK),
+  sansBold: stack("NunitoSans_700Bold", SANS_FALLBACK),
+};
+
+/** Kept for screens that predate `fonts`; it is the display face now. */
+export const serif = fonts.display;
 
 export const type = {
-  display: { fontFamily: serif, fontSize: 30, lineHeight: 37, color: colors.ink },
-  title: { fontFamily: serif, fontSize: 23, lineHeight: 30, color: colors.ink },
-  heading: { fontFamily: serif, fontSize: 19, lineHeight: 26, color: colors.ink },
-  body: { fontSize: 15.5, lineHeight: 24, color: colors.inkSoft },
-  story: { fontFamily: serif, fontSize: 17, lineHeight: 29, color: colors.ink },
+  display: { fontFamily: fonts.display, fontSize: 36, lineHeight: 42, color: colors.ink },
+  title: { fontFamily: fonts.display, fontSize: 26, lineHeight: 32, color: colors.ink },
+  heading: { fontFamily: fonts.display, fontSize: 20, lineHeight: 26, color: colors.ink },
+  body: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 23, color: colors.inkSoft },
+  /** A family's own words. The display face is for short names, so stories read in the sans. */
+  story: { fontFamily: fonts.sans, fontSize: 17, lineHeight: 27, color: colors.ink },
   label: {
+    fontFamily: fonts.sansBold,
     fontSize: 11.5,
     letterSpacing: 1.4,
     textTransform: "uppercase" as const,
     color: colors.muted,
-    fontWeight: "600" as const,
   },
-  caption: { fontSize: 13, lineHeight: 19, color: colors.muted },
+  /** "LITTLE BY LITTLE" — spaced honey capitals over a page title. */
+  eyebrow: {
+    fontFamily: fonts.sansBold,
+    fontSize: 12,
+    letterSpacing: 3,
+    textTransform: "uppercase" as const,
+    color: colors.accentDeep,
+  },
+  caption: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, color: colors.muted },
 };
 
 export const shadow = Platform.select({
   ios: {
-    shadowColor: brand.forest,
-    shadowOpacity: 0.12,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: brand.deepTeal,
+    shadowOpacity: 0.1,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 6 },
   },
   android: { elevation: 3 },
-  default: { boxShadow: "0 8px 24px rgba(47,54,46,0.10)" },
+  default: { boxShadow: "0 6px 20px rgba(18,63,69,0.09)" },
 });

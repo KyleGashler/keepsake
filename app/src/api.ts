@@ -36,14 +36,22 @@ export async function apiGet<T>(path: string): Promise<T> {
   return res.json();
 }
 
-export async function apiSend<T>(path: string, method: "POST" | "PATCH", body: unknown): Promise<T> {
+/**
+ * A write. `body` is optional for the contract's bodiless PUT/DELETE routes
+ * (favourite, unlink, soft delete); a 204 or empty reply resolves to null.
+ */
+export async function apiSend<T>(
+  path: string,
+  method: "POST" | "PATCH" | "PUT" | "DELETE",
+  body?: unknown,
+): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    headers: body === undefined ? undefined : { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
   });
   if (!res.ok) throw new Error((await res.text()) || res.statusText);
-  return res.json();
+  return JSON.parse((await res.text()) || "null");
 }
 
 /** `GET /api/media/limits` — the server is the one place the upload ceiling lives. */
@@ -235,14 +243,20 @@ export type MemoryCard = {
   paletteHue: number;
   brightness: number;
   participants: Person[];
+  /** Distinct kinds of media attached, in no particular order. */
+  mediaTypes: MediaType[];
+  /** No media at all — a story, a quote, a note. Render it as words, not a photo. */
+  isTextOnly: boolean;
 };
+
+export type MediaType = "PHOTO" | "VIDEO" | "AUDIO";
 
 /** SKIPPED: a video over the server's `transcribeMaxVideoSeconds`; not transcribed yet. */
 export type TranscriptStatus = "PENDING" | "READY" | "FAILED" | "SKIPPED";
 
 export type MediaItem = {
   id: string;
-  type: "PHOTO" | "VIDEO" | "AUDIO";
+  type: MediaType;
   url: string;
   caption: string | null;
   width: number;
@@ -268,6 +282,10 @@ export type Memory = MemoryCard & {
   author: Person | null;
   media: MediaItem[];
   collections: { id: string; name: string; pillar: PillarKey }[];
+  /** Favourited by the signed-in user — favourites are per user, not per family. */
+  isFavorite: boolean;
+  /** Manual links first, then suggestions sharing a collection or person, nearest in date; max 8. */
+  related: MemoryCard[];
 };
 
 export type PillarKey = "ARRIVAL_STORIES" | "CHILD_PROFILES" | "FAMILY_LIFE";
@@ -283,7 +301,23 @@ export type Collection = {
   sortOrder: number;
   coverUrl: string;
   memoryCount: number;
+  /** Template key of a child's default collection; null for a family's own. */
+  kind: CollectionKind | null;
+  /** Disc glyph — a key of ICONS in components/journey.tsx. */
+  icon: string;
+  /** Disc colour, hex. */
+  color: string;
 };
+
+/** The seven default child collections; the server's template module is the source. */
+export type CollectionKind =
+  | "milestones"
+  | "day_to_day"
+  | "quotes"
+  | "birthdays"
+  | "kindness"
+  | "talents"
+  | "phases";
 
 export type HomePayload = {
   family: { id: string; name: string };
@@ -301,17 +335,71 @@ export type HomePayload = {
   stats: { memoryCount: number; personCount: number };
 };
 
-export type LibraryPayload = {
-  pillars: {
-    key: PillarKey;
-    name: string;
-    tagline: string;
-    description: string;
-    selectsPerson: boolean;
-    collectionCount: number;
-    coverUrl: string;
-  }[];
-  children: Person[];
+/** One of the three Story Pillars, as the Library landing shows it. */
+export type LibraryPillar = {
+  key: PillarKey;
+  name: string;
+  tagline: string;
+  coverUrl: string;
+  /** True when the family chose this cover (`PUT /api/library/pillars/:key/cover`). */
+  customCover: boolean;
+};
+
+/** `GET /api/library` */
+export type LibraryPayload = { pillars: LibraryPillar[] };
+
+/**
+ * A child, with what the Child Profiles and Collections headers show.
+ * `collectionCount` is their CHILD_PROFILES collections; `memoryCount` is
+ * distinct, non-deleted memories in any collection of theirs.
+ */
+export type ChildSummary = Person & {
+  photoUrl: string | null;
+  collectionCount: number;
+  memoryCount: number;
+};
+
+/** `GET /api/children` */
+export type ChildrenPayload = { children: ChildSummary[] };
+
+/** `GET /api/children/:id` — collections are the child's CHILD_PROFILES ones, sorted. */
+export type ChildPayload = { child: ChildSummary; collections: Collection[] };
+
+/**
+ * `GET /api/collections/:id?q=&year=` — memories newest first. `years`
+ * ignores the `year` filter so the chips don't vanish when one is picked.
+ */
+export type CollectionArchivePayload = {
+  collection: Collection;
+  child: ChildSummary | null;
+  years: { year: number; count: number }[];
+  memories: MemoryCard[];
+};
+
+/** `PATCH /api/people/:id` — `photoKey` is a finalized upload key; null removes the photo. */
+export type PersonPatch = { name?: string; birthDate?: string | null; photoKey?: string | null };
+
+/** `POST /api/collections` */
+export type CollectionCreate = {
+  pillar: PillarKey;
+  name: string;
+  description?: string | null;
+  personId?: string | null;
+  icon: string;
+  color: string;
+};
+
+/**
+ * `PATCH /api/memories/:id` — `collectionIds` replaces the whole set, which
+ * covers both "add to another collection" and "move".
+ */
+export type MemoryPatch = {
+  title?: string;
+  story?: string | null;
+  transcript?: string | null;
+  occurredAt?: string;
+  location?: string | null;
+  collectionIds?: string[];
 };
 
 export type MosaicTile = {

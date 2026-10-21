@@ -275,7 +275,7 @@ export function Button({
 export function Loading({ label = "Gathering memories…" }: { label?: string }) {
   return (
     <View style={styles.centered}>
-      <ActivityIndicator color={colors.accentDeep} />
+      <ActivityIndicator color={colors.primary} />
       <Text style={[type.caption, { marginTop: spacing.md }]}>{label}</Text>
     </View>
   );
@@ -390,7 +390,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.xl,
     borderRadius: radius.pill,
   },
-  buttonPrimary: { backgroundColor: colors.accentDeep },
+  buttonPrimary: { backgroundColor: colors.primary },
   buttonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
   buttonLabel: { fontSize: 15, fontWeight: "600" },
   centered: { alignItems: "center", justifyContent: "center", paddingVertical: 64, paddingHorizontal: spacing.xl },

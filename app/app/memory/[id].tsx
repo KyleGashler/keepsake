@@ -26,6 +26,7 @@ import {
   Screen,
 } from "../../src/components/ui";
 import { duration, errorMessage, lengthInWords, longDate } from "../../src/format";
+import { openInLibrary, routes } from "../../src/routes";
 import { colors, radius, spacing, type } from "../../src/theme";
 
 /** How often to look again while a recording is being transcribed. */
@@ -280,7 +281,7 @@ export default function MemoryScreen() {
                 {memory.collections.map((collection) => (
                   <Pressable
                     key={collection.id}
-                    onPress={() => router.push(`/collection/${collection.id}`)}
+                    onPress={() => openInLibrary(routes.collection(collection.id))}
                     style={styles.chip}
                   >
                     <Text style={styles.chipLabel}>{collection.name}</Text>

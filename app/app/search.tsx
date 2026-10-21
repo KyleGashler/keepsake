@@ -9,6 +9,7 @@ import {
   type Person,
 } from "../src/api";
 import { AppHeader, Avatar, EmptyState, MemoryRow, Screen } from "../src/components/ui";
+import { openInLibrary, routes } from "../src/routes";
 import { colors, radius, spacing, type } from "../src/theme";
 
 type Results = { q: string; memories: MemoryCard[]; people: Person[]; collections: Collection[]; total: number };
@@ -119,7 +120,7 @@ export default function SearchScreen() {
                   {results.collections.map((collection) => (
                     <Pressable
                       key={collection.id}
-                      onPress={() => router.push(`/collection/${collection.id}`)}
+                      onPress={() => openInLibrary(routes.collection(collection.id))}
                       style={styles.chip}
                     >
                       <Text style={styles.chipLabel}>

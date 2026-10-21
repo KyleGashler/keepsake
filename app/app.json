@@ -7,7 +7,7 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
-    "backgroundColor": "#FAF5F1",
+    "backgroundColor": "#FBF8F2",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.keepsake.app"
@@ -15,7 +15,7 @@
     "android": {
       "package": "com.keepsake.app",
       "adaptiveIcon": {
-        "backgroundColor": "#FAF5F1",
+        "backgroundColor": "#FBF8F2",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -61,7 +61,8 @@
           "supportsBackgroundPlayback": false,
           "supportsPictureInPicture": false
         }
-      ]
+      ],
+      "expo-font"
     ]
   }
 }
