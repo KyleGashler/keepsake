@@ -23,7 +23,9 @@ export function linkPair(a: string, b: string) {
  * "Related Memories": the ones a person linked by hand first (oldest link
  * first), then suggestions that share a collection or a person, nearest in
  * date either side. Never the memory itself, never another family's, never a
- * deleted one. At most MAX_RELATED.
+ * deleted one. At most MAX_RELATED. `linkedIds` says which memories were
+ * linked by hand (all of them, even past MAX_RELATED), so a page can offer to
+ * unlink those and not the suggestions.
  */
 export async function relatedMemories(familyId: string, memory: DetailMemory) {
   const links = await prisma.memoryLink.findMany({
@@ -41,10 +43,15 @@ export async function relatedMemories(familyId: string, memory: DetailMemory) {
   const byId = new Map(linkedRows.map((m) => [m.id, m]));
   const linked = linkedIds.map((id) => byId.get(id)).filter((m) => m !== undefined).slice(0, MAX_RELATED);
 
+  // The live ones only: a link to a deleted memory isn't one a person can see or remove.
+  const live = linkedIds.filter((id) => byId.has(id));
+
   const room = MAX_RELATED - linked.length;
   const collectionIds = memory.collections.map((c) => c.collectionId);
   const personIds = memory.participants.map((p) => p.personId);
-  if (room <= 0 || (collectionIds.length === 0 && personIds.length === 0)) return memoryCardDtos(linked);
+  if (room <= 0 || (collectionIds.length === 0 && personIds.length === 0)) {
+    return { related: await memoryCardDtos(linked), linkedIds: live };
+  }
 
   const shares = {
     familyId,
@@ -75,12 +82,15 @@ export async function relatedMemories(familyId: string, memory: DetailMemory) {
   // oxlint-disable-next-line unicorn/no-array-sort -- a fresh array; ES2022 has no toSorted
   const suggested = [...before, ...after].sort((a, b) => distance(a) - distance(b)).slice(0, room);
 
-  return memoryCardDtos([...linked, ...suggested]);
+  return { related: await memoryCardDtos([...linked, ...suggested]), linkedIds: live };
 }
 
-/** `GET /api/memories/:id`'s shape: the memory, plus this user's favourite flag and related memories. */
+/**
+ * `GET /api/memories/:id`'s shape: the memory, plus this user's favourite
+ * flag, related memories, and which of those were linked by hand.
+ */
 export async function memoryDetail(familyId: string, userId: string, memory: DetailMemory) {
-  const [dto, favorite, related] = await Promise.all([
+  const [dto, favorite, { related, linkedIds }] = await Promise.all([
     memoryDto(memory),
     prisma.memoryFavorite.findUnique({
       where: { userId_memoryId: { userId, memoryId: memory.id } },
@@ -88,5 +98,5 @@ export async function memoryDetail(familyId: string, userId: string, memory: Det
     }),
     relatedMemories(familyId, memory),
   ]);
-  return { ...dto, isFavorite: Boolean(favorite), related };
+  return { ...dto, isFavorite: Boolean(favorite), related, linkedIds };
 }

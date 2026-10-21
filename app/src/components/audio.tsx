@@ -1,14 +1,24 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useAudioPlayer, useAudioPlayerStatus } from "expo-audio";
-import { useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View, type GestureResponderEvent } from "react-native";
+import { useRef, type ReactNode } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type LayoutChangeEvent,
+  type StyleProp,
+  type ViewStyle,
+} from "react-native";
+import { useClipPlayback } from "../audio";
 import { clock } from "../format";
 import { colors, radius, spacing, type } from "../theme";
 
 /**
  * One recording, playable in place: play/pause, a seekable track, and time.
- * Used on the memory page, in compose, and on the recorder's review step, so a
- * clip looks and behaves the same everywhere it appears.
+ * Used in compose and on the recorder's review step, so a clip looks and
+ * behaves the same everywhere it appears. The memory page draws the same
+ * playback as a waveform (components/memory/waveform.tsx).
  */
 export function AudioClip({
   uri,
@@ -17,48 +27,10 @@ export function AudioClip({
 }: {
   uri: string;
   title: string;
-  /**
-   * What the server (or recorder) knows. Chrome's MediaRecorder writes WebM
-   * with no duration in the header, so the player can report 0 — fall back to
-   * this rather than show a track with no end.
-   */
+  /** What the server (or recorder) knows; see `useClipPlayback`. */
   durationS?: number | null;
 }) {
-  // Pin the source for the life of the card. A presigned read URL changes on
-  // every refetch (the memory page polls while transcribing), and a new source
-  // would rebuild the player mid-listen.
-  const [source] = useState(uri);
-  const player = useAudioPlayer(source, { updateInterval: 250 });
-  const status = useAudioPlayerStatus(player);
-  const [scrubbing, setScrubbing] = useState<number | null>(null);
-
-  const total = status.duration > 0 ? status.duration : (durationS ?? 0);
-  const [seekTarget, setSeekTarget] = useState<number | null>(null);
-
-  // While paused, a status event isn't guaranteed after a seek, so read the
-  // player's live position instead of the last one it reported.
-  const reported = status.playing ? status.currentTime : player.currentTime;
-  const current = scrubbing ?? seekTarget ?? reported;
-  const position = total > 0 ? Math.min(current, total) : current;
-  const failed = Boolean(status.error);
-  const atEnd = status.didJustFinish || (total > 0 && status.currentTime >= total - 0.25);
-
-  async function toggle() {
-    if (status.playing) return player.pause();
-    if (atEnd) await player.seekTo(0);
-    player.play();
-  }
-
-  async function seek(seconds: number) {
-    setScrubbing(null);
-    setSeekTarget(seconds);
-    try {
-      await player.seekTo(seconds);
-    } finally {
-      // Hold the thumb where it was dropped until the player has caught up.
-      setTimeout(() => setSeekTarget(null), 400);
-    }
-  }
+  const { playing, position, total, failed, toggle, seek, scrub } = useClipPlayback(uri, durationS);
 
   return (
     <View style={styles.card}>
@@ -66,16 +38,16 @@ export function AudioClip({
         onPress={toggle}
         disabled={failed}
         accessibilityRole="button"
-        accessibilityLabel={status.playing ? `Pause ${title}` : `Play ${title}`}
+        accessibilityLabel={playing ? `Pause ${title}` : `Play ${title}`}
         hitSlop={6}
         style={({ pressed }) => [styles.play, failed && { opacity: 0.4 }, pressed && { opacity: 0.75 }]}
       >
         <Ionicons
-          name={status.playing ? "pause" : "play"}
+          name={playing ? "pause" : "play"}
           size={17}
           color={colors.surface}
           // The play triangle reads as off-centre without a nudge.
-          style={status.playing ? undefined : { marginLeft: 2 }}
+          style={playing ? undefined : { marginLeft: 2 }}
         />
       </Pressable>
       <View style={{ flex: 1 }}>
@@ -86,7 +58,7 @@ export function AudioClip({
           <Text style={type.caption}>This recording can't play here.</Text>
         ) : (
           <>
-            <Scrubber value={position} max={total} onScrub={setScrubbing} onCommit={seek} />
+            <Scrubber value={position} max={total} onScrub={scrub} onCommit={seek} />
             <View style={styles.times}>
               <Text style={styles.time}>{clock(position)}</Text>
               <Text style={styles.time}>{total > 0 ? clock(total) : ""}</Text>
@@ -99,25 +71,36 @@ export function AudioClip({
 }
 
 /**
- * A plain responder-driven track: tap anywhere to jump, drag to scrub, seek on
- * release. Works the same under react-native-web, so no slider dependency.
+ * A seekable area: tap anywhere to jump, drag to scrub, seek on release, and
+ * ±5 s from assistive tech. What it looks like is the children's business —
+ * a rail and thumb, a waveform — and they must ignore touches
+ * (`pointerEvents="none"`). Plain responders, so it works the same under
+ * react-native-web and needs no slider dependency.
  */
-function Scrubber({
+export function ScrubTrack({
   value,
   max,
   onScrub,
   onCommit,
+  label = "Playback position",
+  onWidth,
+  style,
+  children,
 }: {
   value: number;
   max: number;
   onScrub: (seconds: number) => void;
   onCommit: (seconds: number) => void;
+  label?: string;
+  /** The track's laid-out width, for children that draw to it. */
+  onWidth?: (width: number) => void;
+  style?: StyleProp<ViewStyle>;
+  children: ReactNode;
 }) {
   const width = useRef(0);
   const originX = useRef(0);
   const last = useRef(0);
   const enabled = max > 0;
-  const fraction = enabled ? Math.min(1, Math.max(0, value / max)) : 0;
 
   function at(e: GestureResponderEvent) {
     const x = e.nativeEvent.pageX - originX.current;
@@ -125,9 +108,14 @@ function Scrubber({
     return last.current;
   }
 
+  function onLayout(e: LayoutChangeEvent) {
+    width.current = e.nativeEvent.layout.width;
+    onWidth?.(width.current);
+  }
+
   return (
     <View
-      onLayout={(e) => (width.current = e.nativeEvent.layout.width)}
+      onLayout={onLayout}
       onStartShouldSetResponder={() => enabled}
       onMoveShouldSetResponder={() => enabled}
       onResponderTerminationRequest={() => false}
@@ -140,20 +128,40 @@ function Scrubber({
       onResponderRelease={(e) => onCommit(at(e))}
       onResponderTerminate={() => onCommit(last.current)}
       accessibilityRole="adjustable"
-      accessibilityLabel="Playback position"
+      accessibilityLabel={label}
       accessibilityValue={{ min: 0, max: Math.round(max), now: Math.round(value), text: clock(value) }}
       accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
       onAccessibilityAction={(e) => {
         const step = e.nativeEvent.actionName === "increment" ? 5 : -5;
         onCommit(Math.min(max, Math.max(0, value + step)));
       }}
-      style={styles.hitbox}
+      style={style}
     >
+      {children}
+    </View>
+  );
+}
+
+/** A rail-and-thumb track. */
+function Scrubber({
+  value,
+  max,
+  onScrub,
+  onCommit,
+}: {
+  value: number;
+  max: number;
+  onScrub: (seconds: number) => void;
+  onCommit: (seconds: number) => void;
+}) {
+  const fraction = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
+  return (
+    <ScrubTrack value={value} max={max} onScrub={onScrub} onCommit={onCommit} style={styles.hitbox}>
       <View pointerEvents="none" style={styles.rail}>
         <View style={[styles.fill, { width: `${fraction * 100}%` }]} />
       </View>
-      {enabled ? <View pointerEvents="none" style={[styles.thumb, { left: `${fraction * 100}%` }]} /> : null}
-    </View>
+      {max > 0 ? <View pointerEvents="none" style={[styles.thumb, { left: `${fraction * 100}%` }]} /> : null}
+    </ScrubTrack>
   );
 }
 

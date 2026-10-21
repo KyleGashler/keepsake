@@ -1,4 +1,51 @@
-import { RecordingPresets, type RecordingOptions } from "expo-audio";
+import { RecordingPresets, useAudioPlayer, useAudioPlayerStatus, type RecordingOptions } from "expo-audio";
+import { useState } from "react";
+
+/**
+ * Play/pause/seek state for one recording — what `AudioClip` and the memory
+ * page's waveform player share. `durationS` is what the server (or recorder)
+ * knows: Chrome's MediaRecorder writes WebM with no duration in the header, so
+ * the player can report 0, and this stands in rather than a track with no end.
+ */
+export function useClipPlayback(uri: string, durationS?: number | null) {
+  // Pin the source for the life of the card. A presigned read URL changes on
+  // every refetch (the memory page polls while transcribing), and a new source
+  // would rebuild the player mid-listen.
+  const [source] = useState(uri);
+  const player = useAudioPlayer(source, { updateInterval: 250 });
+  const status = useAudioPlayerStatus(player);
+  const [scrubbing, setScrubbing] = useState<number | null>(null);
+
+  const total = status.duration > 0 ? status.duration : (durationS ?? 0);
+  const [seekTarget, setSeekTarget] = useState<number | null>(null);
+
+  // While paused, a status event isn't guaranteed after a seek, so read the
+  // player's live position instead of the last one it reported.
+  const reported = status.playing ? status.currentTime : player.currentTime;
+  const current = scrubbing ?? seekTarget ?? reported;
+  const position = total > 0 ? Math.min(current, total) : current;
+  const failed = Boolean(status.error);
+  const atEnd = status.didJustFinish || (total > 0 && status.currentTime >= total - 0.25);
+
+  async function toggle() {
+    if (status.playing) return player.pause();
+    if (atEnd) await player.seekTo(0);
+    player.play();
+  }
+
+  async function seek(seconds: number) {
+    setScrubbing(null);
+    setSeekTarget(seconds);
+    try {
+      await player.seekTo(seconds);
+    } finally {
+      // Hold the thumb where it was dropped until the player has caught up.
+      setTimeout(() => setSeekTarget(null), 400);
+    }
+  }
+
+  return { playing: status.playing, position, total, failed, toggle, seek, scrub: setScrubbing };
+}
 
 /**
  * Voice, not music: one channel at 96 kbps keeps a conversation clear while a
