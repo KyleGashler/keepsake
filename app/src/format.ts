@@ -89,3 +89,72 @@ export function count(n: number, singular: string, plural = `${singular}s`) {
 export function errorMessage(err: unknown, fallback = "") {
   return err instanceof Error ? err.message : fallback;
 }
+
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
+/**
+ * Birthdays are calendar dates the server stores as UTC midnight, so they're
+ * read and written in UTC — a local reading puts a birthday a day early
+ * anywhere west of Greenwich.
+ */
+export function birthdayInput(iso?: string | null) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+
+/**
+ * "2020-05-14" → the ISO the API takes; "" → null (no birthday); anything
+ * that isn't a real date between 1900 and today → undefined (invalid).
+ */
+export function parseBirthday(input: string): string | null | undefined {
+  const text = input.trim();
+  if (!text) return null;
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
+  if (!m) return undefined;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  if (date.getUTCFullYear() !== y || date.getUTCMonth() !== mo - 1 || date.getUTCDate() !== d) return undefined;
+  if (y < 1900 || date.getTime() > Date.now()) return undefined;
+  return date.toISOString();
+}
+
+/** "May 14, 2020" from a stored birthday, read in UTC (see birthdayInput). */
+export function birthdayLabel(iso?: string | null) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
+}
+
+/** "Age 6", "7 Collections", "248 Memories" — a child's header line, in parts. */
+export function childMeta(child: { birthDate: string | null; collectionCount: number; memoryCount: number }) {
+  return [
+    childAge(child.birthDate),
+    count(child.collectionCount, "Collection"),
+    count(child.memoryCount, "Memory", "Memories"),
+  ].filter((part): part is string => Boolean(part));
+}
+
+/**
+ * What went wrong, in words a family can read. The API answers errors with
+ * JSON (`{ error: "…" }`, or a validation dump); upload failures already
+ * arrive as sentences.
+ */
+export function friendlyError(err: unknown, fallback: string) {
+  const message = err instanceof Error ? err.message : "";
+  if (!message) return fallback;
+  if (message.trimStart().startsWith("{")) {
+    try {
+      const body: unknown = JSON.parse(message);
+      if (body && typeof body === "object" && "error" in body && typeof body.error === "string") {
+        return body.error;
+      }
+    } catch {
+      // Not JSON after all.
+    }
+    return fallback;
+  }
+  return /failed to fetch|network/i.test(message) ? "Can't reach the archive right now." : message;
+}
