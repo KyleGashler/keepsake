@@ -451,6 +451,26 @@ Endpoints (all family-scoped):
 - `Collection` DTO gains `kind`, `icon`, `color`; `MemoryCard` gains
   `mediaTypes: ("PHOTO"|"VIDEO"|"AUDIO")[]` and `isTextOnly`.
 
+As implemented by L1 (where the contract left a response open):
+
+- `PUT|DELETE /api/library/pillars/:key/cover` → `{ pillar }` (one pillar
+  card). A bad key: 400 `malformed_key`, 415 `not_an_image`, 404
+  `upload_not_found` (also for another family's key). `GET /api/library` still
+  returns `children` and each pillar's `description`/`collectionCount`.
+- `POST /api/people` → `{ person, child: ChildSummary | null }`;
+  `PATCH /api/people/:id` → `{ person: Person & { photoUrl }, child: ChildSummary | null }`.
+- `PUT|DELETE /api/memories/:id/favorite` → `{ isFavorite }`.
+  `POST /api/memories/:id/links` → 201 `{ memory }`, `DELETE …/links/:linkedId`
+  → `{ memory }` (the full detail, `related` updated).
+  `DELETE /api/memories/:id` → 204. Every route that returns one memory
+  (GET, POST, PATCH, transcribe) returns the detail shape with `isFavorite`
+  and `related`.
+- `years` buckets by UTC calendar year; `q` is a case-insensitive substring
+  match on title, story, transcript and location, and does narrow `years`.
+- Arrival Stories defaults are created for a new child only when they have
+  none; existing unrecognised Child Profile rows (e.g. a legacy "The First 3
+  Months") are kept and listed alongside the seven.
+
 ### Tasks
 
 #### L1. Server: data and API for the journey

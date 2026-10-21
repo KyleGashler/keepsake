@@ -1,7 +1,11 @@
+import type { Pillar, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import { COLLECTION_ICONS, DEFAULT_COLLECTION_COLOR, DEFAULT_COLLECTION_ICON } from "../lib/child-collections.js";
+import { childSummaries, childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
-import { collectionDto, imageUrl, memoryCardDtos, personDto } from "../lib/serialize.js";
+import { collectionDto, collectionInclude, imageUrl, memoryCardDtos, personDto } from "../lib/serialize.js";
+import { imageKeyError, imageKeyProblem, signedImageUrl } from "../lib/upload-keys.js";
 
 export const libraryRouter = Router();
 
@@ -9,7 +13,7 @@ const PILLARS = [
   {
     key: "ARRIVAL_STORIES" as const,
     name: "Arrival Stories",
-    tagline: "The beginning of every child's story.",
+    tagline: "The story of waiting, meeting, and falling in love.",
     description:
       "The anticipation, preparation, and transformation surrounding a child's arrival — however they came to you.",
     /** Arrival Stories and Child Profiles are browsed one child at a time. */
@@ -19,7 +23,7 @@ const PILLARS = [
   {
     key: "CHILD_PROFILES" as const,
     name: "Child Profiles",
-    tagline: "Where the majority of the app lives over the years.",
+    tagline: "Every child's story, captured little by little.",
     description: "Milestones, everyday moments, quotes, character, and the person they're becoming.",
     selectsPerson: true,
     coverSeed: "pillar-children",
@@ -27,40 +31,125 @@ const PILLARS = [
   {
     key: "FAMILY_LIFE" as const,
     name: "Family Life",
-    tagline: "What it actually feels like to grow up in your home.",
+    tagline: "The shared memories that become part of who we are.",
     description: "The shared experiences, traditions, and relationships that make your family yours.",
     selectsPerson: false,
     coverSeed: "pillar-family",
   },
 ];
 
-libraryRouter.get("/library", async (req, res) => {
-  const family = req.ctx.family;
+const PILLAR_KEYS = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"] as const satisfies readonly Pillar[];
 
-  const [children, counts] = await Promise.all([
-    prisma.person.findMany({
-      where: { familyId: family.id, role: "CHILD" },
-      orderBy: [{ sortOrder: "asc" }, { birthDate: "asc" }],
-    }),
+/**
+ * A pillar card. `coverUrl` is the family's own cover when they've set one
+ * (`customCover`), else the generated default.
+ */
+async function pillarDto(p: (typeof PILLARS)[number], coverKey: string | undefined, collectionCount: number) {
+  return {
+    ...p,
+    collectionCount,
+    coverUrl: coverKey ? await signedImageUrl(coverKey) : imageUrl(p.coverSeed, 1000, 700),
+    customCover: Boolean(coverKey),
+  };
+}
+
+async function pillarsFor(familyId: string) {
+  const [counts, covers] = await Promise.all([
     prisma.collection.groupBy({
       by: ["pillar"],
-      where: { familyId: family.id },
+      where: { familyId },
       _count: { _all: true },
     }),
+    prisma.pillarCover.findMany({ where: { familyId } }),
   ]);
+  return Promise.all(
+    PILLARS.map((p) =>
+      pillarDto(
+        p,
+        covers.find((c) => c.pillar === p.key)?.storageKey,
+        counts.find((c) => c.pillar === p.key)?._count._all ?? 0,
+      ),
+    ),
+  );
+}
 
-  res.json({
-    pillars: PILLARS.map((p) => ({
-      ...p,
-      collectionCount: counts.find((c) => c.pillar === p.key)?._count._all ?? 0,
-      coverUrl: imageUrl(p.coverSeed, 1000, 700),
-    })),
-    children: children.map(personDto),
+/** Children in the order the Library lists them. */
+function findChildren(familyId: string) {
+  return prisma.person.findMany({
+    where: { familyId, role: "CHILD" },
+    orderBy: [{ sortOrder: "asc" }, { birthDate: "asc" }, { createdAt: "asc" }],
   });
+}
+
+libraryRouter.get("/library", async (req, res) => {
+  const family = req.ctx.family;
+  const [pillars, children] = await Promise.all([pillarsFor(family.id), findChildren(family.id)]);
+  res.json({ pillars, children: children.map(personDto) });
+});
+
+const pillarParam = z.enum(PILLAR_KEYS);
+const coverBody = z.object({ key: z.string().min(1).max(512) });
+
+/** Set a pillar card's cover to an upload the family has finalized. */
+libraryRouter.put("/library/pillars/:key/cover", async (req, res) => {
+  const family = req.ctx.family;
+  const pillar = pillarParam.safeParse(req.params.key);
+  if (!pillar.success) return res.status(404).json({ error: "Unknown pillar" });
+  const body = coverBody.safeParse(req.body);
+  if (!body.success) return res.status(400).json({ error: body.error.flatten() });
+
+  const problem = await imageKeyProblem(body.data.key, family.id);
+  if (problem) {
+    const { status, body: error } = imageKeyError(problem);
+    return res.status(status).json(error);
+  }
+
+  await prisma.pillarCover.upsert({
+    where: { familyId_pillar: { familyId: family.id, pillar: pillar.data } },
+    create: { familyId: family.id, pillar: pillar.data, storageKey: body.data.key },
+    update: { storageKey: body.data.key },
+  });
+  const pillars = await pillarsFor(family.id);
+  res.json({ pillar: pillars.find((p) => p.key === pillar.data) });
+});
+
+/** Back to the generated default. The uploaded original is kept, as always. */
+libraryRouter.delete("/library/pillars/:key/cover", async (req, res) => {
+  const family = req.ctx.family;
+  const pillar = pillarParam.safeParse(req.params.key);
+  if (!pillar.success) return res.status(404).json({ error: "Unknown pillar" });
+
+  await prisma.pillarCover.deleteMany({ where: { familyId: family.id, pillar: pillar.data } });
+  const pillars = await pillarsFor(family.id);
+  res.json({ pillar: pillars.find((p) => p.key === pillar.data) });
+});
+
+libraryRouter.get("/children", async (req, res) => {
+  const family = req.ctx.family;
+  const children = await findChildren(family.id);
+  res.json({ children: await childSummaries(family.id, children) });
+});
+
+libraryRouter.get("/children/:id", async (req, res) => {
+  const family = req.ctx.family;
+  const child = await prisma.person.findFirst({
+    where: { id: req.params.id, familyId: family.id, role: "CHILD" },
+  });
+  if (!child) return res.status(404).json({ error: "Child not found" });
+
+  const [summary, collections] = await Promise.all([
+    childSummary(family.id, child),
+    prisma.collection.findMany({
+      where: { familyId: family.id, personId: child.id, pillar: "CHILD_PROFILES" },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      include: collectionInclude,
+    }),
+  ]);
+  res.json({ child: summary, collections: collections.map(collectionDto) });
 });
 
 const collectionQuery = z.object({
-  pillar: z.enum(["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"]).optional(),
+  pillar: z.enum(PILLAR_KEYS).optional(),
   personId: z.string().optional(),
 });
 
@@ -77,37 +166,85 @@ libraryRouter.get("/collections", async (req, res) => {
       ...(personId ? { personId } : {}),
     },
     orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
-    include: { _count: { select: { memories: true } }, person: true },
+    include: collectionInclude,
   });
 
   res.json({ collections: collections.map(collectionDto) });
 });
 
+const archiveQuery = z.object({
+  q: z.string().trim().max(120).optional(),
+  year: z.coerce.number().int().min(1800).max(3000).optional(),
+});
+
+/**
+ * One collection's archive: newest first, optionally narrowed by a text match
+ * and a calendar year (UTC). `years` counts what `q` matches but ignores
+ * `year`, so the chips don't vanish when one is picked.
+ */
 libraryRouter.get("/collections/:id", async (req, res) => {
   const family = req.ctx.family;
+  const parsed = archiveQuery.safeParse(req.query);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { q, year } = parsed.data;
+
   const collection = await prisma.collection.findFirst({
     where: { id: req.params.id, familyId: family.id },
-    include: { _count: { select: { memories: true } }, person: true },
+    include: collectionInclude,
   });
   if (!collection) return res.status(404).json({ error: "Collection not found" });
 
-  const memories = await prisma.memory.findMany({
-    where: { familyId: family.id, collections: { some: { collectionId: collection.id } } },
-    orderBy: { occurredAt: "desc" },
-    include: { media: true, participants: { include: { person: true } } },
-  });
+  const contains = q ? { contains: q, mode: "insensitive" as const } : null;
+  const where: Prisma.MemoryWhereInput = {
+    familyId: family.id,
+    deletedAt: null,
+    collections: { some: { collectionId: collection.id } },
+    ...(contains
+      ? { OR: [{ title: contains }, { story: contains }, { transcript: contains }, { location: contains }] }
+      : {}),
+  };
+  const inYear: Prisma.MemoryWhereInput =
+    year === undefined
+      ? where
+      : { ...where, occurredAt: { gte: new Date(Date.UTC(year, 0, 1)), lt: new Date(Date.UTC(year + 1, 0, 1)) } };
+
+  const [dates, memories, child] = await Promise.all([
+    prisma.memory.findMany({ where, select: { occurredAt: true } }),
+    prisma.memory.findMany({
+      where: inYear,
+      orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
+      include: { media: true, participants: { include: { person: true } } },
+    }),
+    collection.person?.role === "CHILD" ? childSummary(family.id, collection.person) : null,
+  ]);
+
+  const byYear = new Map<number, number>();
+  for (const { occurredAt } of dates) {
+    const y = occurredAt.getUTCFullYear();
+    byYear.set(y, (byYear.get(y) ?? 0) + 1);
+  }
+  // A fresh array, so sorting in place is fine (and ES2022 has no toSorted).
+  // oxlint-disable-next-line unicorn/no-array-sort
+  const years = [...byYear].map(([y, count]) => ({ year: y, count })).sort((a, b) => b.year - a.year);
 
   res.json({
     collection: collectionDto(collection),
+    child,
+    years,
     memories: await memoryCardDtos(memories),
   });
 });
 
 const newCollection = z.object({
   name: z.string().min(1).max(80),
-  pillar: z.enum(["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"]),
+  pillar: z.enum(PILLAR_KEYS),
   personId: z.string().optional(),
   description: z.string().max(400).optional(),
+  icon: z.enum(COLLECTION_ICONS).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/, "color is a #RRGGBB hex")
+    .optional(),
 });
 
 /** "Add Collection" — families can shape the archive around their own life. */
@@ -125,7 +262,11 @@ libraryRouter.post("/collections", async (req, res) => {
   }
 
   const max = await prisma.collection.aggregate({
-    where: { familyId: family.id, pillar: parsed.data.pillar },
+    where: {
+      familyId: family.id,
+      pillar: parsed.data.pillar,
+      ...(parsed.data.personId ? { personId: parsed.data.personId } : {}),
+    },
     _max: { sortOrder: true },
   });
 
@@ -136,11 +277,13 @@ libraryRouter.post("/collections", async (req, res) => {
       pillar: parsed.data.pillar,
       personId: parsed.data.personId ?? null,
       description: parsed.data.description ?? null,
+      icon: parsed.data.icon ?? DEFAULT_COLLECTION_ICON,
+      color: parsed.data.color?.toUpperCase() ?? DEFAULT_COLLECTION_COLOR,
       isDefault: false,
       sortOrder: (max._max.sortOrder ?? 0) + 1,
       coverSeed: `collection-${Date.now()}`,
     },
-    include: { _count: { select: { memories: true } }, person: true },
+    include: collectionInclude,
   });
 
   res.status(201).json({ collection: collectionDto(collection) });

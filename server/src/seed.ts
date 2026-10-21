@@ -1,35 +1,30 @@
-import { PrismaClient, type Person, type Pillar } from "@prisma/client";
+import { PrismaClient, type Person } from "@prisma/client";
+import { ensureAllChildCollections, ensureChildCollections } from "./lib/child-collections.js";
 import { hueForSeed } from "./lib/placeholder.js";
 
 const prisma = new PrismaClient();
 
 /**
  * Seeds one demo family so the app has a story to tell on first run.
- * Idempotent: skips if a family already exists unless SEED_RESET=1.
+ * Idempotent: skips if a family already exists unless SEED_RESET=1. Every run
+ * — skipped or not — also tops up every child's default collections (see
+ * lib/child-collections.ts), which is how existing databases pick up new
+ * defaults: this runs on every boot where SEED_DEMO=1.
  */
 
-const ARRIVAL_COLLECTIONS = [
-  "Finding Out",
-  "Choosing Your Name",
-  "Pregnancy Journey",
-  "Ultrasounds",
-  "Gender Reveal",
-  "Baby Shower",
-  "Meeting You",
-  "Bringing Baby Home",
+/**
+ * Family Life's starting set. A child's collections come from
+ * lib/child-collections.ts; icons and colours here match the backfill in the
+ * library_journey migration.
+ */
+const FAMILY_COLLECTIONS = [
+  { name: "At Home", icon: "home", color: "#123F45" },
+  { name: "Family Outings", icon: "sun", color: "#D4A04C" },
+  { name: "Vacations", icon: "plane", color: "#8EADC1" },
+  { name: "Holidays", icon: "star", color: "#D86A4E" },
+  { name: "Grandparents", icon: "heart", color: "#2F5E45" },
+  { name: "Pets", icon: "paw", color: "#9AA383" },
 ];
-
-const CHILD_COLLECTIONS = [
-  "The First 3 Months",
-  "Milestones",
-  "Everyday Moments",
-  "Quotes & Conversations",
-  "Celebrations",
-  "Kindness & Character",
-  "Talents & Hobbies",
-];
-
-const FAMILY_COLLECTIONS = ["At Home", "Family Outings", "Vacations", "Holidays", "Grandparents", "Pets"];
 
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "");
 
@@ -40,30 +35,71 @@ type MemorySpec = {
   location?: string;
   author: string;
   participants: string[];
-  /** "<child name or 'family'>::<collection name>" */
+  /** "<child name>::<collection kind>" or "family::<collection name>" */
   collections: string[];
 };
 
 /**
- * Deliberately small: one text-only memory so Home and the Library aren't
- * empty on first run. Everything else in the archive should be something a
- * person actually captured, so it shows the real upload and transcript paths.
+ * Deliberately small and text-only: enough that every Library screen has
+ * something on a fresh database — a quote, a milestone, a birthday and an
+ * everyday moment for Banks, one of them shared with Bear. Everything else in
+ * the archive should be something a person actually captured, so it shows the
+ * real upload and transcript paths. No fake media.
  */
 const MEMORIES: MemorySpec[] = [
   {
-    title: "The last time she asked me to carry her upstairs",
+    title: "The last time Banks asked to be carried upstairs",
     story:
       "I didn't know it was the last time. That's the whole reason this app exists, I think — I wrote it down two weeks later when I realized it had stopped happening and I couldn't remember which night it was.",
     occurredAt: "2026-04-30T04:00:00.000Z",
     author: "Ali",
-    participants: ["Mae", "Ali"],
-    collections: ["Mae::Everyday Moments"],
+    participants: ["Banks", "Ali"],
+    collections: ["Banks::day_to_day"],
+  },
+  {
+    title: "“Is the moon following us home?”",
+    story:
+      "From the back seat, on the drive home from Grandma's. I said it only looks that way. A mile later: “Then it's walking us home.”",
+    occurredAt: "2024-10-03T01:30:00.000Z",
+    location: "The drive home",
+    author: "Ali",
+    participants: ["Banks", "Ali"],
+    collections: ["Banks::quotes"],
+  },
+  {
+    title: "No more training wheels",
+    story:
+      "Three laps of the cul-de-sac, then a fourth just to be sure. Never once looked back to check I was still holding on. I wasn't.",
+    occurredAt: "2025-06-21T23:00:00.000Z",
+    location: "The cul-de-sac",
+    author: "Ali",
+    participants: ["Banks"],
+    collections: ["Banks::milestones"],
+  },
+  {
+    title: "Six, and a stegosaurus cake",
+    story:
+      "Asked for a cake shaped like a stegosaurus, then ate the plates off its back before anyone could cut it. Six candles, one wish, and a firm refusal to say what it was.",
+    occurredAt: "2026-05-14T22:00:00.000Z",
+    author: "Ali",
+    participants: ["Banks", "Ali"],
+    collections: ["Banks::birthdays"],
+  },
+  {
+    title: "Pancake Saturday",
+    story:
+      "Banks stood on the step stool and did the flipping. Bear was in charge of blueberries and ate about half of them. Nobody minded the shapes.",
+    occurredAt: "2026-03-07T16:00:00.000Z",
+    location: "Our kitchen",
+    author: "Ali",
+    participants: ["Banks", "Bear", "Ali"],
+    collections: ["Banks::day_to_day", "Bear::day_to_day"],
   },
 ];
 
 const PROMPTS = [
   {
-    text: "What did Mae say today that you want to remember?",
+    text: "What did Banks say today that you want to remember?",
     subtitle: "The words change every week at this age.",
     imageSeed: "prompt-mae-words",
   },
@@ -122,6 +158,8 @@ async function main() {
     // A database seeded before accounts existed has the family but no one who
     // can sign in to it. Attach the demo owner so the dev bridge resolves.
     await ensureDemoUser(existing.id);
+    const topUp = await ensureAllChildCollections(prisma);
+    if (topUp.changed) console.log(`Child collections topped up: ${topUp.changed} across ${topUp.children} children.`);
     return;
   }
   if (existing) {
@@ -138,10 +176,13 @@ async function main() {
   const family = await prisma.family.create({ data: { name: "the Bryners" } });
 
   // Avatar rings come from the brand palette. One parent (the demo owner) and
-  // one child, so the child-scoped pillars have someone to file under.
+  // three children, so the child screens show a list rather than a single card
+  // and the youngest has an empty Library.
   const peopleSpec = [
     { name: "Ali", role: "PARENT", relation: "Mom", accentColor: "#D68A75", birthDate: "1991-03-12" },
-    { name: "Mae", role: "CHILD", relation: "Daughter", accentColor: "#D49A4A", birthDate: "2020-06-08" },
+    { name: "Banks", role: "CHILD", relation: null, accentColor: "#D49A4A", birthDate: "2020-05-14" },
+    { name: "Bear", role: "CHILD", relation: null, accentColor: "#7FA39A", birthDate: "2022-03-02" },
+    { name: "Collins", role: "CHILD", relation: null, accentColor: "#C98A9B", birthDate: "2026-02-10" },
   ] as const;
 
   const people: Record<string, Person> = {};
@@ -165,41 +206,31 @@ async function main() {
   // the children never become Users at all.
   await ensureDemoUser(family.id);
 
-  const children = [people.Mae];
+  const children = [people.Banks, people.Bear, people.Collins];
   const collections: Record<string, string> = {};
 
-  const addCollection = async (
-    key: string,
-    name: string,
-    pillar: Pillar,
-    sortOrder: number,
-    personId?: string,
-  ) => {
+  // Every child starts with the same defaults a child added in the app gets.
+  // Families can rename or add to these at any time.
+  for (const child of children) {
+    await ensureChildCollections(family.id, child.id, prisma);
+    const own = await prisma.collection.findMany({
+      where: { familyId: family.id, personId: child.id, kind: { not: null } },
+    });
+    for (const c of own) if (c.kind) collections[`${child.name}::${c.kind}`] = c.id;
+  }
+  for (const [i, spec] of FAMILY_COLLECTIONS.entries()) {
     const created = await prisma.collection.create({
       data: {
         familyId: family.id,
-        name,
-        pillar,
-        personId: personId ?? null,
-        sortOrder,
-        coverSeed: `collection-${slug(key)}`,
+        name: spec.name,
+        pillar: "FAMILY_LIFE",
+        icon: spec.icon,
+        color: spec.color,
+        sortOrder: i,
+        coverSeed: `collection-${slug(`family::${spec.name}`)}`,
       },
     });
-    collections[key] = created.id;
-  };
-
-  // Every child starts with the default set from the product spec. Families can
-  // rename, remove, or add to these at any time.
-  for (const child of children) {
-    for (const [i, name] of ARRIVAL_COLLECTIONS.entries()) {
-      await addCollection(`${child.name}::${name}`, name, "ARRIVAL_STORIES", i, child.id);
-    }
-    for (const [i, name] of CHILD_COLLECTIONS.entries()) {
-      await addCollection(`${child.name}::${name}`, name, "CHILD_PROFILES", i, child.id);
-    }
-  }
-  for (const [i, name] of FAMILY_COLLECTIONS.entries()) {
-    await addCollection(`family::${name}`, name, "FAMILY_LIFE", i);
+    collections[`family::${spec.name}`] = created.id;
   }
 
   for (const spec of MEMORIES) {
@@ -235,7 +266,7 @@ async function main() {
   const counts = {
     users: 1,
     people: Object.keys(people).length,
-    collections: Object.keys(collections).length,
+    collections: await prisma.collection.count({ where: { familyId: family.id } }),
     memories: MEMORIES.length,
   };
   console.log(`Seeded "${family.name}":`, counts);

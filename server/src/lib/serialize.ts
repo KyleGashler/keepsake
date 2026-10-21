@@ -1,6 +1,6 @@
 import { RENDER_VERSION } from "./placeholder.js";
 import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
-import type { Collection, Media, Memory, Person, TranscriptStatus } from "@prisma/client";
+import type { Collection, Media, MediaType, Memory, Person, TranscriptStatus } from "@prisma/client";
 
 /**
  * Placeholder media is generated on demand; uploads are served from disk.
@@ -99,12 +99,26 @@ export function aggregateTranscriptStatus(
   return null;
 }
 
+/**
+ * What `collectionDto` wants loaded: the owner, and a memory count that skips
+ * soft-deleted memories. Use this rather than `_count: { memories: true }`.
+ */
+export const collectionInclude = {
+  _count: { select: { memories: { where: { memory: { deletedAt: null } } } } },
+  person: true,
+} as const;
+
 export function collectionDto(c: Collection & { _count?: { memories: number }; person?: Person | null }) {
   return {
     id: c.id,
     pillar: c.pillar,
     name: c.name,
     description: c.description,
+    /** Template key of a child's default collection; null for a family's own. */
+    kind: c.kind,
+    /** Glyph key (see lib/child-collections.ts#COLLECTION_ICONS) and disc hex. */
+    icon: c.icon,
+    color: c.color,
     personId: c.personId,
     personName: c.person?.name ?? null,
     isDefault: c.isDefault,
@@ -121,8 +135,11 @@ type MemoryWithRelations = Memory & {
   collections?: { collection: Collection }[];
 };
 
+const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
+
 export async function memoryCardDto(m: MemoryWithRelations) {
-  const hero = m.media?.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
+  const media = m.media?.filter((x) => !x.deletedAt) ?? [];
+  const hero = media.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
   return {
     id: m.id,
     title: m.title,
@@ -130,8 +147,12 @@ export async function memoryCardDto(m: MemoryWithRelations) {
     location: m.location,
     heroUrl: (hero ? await mediaReadUrl(hero) : null) ?? imageUrl(m.heroSeed, 1200, 900),
     excerpt: m.story ? m.story.replace(/\s+/g, " ").slice(0, 140) : null,
-    mediaCount: m.media?.length ?? 0,
-    hasAudio: m.media?.some((x) => x.type === "AUDIO") ?? false,
+    mediaCount: media.length,
+    hasAudio: media.some((x) => x.type === "AUDIO"),
+    /** Which kinds of media it holds, in PHOTO, VIDEO, AUDIO order. */
+    mediaTypes: MEDIA_TYPE_ORDER.filter((t) => media.some((x) => x.type === t)),
+    /** No media at all: `heroUrl` is only a generated stand-in. */
+    isTextOnly: media.length === 0,
     paletteHue: m.paletteHue,
     brightness: m.brightness,
     participants: m.participants?.map((p) => personDto(p.person)) ?? [],
@@ -168,6 +189,10 @@ export async function memoryDto(m: MemoryWithRelations) {
         id: mc.collection.id,
         name: mc.collection.name,
         pillar: mc.collection.pillar,
+        personId: mc.collection.personId,
+        kind: mc.collection.kind,
+        icon: mc.collection.icon,
+        color: mc.collection.color,
       })) ?? [],
   };
 }

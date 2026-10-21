@@ -6,6 +6,7 @@ import { imageSize } from "image-size";
 import { z } from "zod";
 import { TRANSCRIBE_MAX_VIDEO_SECONDS } from "../jobs/transcribe.js";
 import { logger } from "../lib/logger.js";
+import { keyBelongsTo } from "../lib/upload-keys.js";
 import {
   ALLOWED_MIME_TYPES,
   baseMimeType,
@@ -288,10 +289,6 @@ mediaApiRouter.post("/finalize", async (req, res) => {
     },
   });
 });
-
-function keyBelongsTo(key: string, familyId: string) {
-  return key.startsWith(`${familyId}/`);
-}
 
 /** How much finalize reads to sniff a type: file-type's own sample size. */
 const SNIFF_BYTES = 4100;

@@ -119,6 +119,7 @@ model Family {
   memberships  FamilyMembership[]
   invites      Invite[]
   subscription Subscription?
+  pillarCovers PillarCover[]
 }
 
 /// An individual whose life is part of the family's story.
@@ -137,6 +138,9 @@ model Person {
   /// Set when this person can sign in. Children never have one — enforced in
   /// application code, not by the schema.
   userId      String?    @unique
+  /// Storage key of an uploaded profile photo (a finalized upload in this
+  /// family's prefix). Null falls back to the generated avatar.
+  photoKey    String?
   createdAt   DateTime   @default(now())
 
   family        Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
@@ -162,6 +166,12 @@ model Collection {
   isDefault   Boolean @default(true)
   sortOrder   Int     @default(0)
   coverSeed   String
+  /// Template key for a child's default collections (`milestones`,
+  /// `day_to_day`, …; see lib/child-collections.ts). Null for a family's own.
+  kind        String?
+  /// Opaque glyph key the client maps to an icon, and the disc's hex colour.
+  icon        String  @default("star")
+  color       String  @default("#123F45")
 
   family    Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
   person    Person?            @relation(fields: [personId], references: [id], onDelete: Cascade)
@@ -170,6 +180,9 @@ model Collection {
 
   @@index([familyId, pillar])
   @@index([personId])
+  /// One default of each kind per child, so ensureChildCollections can't
+  /// double up under a race. Family collections (null person/kind) are exempt.
+  @@unique([personId, kind])
 }
 
 /// The foundational object: a single meaningful moment preserved by a family.
@@ -204,6 +217,9 @@ model Memory {
   media        Media[]
   collections  MemoryCollection[]
   participants MemoryParticipant[]
+  favorites    MemoryFavorite[]
+  linksFrom    MemoryLink[]        @relation("MemoryLinkFrom")
+  linksTo      MemoryLink[]        @relation("MemoryLinkTo")
 
   /// Generated tsvector over title/location/story/transcript (A weighted highest,
   /// D lowest), maintained by Postgres itself — see the memory_search_vector
@@ -339,6 +355,7 @@ model User {
   invitesSent  Invite[]           @relation("InviteInvitedBy")
   deviceTokens DeviceToken[]
   person       Person?
+  favorites    MemoryFavorite[]
 }
 
 /// A User's seat in one Family, with their role and (optionally) the Person
@@ -425,4 +442,45 @@ model Subscription {
   updatedAt        DateTime  @updatedAt
 
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+}
+
+/// A family's own cover photo for one Library pillar card. Absent means the
+/// generated default.
+model PillarCover {
+  familyId   String
+  pillar     Pillar
+  /// A finalized upload in this family's prefix.
+  storageKey String
+  updatedAt  DateTime @updatedAt
+
+  family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
+
+  @@id([familyId, pillar])
+}
+
+/// One signed-in user's favourite. Per user, not per family.
+model MemoryFavorite {
+  userId    String
+  memoryId  String
+  createdAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  memory Memory @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+
+  @@id([userId, memoryId])
+  @@index([memoryId])
+}
+
+/// A manual "related memory". Undirected, so stored once with the smaller id
+/// in `memoryId`. Both memories belong to the same family — checked on write.
+model MemoryLink {
+  memoryId  String
+  linkedId  String
+  createdAt DateTime @default(now())
+
+  memory Memory @relation("MemoryLinkFrom", fields: [memoryId], references: [id], onDelete: Cascade)
+  linked Memory @relation("MemoryLinkTo", fields: [linkedId], references: [id], onDelete: Cascade)
+
+  @@id([memoryId, linkedId])
+  @@index([linkedId])
 }

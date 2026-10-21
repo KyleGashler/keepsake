@@ -5,7 +5,9 @@ import { jobQueue } from "../jobs/index.js";
 import { TRANSCRIBABLE_TYPES, enqueueTranscriptions, tooLongToTranscribe } from "../jobs/transcribe.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
-import { memoryCardDtos, memoryDto } from "../lib/serialize.js";
+import { linkPair, memoryDetail } from "../lib/memory-detail.js";
+import { memoryCardDtos } from "../lib/serialize.js";
+import { keyBelongsTo } from "../lib/upload-keys.js";
 
 /** An uploaded clip with sound in it — the only media the transcriber is given. */
 function isTranscribable(m: { type: string; storageKey?: string | null }) {
@@ -49,6 +51,7 @@ memoriesRouter.get("/memories", async (req, res) => {
 
   const where = {
     familyId: family.id,
+    deletedAt: null,
     ...(collectionId ? { collections: { some: { collectionId } } } : {}),
     ...(personId ? { participants: { some: { personId } } } : {}),
   };
@@ -71,11 +74,11 @@ memoriesRouter.get("/memories/:id", async (req, res) => {
   // findFirst, not findUnique: an id from another family must read as absent,
   // not as forbidden — otherwise the 404/403 split confirms the id exists.
   const memory = await prisma.memory.findFirst({
-    where: { id: req.params.id, familyId: req.ctx.family.id },
+    where: { id: req.params.id, familyId: req.ctx.family.id, deletedAt: null },
     include,
   });
   if (!memory) return res.status(404).json({ error: "Memory not found" });
-  res.json({ memory: await memoryDto(memory) });
+  res.json({ memory: await memoryDetail(req.ctx.family.id, req.ctx.user.id, memory) });
 });
 
 /**
@@ -151,7 +154,7 @@ memoriesRouter.post("/memories", async (req, res) => {
 
   // A storage key carries its owning family in its prefix; refuse to attach
   // another family's object to this family's memory.
-  const foreign = input.media.find((m) => m.storageKey && !m.storageKey.startsWith(`${family.id}/`));
+  const foreign = input.media.find((m) => m.storageKey && !keyBelongsTo(m.storageKey, family.id));
   if (foreign) return res.status(403).json({ error: "Storage key does not belong to this family" });
 
   const heroSeed = `memory-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
@@ -211,7 +214,7 @@ memoriesRouter.post("/memories", async (req, res) => {
     },
   });
 
-  res.status(201).json({ memory: await memoryDto(memory) });
+  res.status(201).json({ memory: await memoryDetail(family.id, req.ctx.user.id, memory) });
 });
 
 const editMemory = z.object({
@@ -220,27 +223,121 @@ const editMemory = z.object({
   transcript: z.string().max(50_000).nullable().optional(),
   location: z.string().max(160).nullable().optional(),
   occurredAt: z.string().datetime().optional(),
+  /**
+   * The full set of collections the memory is filed in, replacing the old
+   * set — "add to another collection" sends old + new, "move" sends the new
+   * one alone. Empty unfiles it.
+   */
+  collectionIds: z.array(z.string()).max(100).optional(),
 });
 
 /** AI assists, families decide — every narrative stays editable. */
 memoriesRouter.patch("/memories/:id", async (req, res) => {
+  const family = req.ctx.family;
   const parsed = editMemory.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { occurredAt, ...rest } = parsed.data;
+  const { occurredAt, collectionIds, ...rest } = parsed.data;
 
   const existing = await prisma.memory.findFirst({
-    where: { id: req.params.id, familyId: req.ctx.family.id },
+    where: { id: req.params.id, familyId: family.id, deletedAt: null },
     select: { id: true },
   });
   if (!existing) return res.status(404).json({ error: "Memory not found" });
 
-  const memory = await prisma.memory.update({
-    where: { id: existing.id },
-    data: { ...rest, ...(occurredAt ? { occurredAt: new Date(occurredAt) } : {}) },
-    include,
+  const wanted = collectionIds ? [...new Set(collectionIds)] : null;
+  if (wanted?.length) {
+    const known = await prisma.collection.count({ where: { id: { in: wanted }, familyId: family.id } });
+    if (known !== wanted.length) return res.status(400).json({ error: "unknown_reference" });
+  }
+
+  const memory = await prisma.$transaction(async (tx) => {
+    if (wanted) {
+      await tx.memoryCollection.deleteMany({ where: { memoryId: existing.id, collectionId: { notIn: wanted } } });
+      await tx.memoryCollection.createMany({
+        data: wanted.map((collectionId) => ({ memoryId: existing.id, collectionId })),
+        skipDuplicates: true,
+      });
+    }
+    return tx.memory.update({
+      where: { id: existing.id },
+      data: { ...rest, ...(occurredAt ? { occurredAt: new Date(occurredAt) } : {}) },
+      include,
+    });
   });
 
-  res.json({ memory: await memoryDto(memory) });
+  res.json({ memory: await memoryDetail(family.id, req.ctx.user.id, memory) });
+});
+
+/**
+ * Soft delete: the memory disappears from every list, count and related list,
+ * and its media and originals stay exactly where they are.
+ */
+memoriesRouter.delete("/memories/:id", async (req, res) => {
+  const result = await prisma.memory.updateMany({
+    where: { id: req.params.id, familyId: req.ctx.family.id, deletedAt: null },
+    data: { deletedAt: new Date() },
+  });
+  if (result.count === 0) return res.status(404).json({ error: "Memory not found" });
+  res.status(204).end();
+});
+
+/** A live memory of the caller's family, or null. */
+function findLiveMemory(familyId: string, id: string) {
+  return prisma.memory.findFirst({ where: { id, familyId, deletedAt: null }, select: { id: true } });
+}
+
+/** Favourites belong to the signed-in user, not the family. */
+memoriesRouter.put("/memories/:id/favorite", async (req, res) => {
+  const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+  await prisma.memoryFavorite.upsert({
+    where: { userId_memoryId: { userId: req.ctx.user.id, memoryId: memory.id } },
+    create: { userId: req.ctx.user.id, memoryId: memory.id },
+    update: {},
+  });
+  res.json({ isFavorite: true });
+});
+
+memoriesRouter.delete("/memories/:id/favorite", async (req, res) => {
+  const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+  await prisma.memoryFavorite.deleteMany({ where: { userId: req.ctx.user.id, memoryId: memory.id } });
+  res.json({ isFavorite: false });
+});
+
+const newLink = z.object({ linkedId: z.string().min(1) });
+
+/** Link a related memory by hand. Undirected; linking twice is a no-op. */
+memoriesRouter.post("/memories/:id/links", async (req, res) => {
+  const family = req.ctx.family;
+  const parsed = newLink.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  if (parsed.data.linkedId === req.params.id) {
+    return res.status(400).json({ error: "A memory can't be linked to itself" });
+  }
+
+  const [memory, other] = await Promise.all([
+    findLiveMemory(family.id, req.params.id),
+    findLiveMemory(family.id, parsed.data.linkedId),
+  ]);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+  if (!other) return res.status(400).json({ error: "unknown_reference" });
+
+  await prisma.memoryLink.createMany({ data: [linkPair(memory.id, other.id)], skipDuplicates: true });
+  const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId: family.id }, include });
+  res.status(201).json({ memory: await memoryDetail(family.id, req.ctx.user.id, updated) });
+});
+
+memoriesRouter.delete("/memories/:id/links/:linkedId", async (req, res) => {
+  const family = req.ctx.family;
+  const memory = await findLiveMemory(family.id, req.params.id);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+
+  // Both ends are this family's: `memory` was checked above, and a link is
+  // only ever written between two memories of one family.
+  await prisma.memoryLink.deleteMany({ where: linkPair(memory.id, req.params.linkedId) });
+  const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId: family.id }, include });
+  res.json({ memory: await memoryDetail(family.id, req.ctx.user.id, updated) });
 });
 
 /**
@@ -249,10 +346,7 @@ memoriesRouter.patch("/memories/:id", async (req, res) => {
  * person has written it (see jobs/transcribe.ts).
  */
 memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", async (req, res) => {
-  const memory = await prisma.memory.findFirst({
-    where: { id: req.params.id, familyId: req.ctx.family.id },
-    select: { id: true },
-  });
+  const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
 
   const media = await prisma.media.findFirst({
@@ -293,5 +387,5 @@ memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", async (req, res) 
     where: { id: memory.id, familyId: req.ctx.family.id },
     include,
   });
-  res.status(202).json({ memory: await memoryDto(updated) });
+  res.status(202).json({ memory: await memoryDetail(req.ctx.family.id, req.ctx.user.id, updated) });
 });

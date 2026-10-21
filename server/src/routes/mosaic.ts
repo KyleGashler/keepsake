@@ -12,7 +12,7 @@ export const mosaicRouter = Router();
 mosaicRouter.get("/mosaic", async (req, res) => {
   const family = req.ctx.family;
   const memories = await prisma.memory.findMany({
-    where: { familyId: family.id },
+    where: { familyId: family.id, deletedAt: null },
     orderBy: [{ paletteHue: "asc" }, { brightness: "desc" }],
     include: { media: true },
   });

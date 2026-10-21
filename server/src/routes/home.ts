@@ -37,7 +37,7 @@ homeRouter.get("/home", async (req, res) => {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
     prisma.memory.findMany({
-      where: { familyId: family.id },
+      where: { familyId: family.id, deletedAt: null },
       orderBy: { occurredAt: "desc" },
       take: 12,
       include: { media: true, participants: { include: { person: true } } },
@@ -57,7 +57,7 @@ homeRouter.get("/home", async (req, res) => {
   // Prompts rotate daily. In a later version this is where the AI-generated
   // prompt (upcoming birthdays, growth spurts, seasons) would come from.
   const prompt = prompts.length ? prompts[dayIndex(now) % prompts.length] : null;
-  const memoryCount = await prisma.memory.count({ where: { familyId: family.id } });
+  const memoryCount = await prisma.memory.count({ where: { familyId: family.id, deletedAt: null } });
 
   res.json({
     family: { id: family.id, name: family.name },

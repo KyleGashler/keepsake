@@ -1,7 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../lib/prisma.js";
-import { collectionDto, memoryCardDtoWithExcerpt, memoryCardDtos, personDto } from "../lib/serialize.js";
+import {
+  collectionDto,
+  collectionInclude,
+  memoryCardDtoWithExcerpt,
+  memoryCardDtos,
+  personDto,
+} from "../lib/serialize.js";
 
 export const searchRouter = Router();
 
@@ -53,7 +59,7 @@ searchRouter.get("/search", async (req, res) => {
     prisma.collection.findMany({
       where: { familyId: family.id, OR: [{ name: contains }, { description: contains }] },
       take: 10,
-      include: { _count: { select: { memories: true } }, person: true },
+      include: collectionInclude,
     }),
   ]);
 
@@ -99,7 +105,7 @@ async function searchMemories(familyId: string, q: string) {
 
   const snippetById = new Map(hits.map((h) => [h.id, h.snippet]));
   const records = await prisma.memory.findMany({
-    where: { id: { in: hits.map((h) => h.id) } },
+    where: { id: { in: hits.map((h) => h.id) }, familyId, deletedAt: null },
     include: { media: true, participants: { include: { person: true } } },
   });
   const byId = new Map(records.map((m) => [m.id, m]));
