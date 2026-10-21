@@ -120,8 +120,10 @@ export function RecorderStage({
       <View style={styles.stage}>
         <View style={StyleSheet.absoluteFill}>{preview}</View>
 
-        <View style={[styles.topBar, { paddingTop: insets.top + spacing.md }]}>
-          <RoundButton icon="close" label="Close" onPress={onClose} />
+        {/* Every control lives down here: the top of the screen is where system
+            banners and browser prompts land, and they'd cover anything we put there. */}
+        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.xl }]}>
+          {error ? <Text style={styles.stageError}>{error}</Text> : null}
           <View
             style={[styles.timerPill, recording && styles.timerPillLive]}
             accessibilityLabel={`Elapsed ${clock(elapsedS)}, ${clock(remaining)} left`}
@@ -132,27 +134,6 @@ export function RecorderStage({
               {clock(remaining)} left
             </Text>
           </View>
-          <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            {torch !== undefined && onToggleTorch ? (
-              <RoundButton
-                icon={torch ? "flashlight" : "flashlight-outline"}
-                label={torch ? "Turn the light off" : "Turn the light on"}
-                onPress={onToggleTorch}
-              />
-            ) : null}
-            {canFlip ? (
-              <RoundButton
-                icon="camera-reverse-outline"
-                label="Switch camera"
-                onPress={onFlip}
-                disabled={recording}
-              />
-            ) : null}
-          </View>
-        </View>
-
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.xl }]}>
-          {error ? <Text style={styles.stageError}>{error}</Text> : null}
           <Text style={styles.hint}>
             {recording
               ? nearlyDone
@@ -160,7 +141,29 @@ export function RecorderStage({
                 : "Recording…"
               : `Up to ${clock(maxDurationS)}. Tap to start.`}
           </Text>
-          <RecordButton recording={recording} busy={busy} onPress={recording ? onStop : onRecord} />
+          <View style={styles.controls}>
+            <View style={styles.controlsSide}>
+              <RoundButton icon="close" label="Close" onPress={onClose} />
+            </View>
+            <RecordButton recording={recording} busy={busy} onPress={recording ? onStop : onRecord} />
+            <View style={[styles.controlsSide, { justifyContent: "flex-end" }]}>
+              {torch !== undefined && onToggleTorch ? (
+                <RoundButton
+                  icon={torch ? "flashlight" : "flashlight-outline"}
+                  label={torch ? "Turn the light off" : "Turn the light on"}
+                  onPress={onToggleTorch}
+                />
+              ) : null}
+              {canFlip ? (
+                <RoundButton
+                  icon="camera-reverse-outline"
+                  label="Switch camera"
+                  onPress={onFlip}
+                  disabled={recording}
+                />
+              ) : null}
+            </View>
+          </View>
         </View>
       </View>
     </View>
@@ -190,9 +193,6 @@ export function RecorderReview({
     <View style={styles.backdrop}>
       <StatusBar style="light" />
       <View style={[styles.stage, { paddingTop: insets.top + spacing.md }]}>
-        <View style={[styles.topBar, { paddingBottom: spacing.md }]}>
-          <RoundButton icon="close" label="Close" onPress={onClose} />
-        </View>
         <VideoClip key={uri} uri={uri} autoPlay onLoad={onLoad} style={{ flex: 1 }} />
         <View style={[styles.reviewBar, { paddingBottom: insets.bottom + spacing.lg }]}>
           {error ? <Text style={styles.stageError}>{error}</Text> : null}
@@ -204,7 +204,13 @@ export function RecorderReview({
             disabled={handingOff}
             style={{ alignSelf: "stretch" }}
           />
-          <Button label="Retake" variant="secondary" icon="refresh" onPress={onRetake} disabled={handingOff} />
+          <View style={styles.controls}>
+            <View style={styles.controlsSide}>
+              <RoundButton icon="close" label="Close" onPress={onClose} disabled={handingOff} />
+            </View>
+            <Button label="Retake" variant="secondary" icon="refresh" onPress={onRetake} disabled={handingOff} />
+            <View style={styles.controlsSide} />
+          </View>
         </View>
       </View>
     </View>
@@ -292,13 +298,10 @@ const styles = StyleSheet.create({
   },
   backdrop: { flex: 1, backgroundColor: "#000" },
   stage: { flex: 1, width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", backgroundColor: "#000" },
-  topBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-    gap: spacing.sm,
-  },
+  // Record (or Retake) centred, with equal-width sides so it stays centred
+  // whichever side buttons are showing.
+  controls: { flexDirection: "row", alignItems: "center", alignSelf: "stretch" },
+  controlsSide: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
   timerPill: {
     flexDirection: "row",
     alignItems: "center",
