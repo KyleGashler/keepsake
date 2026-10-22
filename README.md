@@ -40,7 +40,7 @@ media, who was there, and inline editing of the narrative.
 These are stubbed and labelled in the UI rather than faked:
 
 - **Auth** — the request context, family scoping and roles are real; the *verification* isn't. A `dev:<email>` token is believed without proof. See [Auth](#auth).
-- **AI** — no narratives, tagging, or generated prompts yet. Transcription is real (Deepgram, or a stub without a key) — see [Background jobs and transcription](#background-jobs-and-transcription).
+- **AI** — no narratives, tagging, or generated prompts yet. Transcripts are real: Mux's generated captions of each clip — see [Video and audio (Mux)](#video-and-audio-mux).
 - **Audio capture** — recording and playback need real files; the written form stands in, and typed transcripts land in the field transcription will eventually populate.
 - **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
 - **Real photographs** — every seeded image is a gradient generated from a string seed ([server/src/lib/placeholder.ts](server/src/lib/placeholder.ts)), so the app looks alive offline and nothing binary lives in git. Photos you upload yourself are real and land on a Docker volume.
@@ -112,11 +112,12 @@ Uploads go through a two-phase handshake — `POST /api/media/init` authorises a
 target, the client `PUT`s the bytes straight to it, `POST /api/media/finalize`
 sniffs the real type from the first 4 KB (a ranged read) and records the size
 and a digest — so the same client code works against a local volume and a
-presigned S3 URL ([server/src/storage/](server/src/storage/)). Originals of
-every type, video included, are stored as uploaded and capped at
+presigned S3 URL ([server/src/storage/](server/src/storage/)). This section
+is photos (and covers and avatars): they are stored as uploaded. Video and
+audio take the same three calls but go to Mux instead — see
+[Video and audio (Mux)](#video-and-audio-mux). Every upload is capped at
 2,000,000,000 bytes (`GET /api/media/limits`; the capture screen says so before
-uploading). Upload URLs live 60 minutes. No transcoding, multipart or CDN yet —
-see "Decision: video, for now" in [docs/PLAN.md](docs/PLAN.md).
+uploading). Upload URLs live 60 minutes.
 
 The digest is S3's own checksum when there is one: S3 computes a full-object
 CRC64NVME for every upload that arrives without a checksum header, and
@@ -218,7 +219,7 @@ each. `us-west-1` is the region nearest Fly's `sjc`.
    everything else reports "already present". Then check `/api/health` shows
    `"media": true` and upload a photo and a video from the web app.
 
-## Background jobs and transcription
+## Background jobs
 
 Slow work runs through the `Job` table
 ([server/src/jobs/](server/src/jobs/)): a route enqueues a row, a worker claims
@@ -228,28 +229,90 @@ exponential backoff until `maxAttempts`, then marked `FAILED`. A job left
 The worker runs inside the API when `WORKER_INLINE=1` (compose and Fly set it),
 or on its own with `npm run worker` (`npm run worker:dev` off TypeScript).
 
-The one job today is `ai.transcribe`. Creating a memory with uploaded AUDIO or
-VIDEO sets each clip's `transcriptStatus` to `PENDING` and queues a job per
-clip; the job writes `Media.transcript`, fills `durationS` if the client didn't,
-and fills `Memory.transcript` from the clips in order — but only while it is
-empty or still exactly what the job wrote. Once a person edits it, it's theirs.
-A clip that fails is `FAILED`; `POST /api/memories/:id/media/:mediaId/transcribe`
-queues it again. With S3 storage Deepgram fetches the original from a presigned
-URL; with local storage the API streams the bytes to Deepgram.
-
-Videos longer than `TRANSCRIBE_MAX_VIDEO_SECONDS` aren't transcribed yet: the
-clip is `SKIPPED`, no job is queued, and the retry route answers
-`409 too_long_to_transcribe`. Audio is transcribed at any length, and a video
-whose length the client didn't send is transcribed (the job skips it instead
-if it turns out to be known too long by the time it runs). A memory reads
-`SKIPPED` only when every clip in it was skipped.
+The one job today is `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux)).
 
 | Variable | Meaning |
 | --- | --- |
 | `WORKER_INLINE` | `1` runs the job worker in the API process. Unset, jobs wait for `npm run worker`. |
-| `DEEPGRAM_API_KEY` | Deepgram key for speech-to-text. Unset in development, a stub transcriber returns a fixed two-speaker sample after ~1.5 s; unset in production, clips are marked FAILED (retry from the memory page once the key is set). On Fly: `fly secrets set DEEPGRAM_API_KEY=…`. |
-| `DEEPGRAM_MODEL` | Optional; defaults to `nova-3`. |
-| `TRANSCRIBE_MAX_VIDEO_SECONDS` | Optional; defaults to `120`. Videos longer than this many seconds are marked `SKIPPED` rather than sent to the transcriber. Must be a positive whole number, or the server refuses to boot. Served to the app as `transcribeMaxVideoSeconds` from `GET /api/media/limits`. |
+
+## Video and audio (Mux)
+
+Every VIDEO and AUDIO clip goes straight to [Mux](https://www.mux.com) and lives
+only there; photos stay in [Storage](#storage). Mux transcodes (HEVC plays
+everywhere), streams adaptive HLS over its CDN, draws poster frames by URL and
+writes captions, which are our transcripts. Why: "Decision: Mux for video and
+audio" in [docs/PLAN.md](docs/PLAN.md). The code is in
+[server/src/media-host/](server/src/media-host/).
+
+The client's upload is the same three steps as a photo:
+
+1. `POST /api/media/init` with an `audio/*` or `video/*` type creates a Mux
+   *direct upload* and answers `{ uploadId, key: "mux:<uploadId>", mimeType,
+   target: { url, method: "PUT", headers: {}, expiresAt } }`. The browser's
+   `Origin` becomes the upload's CORS origin (it must be one this API allows;
+   native clients send none). A `MuxAsset` row records that this family asked.
+2. The client PUTs the file to `target.url` — one plain PUT, no headers.
+3. `POST /api/media/finalize` with the `mux:` key asks Mux whether the upload
+   arrived (waiting up to ~8 s for Mux to notice), checks it is this family's,
+   and answers `{ media: { key, type, mimeType, bytes, sha256: null,
+   checksum: null } }`. No sniff or checksum: Mux decodes the file itself and
+   fails the asset if it can't. It also starts the `mux.sync` job.
+
+`POST /api/memories` takes the `mux:` key as `media[].storageKey`. The clip's
+media item reads `status: "PROCESSING"` until Mux can play it, then `READY`
+(or `FAILED`), with `url` — signed HLS for video, the signed `audio.m4a` static
+rendition for audio — and, for video, `posterUrl`; both are null until READY.
+A memory card's `heroUrl` and a mosaic tile's `url` for a video are its poster
+frame, never the video. Every URL carries an RS256 playback token valid for
+`READ_URL_TTL_SECONDS` (plus the clip's length for playback), reused for ten
+minutes so URLs (and the client's image cache) are stable. Assets are created
+with signed playback only, `basic` quality, a 1080p cap and auto-language
+captions.
+
+**Order doesn't matter.** A clip can finish — captions and all — before or
+after the memory that holds it is created. Whichever comes second copies the
+duration, dimensions and transcript onto the `Media` row and offers the
+transcript to the memory: `Memory.transcript` is filled from the clips in
+order while it is empty or still exactly what the machine wrote. Once a person
+edits it, it's theirs.
+
+**Webhooks and polling.** `POST /api/webhooks/mux` takes Mux's events
+(`video.upload.asset_created`, `video.asset.ready` / `errored`,
+`video.asset.track.ready` / `errored` for the generated captions,
+`video.asset.static_rendition.ready` for audio). It reads the raw body
+(mounted before `express.json` and auth), verifies `mux-signature` with
+`MUX_WEBHOOK_SECRET`, and is idempotent: every event is merged as facts that
+can't move backwards, so a replay changes nothing. It never calls Mux back;
+fetching the caption text is the `mux.sync` job's work. That job, queued at
+finalize, polls the upload and asset — every 3 s at first, easing to every
+2 minutes — until the asset is playable and its transcript is in, and gives up
+after 6 hours (whatever is still pending becomes FAILED). It's the safety net
+for a missed webhook, and the whole mechanism **in development, where no
+tunnel is needed**: without `MUX_WEBHOOK_SECRET` the webhook answers 503 and
+polling does everything.
+
+A FAILED transcript is retried with
+`POST /api/memories/:id/media/:mediaId/transcribe`: if Mux has the caption
+text it is fetched again, otherwise the errored caption track is removed and
+captions are generated anew from the asset's audio track. Nothing ever deletes
+a Mux asset — it is the only copy — and soft-deleting a `Media` row leaves it
+alone.
+
+Without the four required variables the server still boots, photos work,
+`/api/health` reports `"mux": false`, and AV init answers
+`503 { code: "av_unavailable" }`.
+
+| Variable | Meaning |
+| --- | --- |
+| `MUX_TOKEN_ID`, `MUX_TOKEN_SECRET` | Required. An access token with Mux Video read/write. |
+| `MUX_SIGNING_KEY_ID`, `MUX_SIGNING_KEY_PRIVATE` | Required. A URL signing key; the private key as Mux hands it out (base64 of the PEM; a raw PEM also works). Every playback, poster and caption URL is signed with it. |
+| `MUX_WEBHOOK_SECRET` | Optional. The webhook's signing secret. Set it where Mux can reach `https://<host>/api/webhooks/mux` (production); leave it unset in development. |
+
+Locally, put them in a root `.env` (gitignored; compose passes them through).
+On Fly: `fly secrets set MUX_TOKEN_ID=… MUX_TOKEN_SECRET=… MUX_SIGNING_KEY_ID=…
+MUX_SIGNING_KEY_PRIVATE=… MUX_WEBHOOK_SECRET=…`. Use separate Mux
+environments (Development, Production) so dev uploads never land in the
+production archive.
 
 ## Running on a phone
 
@@ -306,7 +369,8 @@ a later migration drops it. `Invite` carries the join flow (A4).
 `Media.storageKey` / `mimeType` / `bytes` / `checksum` or `sha256` / `status` describe an
 object in a storage provider rather than a path on disk, and `Derivative` holds
 the thumbnails, display renditions, posters and waveforms generated from it
-(A5, A6). `Job` is the durable work queue those derivatives run through (A6),
+(A5, A6); a video or audio clip instead links through `Media.muxAssetId` to a
+`MuxAsset` (the Mux upload, asset, playback id and transcript). `Job` is the durable work queue those derivatives run through (A6),
 and `Memory.palette` / `analysisStatus` / `storySource` are what the analysis
 and AI passes write back (A6, A13). `DeviceToken` and `Subscription` are for
 push and billing in Track B (B7, B9). Soft deletes (`deletedAt` on `Memory` and

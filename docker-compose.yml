@@ -33,11 +33,17 @@ services:
       PORT: "4000"
       MEDIA_DIR: /app/media
       SEED_DEMO: "1"
-      # Run the job worker (transcription) inside the API process.
+      # Run the job worker (mux.sync polling) inside the API process.
       WORKER_INLINE: "1"
-      # Unset → the stub transcriber. Put a key in your shell or a root .env
-      # to transcribe with Deepgram locally.
-      DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      # Video and audio go to Mux (README, "Video and audio (Mux)"). Put the
+      # Development environment's credentials in a root .env; unset, the API
+      # still runs and AV uploads answer 503. No webhook secret locally: Mux
+      # can't reach this machine, so the mux.sync job polls instead.
+      MUX_TOKEN_ID: ${MUX_TOKEN_ID:-}
+      MUX_TOKEN_SECRET: ${MUX_TOKEN_SECRET:-}
+      MUX_SIGNING_KEY_ID: ${MUX_SIGNING_KEY_ID:-}
+      MUX_SIGNING_KEY_PRIVATE: ${MUX_SIGNING_KEY_PRIVATE:-}
+      MUX_WEBHOOK_SECRET: ${MUX_WEBHOOK_SECRET:-}
       # `Bearer dev:<email>` is the whole credential in dev mode — see the Auth
       # section of the README. DEV_DEFAULT_USER is who an unauthenticated
       # request is treated as, which keeps the app working until it learns to

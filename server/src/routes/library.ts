@@ -4,7 +4,7 @@ import { z } from "zod";
 import { COLLECTION_ICONS, DEFAULT_COLLECTION_COLOR, DEFAULT_COLLECTION_ICON } from "../lib/child-collections.js";
 import { childSummaries, childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
-import { collectionDto, collectionInclude, imageUrl, memoryCardDtos, personDto } from "../lib/serialize.js";
+import { collectionDto, collectionInclude, imageUrl, mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
 import { imageKeyError, imageKeyProblem, signedImageUrl } from "../lib/upload-keys.js";
 
 export const libraryRouter = Router();
@@ -240,7 +240,7 @@ libraryRouter.get("/collections/:id", async (req, res) => {
   const memories = await prisma.memory.findMany({
     where: year === undefined ? where : { ...where, id: { in: idsInYear } },
     orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
-    include: { media: true, participants: { include: { person: true } } },
+    include: { media: mediaInclude, participants: { include: { person: true } } },
   });
   // A fresh array, so sorting in place is fine (and ES2022 has no toSorted).
   // oxlint-disable-next-line unicorn/no-array-sort

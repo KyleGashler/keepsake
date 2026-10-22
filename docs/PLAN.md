@@ -655,6 +655,67 @@ an audio clip through `/api/media/init` → PUT → finalize → `POST /memories
 both reach READY, the video DTO has a poster that loads, both URLs play, and
 transcripts land on the memory. Replaying a webhook changes nothing.
 
+**As built (2026-10-22):**
+- Code: `server/src/media-host/` (`MediaHost` interface, `MuxMediaHost` over
+  `@mux/mux-node` 15.5, `assets.ts` for the row merges, linking and
+  `offerToMemory`), `jobs/mux-sync.ts`, `routes/webhooks.ts`; Deepgram, the
+  stubs, `ai/` and `jobs/transcribe.ts` are gone. Migration
+  `20261022120000_mux`. Compose's anonymous `node_modules` volume needs
+  `--renew-anon-volumes` for the new dependency.
+- `MuxAsset` has the planned fields plus `type`, `mimeType`, `bytes` (Mux
+  doesn't report them back), Mux's raw `uploadStatus` / `assetStatus` /
+  `renditionStatus`, `audioTrackId`, `captionStatus`, `error`,
+  `syncGaveUpAt`. Each writer merges facts under a row lock (a terminal Mux
+  status never reverts) and `status` is computed from them, which is what
+  makes replays and out-of-order webhooks no-ops. `POST /memories` locks the
+  rows while it creates the Media rows, then settles them itself.
+- Contract as written, with these specifics: init answers
+  `{ uploadId, key: "mux:<uploadId>", mimeType, target: { url, method: "PUT",
+  headers: {}, expiresAt } }` (no Origin → `cors_origin: "*"`; an Origin this
+  API wouldn't allow → `403 origin_not_allowed`). Finalize keeps today's
+  wrapper: `{ media: { key, type, mimeType, bytes, sha256: null,
+  checksum: null } }`; it waits up to 8 s for a just-finished PUT
+  (`409 upload_incomplete` after that, `422 upload_failed` for an
+  errored/timed-out upload). `status` and `posterUrl` are on **every** media
+  item (photos `READY`, `posterUrl: null`). Audio falls back to the HLS URL
+  if Mux skips or fails the `audio.m4a` rendition. Media items now exclude
+  soft-deleted rows (they didn't before). Without Mux env: AV init and
+  finalize `503 av_unavailable`, `/api/health` has `mux: false`.
+- Video hero while PROCESSING: memory-card `heroUrl` and mosaic `url` are the
+  signed poster URL as soon as Mux has given the asset a playback id (finalize
+  reads the asset once, so that's almost always before the memory exists).
+  It fails to load until Mux has a frame, so the client's teal tile shows
+  through. With no playback id yet, or a FAILED video, the hero falls back to
+  the next photo, then the generated `/media/gen` image.
+- Posters: `width: 1200`, `time` 2 s (or half a shorter clip), in the JWT
+  claims. Tokens: `exp` = `READ_URL_TTL_SECONDS` + clip duration + 10 min,
+  and each signed URL is reused for 10 min so URLs stay cache-stable.
+- `POST /memories` rejects an AUDIO/VIDEO `storageKey` that isn't `mux:`
+  (`400 av_requires_mux`), a `mux:` key of the wrong type
+  (`400 type_mismatch`) and one never finalized (`409 upload_not_finalized`).
+- Transcript retry: `202` when re-requested (or already pending), `409`
+  `already_transcribed` / `not_ready` / `not_transcribable`, `409`/`502`
+  `retry_refused` when Mux says no. Found against real Mux: generate-subtitles
+  refuses a language an existing generated track already has, so the retry
+  re-reads a ready/preparing caption track and only regenerates after
+  deleting the *errored* caption tracks (text tracks only; no asset is ever
+  deleted).
+- `mux.sync` polls every 3 s for 2 min, 10 s to 15 min, 30 s to 1 h, then
+  every 2 min, giving up at 6 h (pending parts → FAILED; a later webhook still
+  fixes it). At most one queued job per asset: new reasons pull it forward.
+- Verified with the Development environment, no tunnel: an H.264 MP4, an
+  HEVC `.mov` and an AAC `.m4a` (speech from macOS `say`) each went init →
+  single plain PUT → finalize → `POST /memories` → READY in 8–14 s, with
+  transcripts on media and memory. Captions **are** generated for audio-only
+  assets. HLS master, variant and segments, `audio.m4a` and the poster (1200
+  px) load with the token; unsigned URLs get 403. Webhooks verified locally
+  with HMAC-signed payloads (bad/stale signature 400, replay and late
+  `preparing` events change nothing, ready-before and ready-after the memory
+  both link, typed transcripts survive). **Not verified:** WebM/Opus from the
+  web recorders (no encoder on the build machine) and a native
+  `File.upload` PUT from the phone — the server side is the same plain PUT
+  that worked from Node.
+
 #### M2. Client: Mux playback and stills
 **Do:**
 - `uploadFile()` keeps init → PUT → finalize; adjust only what the contract

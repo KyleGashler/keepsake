@@ -1,36 +1,28 @@
-import type { TranscriptStatus } from "@prisma/client";
+import type { MuxAsset } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { jobQueue } from "../jobs/index.js";
-import { TRANSCRIBABLE_TYPES, enqueueTranscriptions, tooLongToTranscribe } from "../jobs/transcribe.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { linkPair, memoryDetail } from "../lib/memory-detail.js";
-import { memoryCardDtos } from "../lib/serialize.js";
+import { mediaInclude, memoryCardDtos } from "../lib/serialize.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
-
-/** An uploaded clip with sound in it — the only media the transcriber is given. */
-function isTranscribable(m: { type: string; storageKey?: string | null }) {
-  return TRANSCRIBABLE_TYPES.some((t) => t === m.type) && Boolean(m.storageKey);
-}
-
-/**
- * Photos and placeholder clips have nothing to transcribe: null. A video
- * known to be too long is SKIPPED, and gets no job.
- */
-function initialTranscriptStatus(m: {
-  type: string;
-  storageKey?: string | null;
-  durationS?: number | null;
-}): TranscriptStatus | null {
-  if (!isTranscribable(m)) return null;
-  return tooLongToTranscribe(m) ? "SKIPPED" : "PENDING";
-}
+import {
+  captionRetryPatch,
+  isMuxKey,
+  kickSync,
+  lockAssets,
+  requestCaptionsAgain,
+  settleLinkedMedia,
+  updateMuxAsset,
+  uploadIdFromKey,
+} from "../media-host/assets.js";
+import { MediaHostError, mediaHost } from "../media-host/index.js";
 
 export const memoriesRouter = Router();
 
 const include = {
-  media: { orderBy: { sortOrder: "asc" } },
+  media: { orderBy: { sortOrder: "asc" }, ...mediaInclude },
   author: true,
   participants: { include: { person: true } },
   collections: { include: { collection: true } },
@@ -62,7 +54,7 @@ memoriesRouter.get("/memories", async (req, res) => {
       orderBy: { occurredAt: "desc" },
       take: limit,
       skip: offset,
-      include: { media: true, participants: { include: { person: true } } },
+      include: { media: mediaInclude, participants: { include: { person: true } } },
     }),
     prisma.memory.count({ where }),
   ]);
@@ -85,9 +77,10 @@ memoriesRouter.get("/memories/:id", async (req, res) => {
  * A memory's media, as the client reports it.
  *
  * `storageKey` is the A5 path: the client has already run init → PUT →
- * finalize, and passes back exactly what finalize returned. `url` is the older
- * path, kept for the generated placeholders the seed writes and for anything
- * still pointing at `/media/uploads/*`. One or the other, never neither.
+ * finalize, and passes back exactly what finalize returned — a storage key for
+ * a photo, a `mux:<uploadId>` key for video and audio. `url` is the older
+ * path, kept for the generated placeholders the seed writes. One or the
+ * other, never neither.
  */
 const mediaInput = z
   .object({
@@ -154,13 +147,50 @@ memoriesRouter.post("/memories", async (req, res) => {
 
   // A storage key carries its owning family in its prefix; refuse to attach
   // another family's object to this family's memory.
-  const foreign = input.media.find((m) => m.storageKey && !keyBelongsTo(m.storageKey, family.id));
+  const foreign = input.media.find(
+    (m) => m.storageKey && !isMuxKey(m.storageKey) && !keyBelongsTo(m.storageKey, family.id),
+  );
   if (foreign) return res.status(403).json({ error: "Storage key does not belong to this family" });
 
+  // Video and audio live on Mux: their key must be a `mux:` upload of this
+  // family's that finalize has confirmed, of the type it was declared as.
+  const avWithoutMux = input.media.find((m) => m.type !== "PHOTO" && m.storageKey && !isMuxKey(m.storageKey));
+  if (avWithoutMux) {
+    return res
+      .status(400)
+      .json({ error: "Video and audio must be uploaded through /api/media/init", code: "av_requires_mux" });
+  }
+  const uploadIds = [
+    ...new Set(
+      input.media.flatMap((m) => (m.storageKey && isMuxKey(m.storageKey) ? [uploadIdFromKey(m.storageKey)] : [])),
+    ),
+  ];
+  const assets = uploadIds.length
+    ? await prisma.muxAsset.findMany({ where: { uploadId: { in: uploadIds }, familyId: family.id } })
+    : [];
+  const byUpload = new Map(assets.map((a) => [a.uploadId, a]));
+  const assetFor = (m: { storageKey?: string }): MuxAsset | null =>
+    m.storageKey && isMuxKey(m.storageKey) ? (byUpload.get(uploadIdFromKey(m.storageKey)) ?? null) : null;
+  for (const m of input.media) {
+    if (!m.storageKey || !isMuxKey(m.storageKey)) continue;
+    const asset = assetFor(m);
+    if (!asset) return res.status(403).json({ error: "Storage key does not belong to this family" });
+    if (asset.type !== m.type) {
+      return res.status(400).json({ error: `That upload is ${asset.type}, not ${m.type}`, code: "type_mismatch" });
+    }
+    if (asset.status === "UPLOADING") {
+      return res.status(409).json({ error: "Finalize the upload before attaching it", code: "upload_not_finalized" });
+    }
+  }
+
   const heroSeed = `memory-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
-  // The memory and its transcription jobs commit together: a clip marked
-  // PENDING always has a job that will settle it.
   const memory = await prisma.$transaction(async (tx) => {
+    // Hold the clips' MuxAsset rows while their Media rows are created, so a
+    // webhook or sync run can't settle an asset in between and miss them.
+    const locked = await lockAssets(
+      tx,
+      assets.map((a) => a.id),
+    );
     const created = await tx.memory.create({
       data: {
         familyId: family.id,
@@ -174,34 +204,56 @@ memoriesRouter.post("/memories", async (req, res) => {
         paletteHue: hueForSeed(heroSeed),
         brightness: 40 + (heroSeed.length % 40),
         media: {
-          create: input.media.map((m, i) => ({
-            type: m.type,
-            // Uploads have no stored URL: it's signed per response from the
-            // storage key, because a presigned URL expires and this column
-            // doesn't. See lib/serialize.ts#mediaReadUrl.
-            url: m.storageKey ? "" : (m.url ?? ""),
-            storageKey: m.storageKey ?? null,
-            mimeType: m.mimeType ?? null,
-            bytes: m.bytes ?? null,
-            sha256: m.sha256 ?? null,
-            checksum: m.checksum ?? null,
-            status: "READY" as const,
-            caption: m.caption ?? null,
-            width: m.width,
-            height: m.height,
-            durationS: m.durationS ?? null,
-            transcriptStatus: initialTranscriptStatus(m),
-            sortOrder: i,
-          })),
+          create: input.media.map((m, i) => {
+            const asset = assetFor(m);
+            if (asset) {
+              // A clip on Mux: no storage key or URL of ours. Starts PROCESSING;
+              // settleLinkedMedia below copies whatever the asset already knows.
+              return {
+                type: m.type,
+                url: "",
+                muxAssetId: asset.id,
+                mimeType: asset.mimeType,
+                bytes: asset.bytes,
+                status: "PROCESSING" as const,
+                caption: m.caption ?? null,
+                width: m.width,
+                height: m.height,
+                durationS: m.durationS ?? null,
+                transcriptStatus: "PENDING" as const,
+                sortOrder: i,
+              };
+            }
+            return {
+              type: m.type,
+              // Uploads have no stored URL: it's signed per response from the
+              // storage key, because a presigned URL expires and this column
+              // doesn't. See lib/serialize.ts#mediaReadUrl.
+              url: m.storageKey ? "" : (m.url ?? ""),
+              storageKey: m.storageKey ?? null,
+              mimeType: m.mimeType ?? null,
+              bytes: m.bytes ?? null,
+              sha256: m.sha256 ?? null,
+              checksum: m.checksum ?? null,
+              status: "READY" as const,
+              caption: m.caption ?? null,
+              width: m.width,
+              height: m.height,
+              durationS: m.durationS ?? null,
+              sortOrder: i,
+            };
+          }),
         },
         participants: { create: input.participantIds.map((personId) => ({ personId })) },
         collections: { create: input.collectionIds.map((collectionId) => ({ collectionId })) },
       },
-      include,
+      select: { id: true },
     });
-    const clips = created.media.filter((m) => m.transcriptStatus === "PENDING").map((m) => m.id);
-    await enqueueTranscriptions(jobQueue(), clips, tx);
-    return created;
+    // If a clip finished (captions and all) before this memory existed, this
+    // is where its status, duration and transcript arrive (`locked` was read
+    // under the lock, so it's current).
+    for (const asset of locked) await settleLinkedMedia(tx, asset);
+    return tx.memory.findUniqueOrThrow({ where: { id: created.id }, include });
   });
 
   const author = memory.author?.name ?? "Someone";
@@ -341,51 +393,71 @@ memoriesRouter.delete("/memories/:id/links/:linkedId", async (req, res) => {
 });
 
 /**
- * Transcribe one clip again — the retry behind a FAILED clip, and a way to
- * re-run a READY one. The memory's own transcript is only replaced if no
- * person has written it (see jobs/transcribe.ts).
+ * Transcribe one clip again — the retry behind a FAILED transcript. Asks Mux
+ * to generate captions again from the asset's audio track; `mux.sync` fetches
+ * the new text when it's ready. The memory's own transcript is only replaced
+ * if no person has written it (media-host/assets.ts#offerToMemory).
+ *
+ * 202 with the memory when queued (or already in progress). 409 when there's
+ * nothing to retry: not a Mux clip, not playable, no sound, or already
+ * transcribed.
  */
 memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", async (req, res) => {
-  const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
+  const familyId = req.ctx.family.id;
+  const memory = await findLiveMemory(familyId, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
 
   const media = await prisma.media.findFirst({
     where: { id: req.params.mediaId, memoryId: memory.id, deletedAt: null },
+    include: { muxAsset: true },
   });
   if (!media) return res.status(404).json({ error: "Media not found" });
-  if (!isTranscribable(media)) {
+  const asset = media.muxAsset;
+  if (!asset || asset.familyId !== familyId) {
     return res
       .status(409)
       .json({ error: "Only uploaded audio and video can be transcribed", code: "not_transcribable" });
   }
-  // SKIPPED clips are over the limit by definition. This checks the length
-  // rather than the status, so raising TRANSCRIBE_MAX_VIDEO_SECONDS lets a
-  // clip that now fits be queued, and a long video that was transcribed
-  // before its length was known can't be re-run at full cost.
-  if (tooLongToTranscribe(media)) {
-    return res.status(409).json({
-      error: "Videos this long aren't transcribed yet",
-      code: "too_long_to_transcribe",
-    });
+
+  const respond = async () => {
+    const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId }, include });
+    res.status(202).json({ memory: await memoryDetail(familyId, req.ctx.user.id, updated) });
+  };
+
+  if (asset.captionStatus === "PENDING") {
+    // Already on its way; make sure something is looking.
+    await kickSync(jobQueue(), asset.id);
+    return respond();
+  }
+  if (asset.captionStatus === "READY") {
+    return res.status(409).json({ error: "This clip is already transcribed", code: "already_transcribed" });
+  }
+  if (asset.status !== "READY" || !asset.assetId) {
+    return res
+      .status(409)
+      .json({ error: "This clip can't be played, so it can't be transcribed", code: "not_ready" });
+  }
+  if (!asset.audioTrackId) {
+    return res.status(409).json({ error: "This clip has no sound to transcribe", code: "not_transcribable" });
   }
 
-  await prisma.$transaction(async (tx) => {
-    // A clip already queued or running needs no second job; asking again is a no-op.
-    const active = await tx.job.findFirst({
-      where: {
-        type: "ai.transcribe",
-        status: { in: ["QUEUED", "RUNNING"] },
-        payload: { path: ["mediaId"], equals: media.id },
-      },
-      select: { id: true },
-    });
-    await tx.media.update({ where: { id: media.id }, data: { transcriptStatus: "PENDING" } });
-    if (!active) await enqueueTranscriptions(jobQueue(), [media.id], tx);
-  });
+  const host = mediaHost();
+  if (!host) {
+    return res.status(503).json({ error: "Transcription isn't available on this server yet", code: "av_unavailable" });
+  }
+  let trackId: string | null;
+  try {
+    trackId = await requestCaptionsAgain(host, asset.assetId, asset.audioTrackId);
+  } catch (err) {
+    if (!(err instanceof MediaHostError)) throw err;
+    req.log.error({ err }, "Mux caption retry failed");
+    return res
+      .status(err.retryable ? 502 : 409)
+      .json({ error: "The video service refused to transcribe this clip again", code: "retry_refused" });
+  }
 
-  const updated = await prisma.memory.findFirstOrThrow({
-    where: { id: memory.id, familyId: req.ctx.family.id },
-    include,
-  });
-  res.status(202).json({ memory: await memoryDetail(req.ctx.family.id, req.ctx.user.id, updated) });
+  await updateMuxAsset({ id: asset.id }, () => captionRetryPatch(trackId));
+  await kickSync(jobQueue(), asset.id);
+  return respond();
 });
+

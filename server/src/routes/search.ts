@@ -4,6 +4,7 @@ import { prisma } from "../lib/prisma.js";
 import {
   collectionDto,
   collectionInclude,
+  mediaInclude,
   memoryCardDtoWithExcerpt,
   memoryCardDtos,
   personDto,
@@ -106,7 +107,7 @@ async function searchMemories(familyId: string, q: string) {
   const snippetById = new Map(hits.map((h) => [h.id, h.snippet]));
   const records = await prisma.memory.findMany({
     where: { id: { in: hits.map((h) => h.id) }, familyId, deletedAt: null },
-    include: { media: true, participants: { include: { person: true } } },
+    include: { media: mediaInclude, participants: { include: { person: true } } },
   });
   const byId = new Map(records.map((m) => [m.id, m]));
 
@@ -143,7 +144,7 @@ function searchMemoriesByIlike(familyId: string, q: string) {
       },
       orderBy: { occurredAt: "desc" },
       take: 30,
-      include: { media: true, participants: { include: { person: true } } },
+      include: { media: mediaInclude, participants: { include: { person: true } } },
     })
     .then((records) => memoryCardDtos(records));
 }

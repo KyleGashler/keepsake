@@ -3,7 +3,7 @@ import { z } from "zod";
 import { ensureChildCollections } from "../lib/child-collections.js";
 import { childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
-import { memoryCardDtos, personDto } from "../lib/serialize.js";
+import { mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
 import { imageKeyError, imageKeyProblem, signedImageUrl } from "../lib/upload-keys.js";
 
 export const peopleRouter = Router();
@@ -34,7 +34,7 @@ peopleRouter.get("/people/:id", async (req, res) => {
       where: appearsIn,
       orderBy: { occurredAt: "desc" },
       take: 24,
-      include: { media: true, participants: { include: { person: true } } },
+      include: { media: mediaInclude, participants: { include: { person: true } } },
     }),
     prisma.memory.count({ where: appearsIn }),
     prisma.collection.findMany({

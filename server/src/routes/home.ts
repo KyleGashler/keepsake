@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { imageUrl, memoryCardDtos, personDto } from "../lib/serialize.js";
+import { imageUrl, mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
 
 export const homeRouter = Router();
 
@@ -40,7 +40,7 @@ homeRouter.get("/home", async (req, res) => {
       where: { familyId: family.id, deletedAt: null },
       orderBy: { occurredAt: "desc" },
       take: 12,
-      include: { media: true, participants: { include: { person: true } } },
+      include: { media: mediaInclude, participants: { include: { person: true } } },
     }),
     prisma.activityEvent.findMany({
       where: { familyId: family.id },

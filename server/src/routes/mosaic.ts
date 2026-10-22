@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { prisma } from "../lib/prisma.js";
-import { imageUrl, mediaReadUrl } from "../lib/serialize.js";
+import { heroStill, imageUrl, mediaInclude } from "../lib/serialize.js";
 
 export const mosaicRouter = Router();
 
@@ -14,18 +14,19 @@ mosaicRouter.get("/mosaic", async (req, res) => {
   const memories = await prisma.memory.findMany({
     where: { familyId: family.id, deletedAt: null },
     orderBy: [{ paletteHue: "asc" }, { brightness: "desc" }],
-    include: { media: true },
+    include: { media: { where: { deletedAt: null }, ...mediaInclude } },
   });
 
   const tiles = await Promise.all(memories.map(async (m, i) => {
-    const hero = m.media.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
+    // A photo or a video's poster frame, never the video (see serialize.ts#stillUrl).
+    const hero = await heroStill(m.media);
     const span = tileSpan(i);
     return {
       id: m.id,
       title: m.title,
       occurredAt: m.occurredAt.toISOString(),
-      url: hero ? await mediaReadUrl(hero) : imageUrl(m.heroSeed, 900, 900),
-      isVideo: hero?.type === "VIDEO",
+      url: hero?.url ?? imageUrl(m.heroSeed, 900, 900),
+      isVideo: hero?.media.type === "VIDEO",
       hasAudio: m.media.some((x) => x.type === "AUDIO"),
       paletteHue: m.paletteHue,
       span,

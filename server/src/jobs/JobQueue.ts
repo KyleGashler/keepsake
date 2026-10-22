@@ -14,8 +14,12 @@ import { z } from "zod";
  * schema in `jobPayloadSchemas`, and registering a handler in `jobs/index.ts`.
  */
 export interface JobPayloads {
-  /** Speech-to-text for one AUDIO or VIDEO clip. */
-  "ai.transcribe": { mediaId: string };
+  /**
+   * Bring one MuxAsset row up to date by asking Mux, and look again later
+   * until it settles. `startedAt` (epoch ms) is when this chain of looks
+   * began; polling gives up a fixed time after it.
+   */
+  "mux.sync": { muxAssetId: string; startedAt: number };
 }
 
 export type JobType = keyof JobPayloads;
@@ -25,7 +29,7 @@ export type JobType = keyof JobPayloads;
  * it against its type's schema before a handler sees it.
  */
 export const jobPayloadSchemas: { [T in JobType]: z.ZodType<JobPayloads[T]> } = {
-  "ai.transcribe": z.object({ mediaId: z.string() }),
+  "mux.sync": z.object({ muxAssetId: z.string(), startedAt: z.number() }),
 };
 
 export interface EnqueueOptions {

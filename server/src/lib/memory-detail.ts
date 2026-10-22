@@ -1,14 +1,14 @@
-import type { Collection, Media, Memory, Person } from "@prisma/client";
+import type { Collection, Memory, Person } from "@prisma/client";
 import { prisma } from "./prisma.js";
-import { memoryCardDtos, memoryDto } from "./serialize.js";
+import { mediaInclude, memoryCardDtos, memoryDto, type MediaRow } from "./serialize.js";
 
 /** How many related memories a memory page shows. */
 export const MAX_RELATED = 8;
 
-const cardInclude = { media: true, participants: { include: { person: true } } } as const;
+const cardInclude = { media: mediaInclude, participants: { include: { person: true } } } as const;
 
 type DetailMemory = Memory & {
-  media: Media[];
+  media: MediaRow[];
   author: Person | null;
   participants: { personId: string; person: Person }[];
   collections: { collectionId: string; collection: Collection }[];

@@ -94,7 +94,7 @@ export interface StorageProvider {
 
 /**
  * Hard ceiling on a single original, enforced at init and again at upload.
- * 2 GB (decimal) is Deepgram's per-file limit. It must stay at or below
+ * Applies to photos and to video/audio sent to Mux alike. It must stay at or below
  * 2,147,483,647: `Media.bytes` is a Postgres `int4`, and a larger upload would
  * fail at memory creation, after the family has waited for it to finish.
  * Going past it needs `Media.bytes` as a BigInt and multipart uploads (see
