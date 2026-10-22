@@ -1,12 +1,13 @@
+import { displayNameFromEmail } from "./display-name.js";
 import type { TokenVerifier, VerifiedIdentity } from "./TokenVerifier.js";
 
 /**
  * Development identity: the token *is* the claim. `Bearer dev:ali@example.com`
  * signs you in as ali@example.com, no password and no signature.
  *
- * That is obviously not authentication — it is a stand-in that lets the whole
- * request-context and family-scoping machinery be built and exercised before
- * Firebase exists (B1). `createTokenVerifier()` refuses to hand this out in
+ * That is obviously not authentication — it is a stand-in that keeps local
+ * development, the seeded demo family and curl smoke tests working without a
+ * Firebase project. `createTokenVerifier()` refuses to hand this out in
  * production unless someone opts in loudly.
  */
 export class DevTokenVerifier implements TokenVerifier {
@@ -18,16 +19,12 @@ export class DevTokenVerifier implements TokenVerifier {
     // Not RFC 5322 — just enough to reject "dev:" and "dev:not an email".
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
 
-    return { providerId: `dev:${email}`, email, displayName: displayNameFor(email) };
+    // There is no inbox to prove, so a dev identity counts as verified.
+    return {
+      providerId: `dev:${email}`,
+      email,
+      displayName: displayNameFromEmail(email),
+      emailVerified: true,
+    };
   }
-}
-
-/** "ali.reyes@example.com" → "Ali Reyes", so the seeded UI has a name to show. */
-function displayNameFor(email: string) {
-  const localPart = email.split("@")[0] ?? email;
-  const words = localPart
-    .split(/[._+-]+/)
-    .filter(Boolean)
-    .map((word) => word[0].toUpperCase() + word.slice(1));
-  return words.length ? words.join(" ") : localPart;
 }

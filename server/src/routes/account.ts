@@ -10,7 +10,7 @@ import { prisma } from "../lib/prisma.js";
 export const accountRouter = Router();
 
 accountRouter.get("/me", async (req, res) => {
-  const { user } = req.ctx;
+  const { user, emailVerified } = req.ctx;
 
   const memberships = await prisma.familyMembership.findMany({
     where: { userId: user.id },
@@ -23,6 +23,7 @@ accountRouter.get("/me", async (req, res) => {
       id: user.id,
       email: user.email,
       displayName: user.displayName,
+      emailVerified,
       createdAt: user.createdAt.toISOString(),
     },
     memberships: memberships.map((m) => ({

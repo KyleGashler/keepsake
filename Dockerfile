@@ -13,6 +13,20 @@ ENV EXPO_NO_TELEMETRY=1
 # A bare "/" is stripped to "" by resolveBaseUrl(), making every request
 # same-origin. The bundle therefore doesn't care what hostname it's served from.
 ENV EXPO_PUBLIC_API_URL=/
+# Sign-in: Firebase Auth, the production project's web app config. These are
+# public identifiers, not secrets — they end up in the bundle either way.
+# Override per build with `fly deploy --build-arg EXPO_PUBLIC_FIREBASE_…=…`.
+# The project id must match FIREBASE_PROJECT_ID in fly.toml.
+ARG EXPO_PUBLIC_AUTH_MODE=firebase
+ARG EXPO_PUBLIC_FIREBASE_API_KEY=REPLACE_ME_FIREBASE_API_KEY
+ARG EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=REPLACE_ME_PROD_PROJECT_ID.firebaseapp.com
+ARG EXPO_PUBLIC_FIREBASE_PROJECT_ID=REPLACE_ME_PROD_PROJECT_ID
+ARG EXPO_PUBLIC_FIREBASE_APP_ID=REPLACE_ME_FIREBASE_APP_ID
+ENV EXPO_PUBLIC_AUTH_MODE=$EXPO_PUBLIC_AUTH_MODE \
+    EXPO_PUBLIC_FIREBASE_API_KEY=$EXPO_PUBLIC_FIREBASE_API_KEY \
+    EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=$EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN \
+    EXPO_PUBLIC_FIREBASE_PROJECT_ID=$EXPO_PUBLIC_FIREBASE_PROJECT_ID \
+    EXPO_PUBLIC_FIREBASE_APP_ID=$EXPO_PUBLIC_FIREBASE_APP_ID
 RUN npx expo export --platform web --output-dir dist
 
 # ---- stage 2: the server, with the bundle copied in -----------------------
