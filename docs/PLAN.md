@@ -19,7 +19,9 @@ the callers.
 - Server: Express + Prisma in `server/`. Client: Expo Router in `app/`.
 - Run `npm run typecheck` in both packages before finishing.
 - Every new query filters by `familyId`. Never look a row up by id alone.
-- Original media is sacred: nothing deletes or overwrites an uploaded original.
+- Original media is sacred: nothing deletes, overwrites or AI-alters what a
+  family uploaded. Re-encoding for playback (Mux) is fine; the content stays
+  true.
 - Don't add a dependency without a one-line justification in the PR.
 - One PR per task. Branch name `task/<id>-<slug>`.
 
@@ -226,6 +228,8 @@ Track A; the row says which.
 ---
 
 ## Decision: video, for now (2026-10-06)
+
+> Superseded on 2026-10-22 by "Decision: Mux for video and audio".
 
 Originals of every type, video included, go to plain S3. Video is accepted as
 is and played back from the original through a presigned URL. Known costs we
@@ -532,6 +536,155 @@ one level at a time instead of jumping to the Library landing. Archive years
 are the viewer's calendar years (`tz`), matching the local dates entries show.
 
 Order: **L1 ∥ L2**, then **L3 ∥ L4 ∥ L5**, then L6.
+
+## Decision: Mux for video and audio (2026-10-22)
+
+Supersedes "Decision: video, for now" and the Deepgram half of C1/C3/C4.
+Every VIDEO and AUDIO clip is uploaded straight to **Mux** and lives only
+there; S3 (the `StorageProvider`) keeps photos, covers and avatars. Mux gives
+us transcoding (HEVC plays everywhere), adaptive HLS over a CDN, poster
+frames by URL, and Whisper captions at no extra cost, so Deepgram, the
+`ai.transcribe` job and the ffmpeg worker A6 planned for posters all go away.
+
+- **Settings on every asset:** `video_quality: "basic"` (free encoding),
+  `max_resolution_tier: "1080p"` (4K is a later unlock at ~3× storage),
+  `playback_policies: ["signed"]` (family content is never public),
+  `generated_subtitles: [{ language_code: "auto" }]`. Audio assets also get
+  the `audio.m4a` static rendition, so audio plays as a plain file
+  everywhere instead of HLS.
+- **What "original" means now:** Mux keeps its own full-quality master, not
+  the uploaded bytes; file metadata and container are not preserved. That's
+  accepted: the rule is that nothing *AI-alters* a family's content.
+  Re-encoding for playback is fine. If we ever leave Mux, we export every
+  master (master access, 24h download URLs per asset).
+- **Nothing deletes a Mux asset** except account deletion (A16). It is the
+  only copy. Soft-deleting a Media row leaves the asset alone.
+- **Cost:** see the comparison from 2026-10-22: roughly $0.25–0.40 per family
+  per month in year one, growing with the archive. Storage dominates; the
+  lever later is pruning long-unwatched assets, which now means exporting the
+  master to cold S3 first.
+- **Known losses vs Deepgram:** no speaker diarization (transcripts are no
+  longer "Speaker 1: …" paragraphs) and Mux advises against mixed-language
+  audio. Accepted for now.
+- Legacy dev AV rows (an S3 `storageKey`, no Mux asset) are soft-deleted by
+  the migration. No backfill; their S3 objects are left alone.
+
+### API contract (M1 implements, M2 consumes)
+
+- `POST /api/media/init` for an AUDIO/VIDEO MIME type creates a Mux direct
+  upload (`cors_origin` from the request's `Origin`, checked against
+  `CORS_ORIGINS`; `passthrough` = familyId) and returns the same shape as
+  today: `{ key: "mux:<uploadId>", target: { url, method: "PUT", headers } }`.
+  Photos are unchanged.
+- `POST /api/media/finalize` for a `mux:` key confirms with Mux that the
+  upload belongs to this family and has finished, and returns
+  `{ key, type, mimeType, bytes }`. No sniff or checksum (Mux validates the
+  file and fails the asset if it can't decode it).
+- `POST /api/memories` accepts `mux:` keys in `media[].storageKey`.
+- Media item DTO for AUDIO/VIDEO gains `status: "PROCESSING" | "READY" |
+  "FAILED"` and `posterUrl` (VIDEO only). `url` is the signed HLS
+  `https://stream.mux.com/{playbackId}.m3u8?token=…` for video, the signed
+  `…/{playbackId}/audio.m4a?token=…` for audio, and `null` until READY.
+  `durationS`, `width`, `height`, `transcriptStatus`, `transcript` as today.
+- `posterUrl` is `https://image.mux.com/{playbackId}/thumbnail.jpg?token=…`
+  with `width` and `time` in the JWT claims (Mux requires thumbnail options
+  in the claims, never the query string).
+- Memory card `heroUrl` and mosaic tile `url`: a video hero returns its
+  `posterUrl`, never the video URL (today a video hero sends the raw video
+  URL to `<Image>`).
+- `GET /api/media/limits` drops `transcribeMaxVideoSeconds`.
+- Tokens follow `READ_URL_TTL_SECONDS`; a video token's `exp` also covers
+  the clip's duration.
+
+### Tasks
+
+#### M0. Mux account (human)
+Create a Mux account with two environments, **Development** and
+**Production**. In each: an access token with Mux Video read/write, a URL
+signing key, and a webhook pointing at `https://<host>/api/webhooks/mux`
+(Production: the Fly app; Development: skip, or a tunnel). Set
+`MUX_TOKEN_ID`, `MUX_TOKEN_SECRET`, `MUX_WEBHOOK_SECRET`,
+`MUX_SIGNING_KEY_ID`, `MUX_SIGNING_KEY_PRIVATE` (base64 PEM) in `.env` and as
+Fly secrets. Afterwards `fly secrets unset DEEPGRAM_API_KEY`.
+
+#### M1. Server: Mux pipeline
+**Do:**
+- Dependency: `@mux/mux-node` (official SDK: uploads, asset API, webhook
+  signature verification and playback JWT signing in one place).
+- `server/src/media-host/`: a small `MediaHost` module wrapping the SDK
+  (create upload, get upload, get asset, request subtitles, sign playback /
+  thumbnail / text URLs). No local stand-in: dev uses the Mux Development
+  environment, and the server refuses AV uploads with a clear 503 when the
+  Mux env is missing.
+- Schema + migration: a `MuxAsset` row per upload (`uploadId` unique,
+  `familyId`, `assetId?` unique, `playbackId?`, `status`, `durationS?`,
+  `width?`, `height?`, `captionTrackId?`, `transcript?`, timestamps), written
+  by init, finalize, webhooks and the sync job. `Media.muxAssetId` links a
+  clip to it. `MediaStatus` gains `PROCESSING`. `TranscriptStatus.SKIPPED`
+  goes away. Soft-delete legacy AV rows (see the decision).
+- **Order-independent:** the asset can become ready (and its captions too)
+  before or after `POST /memories` links it to a memory. Whichever happens
+  second copies duration/dimensions/transcript onto the Media row and runs
+  the existing `offerToMemory` merge (a human-edited transcript is never
+  overwritten).
+- `POST /api/webhooks/mux`: raw body, mounted before `express.json`,
+  signature verified, idempotent. Handles `video.upload.asset_created`,
+  `video.asset.ready`, `video.asset.errored`, `video.asset.track.ready`
+  (`text_source: "generated_vod"`), and the static-rendition ready event for
+  audio. Anything that calls Mux back (fetching the `.txt` transcript) runs as
+  a `mux.sync` job, not in the request.
+- `mux.sync` job, enqueued at finalize: polls the upload/asset with backoff
+  until the asset and its caption track settle. It's the safety net for
+  missed webhooks and what makes local dev work without a tunnel.
+- Transcript retry route now calls Mux's `generate-subtitles` on the asset's
+  audio track. Delete `DeepgramTranscriber`, `StubTranscriber`, the
+  `Transcriber` interface if nothing else uses it, `jobs/transcribe.ts`'s
+  handler and `TRANSCRIBE_MAX_VIDEO_SECONDS`.
+- DTOs per the contract (`serialize.ts`, `mosaic.ts`, `memory-detail.ts`).
+- `README.md`: replace "Background jobs and transcription" and the AV parts
+  of Storage with a Mux section (env table, webhook, dev without a tunnel).
+  `fly.toml` and `docker-compose.yml` env comments.
+
+**Verify while building** (unknowns from the docs): captions are generated
+for audio-only assets; WebM/Opus audio and WebM video from the web recorders
+ingest cleanly; a native `File.upload` single PUT works against a Mux upload
+URL.
+
+**Accept:** with Development credentials and no tunnel, upload a video and
+an audio clip through `/api/media/init` → PUT → finalize → `POST /memories`;
+both reach READY, the video DTO has a poster that loads, both URLs play, and
+transcripts land on the memory. Replaying a webhook changes nothing.
+
+#### M2. Client: Mux playback and stills
+**Do:**
+- `uploadFile()` keeps init → PUT → finalize; adjust only what the contract
+  changes. Compose drops the "over N, not transcribed" warning.
+- Video: native `expo-video` plays the HLS URL as is. Web: `hls.js` (Chrome
+  and Firefox can't play HLS natively; Safari can, so use it only when
+  `canPlayType("application/vnd.apple.mpegurl")` is empty) inside the
+  existing `<video>`, keeping `VideoControls`. Applies to `video.web.tsx` and
+  `hero-video.web.tsx`.
+- `VideoStill` (both platforms) renders `posterUrl` with `<Image>` and keeps
+  the teal tile only while PROCESSING or when there's no poster. Drop the
+  per-row `<video>` on web. `CardArt`'s video-only play glyph uses the poster
+  too.
+- Audio plays the `audio.m4a` URL through the existing `expo-audio` player.
+- PROCESSING state: the memory page shows "Preparing video…" / "Preparing
+  audio…" in place of the player and polls like the transcript does. Remove
+  the SKIPPED copy.
+- `VideoFallback` stays for FAILED only.
+
+**Accept:** memory rows, mosaic tiles and gallery thumbs show posters
+without loading video; video plays in Chrome, Safari and Expo Go; audio plays
+on web and phone.
+
+#### M3. Walkthrough
+Fresh database, web and phone: record a video, record audio, pick an iPhone
+HEVC video from the library. Each shows "Preparing…", then a poster, plays,
+and gets a transcript. Deploy to Fly with Production credentials and repeat
+once there (webhooks live, not just the sync job).
+
+Order: **M0** (human) ∥ **M1 ∥ M2** against the contract, then M3.
 
 ---
 
