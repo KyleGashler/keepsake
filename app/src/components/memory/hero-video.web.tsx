@@ -1,5 +1,7 @@
 import { createElement, useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { isHlsUrl } from "../../playback";
+import { useHlsSource } from "../web-hls";
 import { VideoControls, type HeroVideoProps } from "./video-controls";
 
 export type { HeroVideoProps };
@@ -11,10 +13,21 @@ type IOSVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
  * The hero's video on the web: a plain `<video>` without the browser's
  * controls, under the page's own. Full screen turns the browser's controls
  * back on, since ours stay behind on the page.
+ *
+ * The stream is Mux's HLS: Safari plays it natively, Chrome and Firefox
+ * through hls.js (`web-hls.ts`). The poster stands in until the first play.
  */
-export function HeroVideo({ uri, durationS, paused = false, onError }: HeroVideoProps) {
+export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }: HeroVideoProps) {
+  // Pinned: a signed URL changes on every refetch, and a new source would
+  // reload the stream mid-watch.
   const [source] = useState(uri);
+  const [poster] = useState(posterUrl);
   const video = useRef<IOSVideo | null>(null);
+  const played = useHlsSource(video, source, onError);
+  // Without a poster, ask for a frame a hair past zero so Safari paints a
+  // still before play. Only for a plain file; a stream has its poster.
+  const src =
+    played && !poster && !isHlsUrl(played) && !played.includes("#") ? `${played}#t=0.001` : played;
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(durationS ?? 0);
@@ -56,8 +69,8 @@ export function HeroVideo({ uri, durationS, paused = false, onError }: HeroVideo
     <View style={StyleSheet.absoluteFill}>
       {createElement("video", {
         ref: video,
-        // Ask for a frame a hair past zero so Safari paints a still before play.
-        src: source.includes("#") ? source : `${source}#t=0.001`,
+        src,
+        poster: poster ?? undefined,
         controls: fullscreen,
         playsInline: true,
         preload: "metadata",

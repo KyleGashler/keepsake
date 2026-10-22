@@ -196,8 +196,8 @@ function RelatedCard({ memory }: { memory: MemoryCard }) {
 
 /**
  * A small card's picture. A photo when there is one; a memory of words gets
- * its opening words; a video with no photo (no poster frames yet) and a
- * recording get a quiet glyph, never the generated stand-in.
+ * its opening words; a video with no photo shows its poster under a play
+ * glyph; a recording gets a quiet waveform, never the generated stand-in.
  */
 export function CardArt({ memory, compact = false }: { memory: MemoryCard; compact?: boolean }) {
   const types = memory.mediaTypes;
@@ -215,8 +215,17 @@ export function CardArt({ memory, compact = false }: { memory: MemoryCard; compa
     );
   }
   if (!types.includes("PHOTO") && types.includes("VIDEO")) {
+    // `heroUrl` is the video's poster frame. The deep tile shows through
+    // while the clip is still being prepared, and the glyph sits on top.
     return (
       <View style={[StyleSheet.absoluteFill, styles.glyphArt, { backgroundColor: colors.ink }]}>
+        <Image
+          source={{ uri: mediaUrl(memory.heroUrl) }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={200}
+          recyclingKey={memory.id}
+        />
         <Ionicons name="play-circle-outline" size={compact ? 20 : 26} color="rgba(255,255,255,0.8)" />
       </View>
     );

@@ -4,7 +4,6 @@ import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
-  Linking,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   apiSend,
   isNotFound,
+  mediaStatus,
   mediaUrl,
   useApi,
   type MediaItem,
@@ -24,7 +24,6 @@ import {
   type MemoryCollection,
   type Person,
   type TranscriptStatus,
-  type UploadLimits,
 } from "../../src/api";
 import { MediaGallery } from "../../src/components/memory/gallery";
 import { HeroVideo } from "../../src/components/memory/hero-video";
@@ -43,12 +42,12 @@ import { MemorySheets, type SheetKind } from "../../src/components/memory/sheets
 import { MediaViewer } from "../../src/components/memory/viewer";
 import { WaveformPlayer } from "../../src/components/memory/waveform";
 import { Button, ErrorState, Loading, NotFoundState } from "../../src/components/ui";
-import { errorMessage, lengthInWords, seasonOf, shortDate } from "../../src/format";
+import { errorMessage, seasonOf, shortDate } from "../../src/format";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
 import { brand, colors, fonts, MAX_WIDTH, radius, shadow, spacing, type } from "../../src/theme";
 
-/** How often to look again while a recording is being transcribed. */
-const TRANSCRIPT_POLL_MS = 3000;
+/** How often to look again while a clip is being prepared or transcribed. */
+const POLL_MS = 3000;
 /** How far the content card rides up over the hero. */
 const CARD_OVERLAP = 24;
 
@@ -64,8 +63,6 @@ const CARD_OVERLAP = 24;
 export default function MemoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data, error, loading, refetch } = useApi<{ memory: Memory }>(`/api/memories/${id}`);
-  // Only for the wording of a skipped long video ("over 2 minutes").
-  const { data: limits } = useApi<UploadLimits>("/api/media/limits");
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
@@ -78,6 +75,8 @@ export default function MemoryScreen() {
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [viewerAt, setViewerAt] = useState<number | null>(null);
   const [videoFailed, setVideoFailed] = useState(false);
+  // Bumped by "Try again" so the hero builds a new player on a fresh URL.
+  const [videoAttempt, setVideoAttempt] = useState(0);
   const [pastHero, setPastHero] = useState(false);
   // Optimistic: the heart fills on tap, and goes back if the server says no.
   const [favorite, setFavorite] = useState<boolean | null>(null);
@@ -93,14 +92,17 @@ export default function MemoryScreen() {
     }, [refetch]),
   );
 
-  // The transcript is written in the background after upload; keep looking
-  // until it settles so it appears without a refresh.
+  // Mux prepares each clip, and then its transcript, in the background after
+  // upload; keep looking until both settle so the player and the words appear
+  // without a refresh.
   const transcriptStatus = data?.memory.transcriptStatus ?? null;
+  const preparing = data?.memory.media.some((m) => mediaStatus(m) === "PROCESSING") ?? false;
+  const settling = transcriptStatus === "PENDING" || preparing;
   useEffect(() => {
-    if (transcriptStatus !== "PENDING") return;
-    const timer = setInterval(() => void refetch(), TRANSCRIPT_POLL_MS);
+    if (!settling) return;
+    const timer = setInterval(() => void refetch(), POLL_MS);
     return () => clearInterval(timer);
-  }, [transcriptStatus, refetch]);
+  }, [settling, refetch]);
 
   // Deleted (here, or by someone else while this was open), from another
   // family, or a stale link. Checked before `data` so a refresh that finds it
@@ -125,9 +127,8 @@ export default function MemoryScreen() {
   const visuals = memory.media.filter((m) => m.type === "PHOTO" || m.type === "VIDEO");
   const recordings = memory.media.filter((m) => m.type === "AUDIO");
   const hero = visuals[0];
-  // Audio and video clips: anything that is being (or was) transcribed. A
-  // skipped long video is neither, so it doesn't make a failure plural.
-  const clips = memory.media.filter((m) => m.transcriptStatus !== null && m.transcriptStatus !== "SKIPPED");
+  // Audio and video clips: anything that is being (or was) transcribed.
+  const clips = memory.media.filter((m) => m.transcriptStatus !== null);
 
   const hasStory = Boolean(memory.story?.trim());
   const hasWords = Boolean(memory.transcript) || transcriptStatus !== null;
@@ -191,15 +192,32 @@ export default function MemoryScreen() {
     />
   );
 
-  const players = recordings.map((clip, i) => (
-    <WaveformPlayer
-      key={clip.id}
-      id={clip.id}
-      uri={mediaUrl(clip.url)}
-      durationS={clip.durationS}
-      label={clip.caption ?? (recordings.length > 1 ? `Recording ${i + 1}` : "Voice recording")}
-    />
-  ));
+  const players = recordings.map((clip, i) => {
+    const status = mediaStatus(clip);
+    if (status === "READY" && clip.url) {
+      return (
+        <WaveformPlayer
+          key={clip.id}
+          id={clip.id}
+          uri={mediaUrl(clip.url)}
+          durationS={clip.durationS}
+          label={clip.caption ?? (recordings.length > 1 ? `Recording ${i + 1}` : "Voice recording")}
+        />
+      );
+    }
+    return (
+      <View key={clip.id} style={styles.transcriptState}>
+        {status === "FAILED" ? (
+          <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
+        ) : (
+          <ActivityIndicator color={colors.accentDeep} size="small" />
+        )}
+        <Text style={[type.caption, { flex: 1 }]}>
+          {status === "FAILED" ? "This recording couldn't be prepared to play." : "Preparing audio…"}
+        </Text>
+      </View>
+    );
+  });
 
   return (
     <View style={styles.screen}>
@@ -222,7 +240,15 @@ export default function MemoryScreen() {
                 hero={hero}
                 paused={!focused || viewerAt !== null}
                 videoFailed={videoFailed}
+                videoAttempt={videoAttempt}
                 onVideoError={() => setVideoFailed(true)}
+                onVideoRetry={() => {
+                  // A fresh signed URL (the old token may have lapsed), then a new player.
+                  void refetch().then(() => {
+                    setVideoFailed(false);
+                    setVideoAttempt((n) => n + 1);
+                  });
+                }}
                 onOpen={() => setViewerAt(0)}
               />
             </View>
@@ -284,7 +310,6 @@ export default function MemoryScreen() {
                   <TranscriptPanel
                     memory={memory}
                     status={transcriptStatus}
-                    limits={limits}
                     severalClips={clips.length > 1}
                     retrying={retrying}
                     onRetry={retryTranscripts}
@@ -373,28 +398,40 @@ function wordsView(hasStory: boolean, hasWords: boolean, chosen: WordsView | nul
   return null;
 }
 
-/** The photo, or the video with its own controls (or, if it can't play, a way to the original). */
+/**
+ * The photo, or the video with its own controls — "Preparing video…" while
+ * Mux is still at it, and a plain word if it failed or won't play.
+ */
 function HeroMedia({
   hero,
   paused,
   videoFailed,
+  videoAttempt,
   onVideoError,
+  onVideoRetry,
   onOpen,
 }: {
   hero: MediaItem;
   /** The viewer is open or the page is covered: the video stops. */
   paused: boolean;
   videoFailed: boolean;
+  videoAttempt: number;
   onVideoError: () => void;
+  onVideoRetry: () => void;
   onOpen: () => void;
 }) {
   if (hero.type === "VIDEO") {
-    if (videoFailed) return <VideoFallback url={mediaUrl(hero.url)} />;
+    const status = mediaStatus(hero);
+    if (status === "PROCESSING") return <VideoPreparing />;
+    if (status === "FAILED" || !hero.url) return <VideoFallback />;
+    if (videoFailed) return <VideoFallback onRetry={onVideoRetry} />;
     return (
       <HeroVideo
-        // Keyed by id: a new read URL on each poll must not rebuild the player.
-        key={hero.id}
+        // Keyed by id: a new signed URL on each poll must not rebuild the
+        // player. "Try again" bumps the attempt to build a new one on purpose.
+        key={`${hero.id}:${videoAttempt}`}
         uri={mediaUrl(hero.url)}
+        posterUrl={hero.posterUrl}
         durationS={hero.durationS}
         paused={paused}
         onError={onVideoError}
@@ -506,7 +543,6 @@ function MemoryDetails({ memory }: { memory: Memory }) {
 function TranscriptPanel({
   memory,
   status,
-  limits,
   severalClips,
   retrying,
   onRetry,
@@ -514,7 +550,6 @@ function TranscriptPanel({
 }: {
   memory: Memory;
   status: TranscriptStatus | null;
-  limits: UploadLimits | null;
   severalClips: boolean;
   retrying: boolean;
   onRetry: () => void;
@@ -529,19 +564,6 @@ function TranscriptPanel({
             {memory.transcript
               ? "Still transcribing a recording — this will update when it's done."
               : "Transcribing… the words will appear here in a moment."}
-          </Text>
-        </View>
-      ) : null}
-      {status === "SKIPPED" ? (
-        // Every clip here is a long video. Nothing to retry: it's a
-        // limit, not a failure. Writing one by hand is still offered below.
-        <View style={styles.transcriptState}>
-          <Ionicons name="time-outline" size={18} color={colors.accentDeep} />
-          <Text style={[type.caption, { flex: 1 }]}>
-            {limits
-              ? `Transcripts for videos over ${lengthInWords(limits.transcribeMaxVideoSeconds)} are coming.`
-              : "Transcripts for long videos are coming."}{" "}
-            The video itself is kept in full.
           </Text>
         </View>
       ) : null}
@@ -613,21 +635,34 @@ function TranscriptEditor({
   );
 }
 
-/**
- * Nothing is transcoded yet (docs/PLAN.md, "Decision: video, for now"), so an
- * iPhone's HEVC clip won't decode everywhere. When the player gives up, offer
- * the original instead of a black box; the link hands the file to the system
- * player or the browser's download.
- */
-function VideoFallback({ url }: { url: string }) {
+/** The hero while Mux prepares a fresh upload: a minute or so, then the player. */
+function VideoPreparing() {
   return (
     <View style={styles.videoFallback}>
-      <Ionicons name="videocam-outline" size={30} color="rgba(255,255,255,0.7)" />
-      <Text style={styles.videoFallbackText}>This video can't play here.</Text>
-      <Pressable onPress={() => Linking.openURL(url)} style={styles.editLink} accessibilityRole="link">
-        <Ionicons name="open-outline" size={15} color="#fff" />
-        <Text style={[styles.editLinkText, { color: "#fff" }]}>Open original</Text>
-      </Pressable>
+      <ActivityIndicator color="rgba(255,255,255,0.8)" />
+      <Text style={styles.videoFallbackText}>Preparing video…</Text>
+    </View>
+  );
+}
+
+/**
+ * Instead of a black box. Without `onRetry` Mux couldn't make the file
+ * playable (FAILED) and there's nothing to retry; with it, the player gave up
+ * on a ready clip (a lapsed link, a dropped connection) and can try again.
+ */
+function VideoFallback({ onRetry }: { onRetry?: () => void }) {
+  return (
+    <View style={styles.videoFallback}>
+      <Ionicons name="videocam-off-outline" size={30} color="rgba(255,255,255,0.7)" />
+      <Text style={styles.videoFallbackText}>
+        {onRetry ? "This video can't play right now." : "We couldn't prepare this video to play."}
+      </Text>
+      {onRetry ? (
+        <Pressable onPress={onRetry} style={styles.editLink} accessibilityRole="button">
+          <Ionicons name="refresh-outline" size={15} color="#fff" />
+          <Text style={[styles.editLinkText, { color: "#fff" }]}>Try again</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }

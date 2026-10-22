@@ -76,11 +76,7 @@ export async function apiSend<T>(
 }
 
 /** `GET /api/media/limits` — the server is the one place the upload ceiling lives. */
-export type UploadLimits = {
-  maxUploadBytes: number;
-  /** Videos longer than this are kept but not transcribed yet (SKIPPED). */
-  transcribeMaxVideoSeconds: number;
-};
+export type UploadLimits = { maxUploadBytes: number };
 
 /**
  * The sentence a family sees when a file is over the ceiling. Phrased for
@@ -98,15 +94,21 @@ export function tooLargeMessage(mime: string, maxUploadBytes: number) {
     : `Files over ${size} can't be added yet.`;
 }
 
-/** What `POST /api/media/init` authorises. Mirrors the server's UploadTarget. */
+/**
+ * What `POST /api/media/init` authorises. Mirrors the server's UploadTarget.
+ * For audio and video it's a Mux direct upload (`key` is `mux:<uploadId>`):
+ * a plain PUT of the file to Mux, usually with no headers at all.
+ */
 export type UploadTarget = {
   url: string;
   method: "PUT";
-  headers: Record<string, string>;
-  expiresAt: string;
+  /** Sent exactly as given; may be empty (Mux) or missing. */
+  headers?: Record<string, string>;
+  /** Storage uploads say when the URL lapses; a Mux upload may not. */
+  expiresAt?: string;
 };
 
-export type UploadInit = { uploadId: string; key: string; target: UploadTarget };
+export type UploadInit = { uploadId?: string; key: string; target: UploadTarget };
 
 /**
  * What `POST /api/media/finalize` observed in the bytes that actually landed —
@@ -118,11 +120,13 @@ export type FinalizedMedia = {
   mimeType: string;
   bytes: number;
   /**
-   * The object's digest — exactly one is set. `checksum` is storage's own
-   * (`crc64nvme:…` on S3); `sha256` is hashed by the API when storage has none.
+   * The object's digest — for a storage upload exactly one is set. `checksum`
+   * is storage's own (`crc64nvme:…` on S3); `sha256` is hashed by the API when
+   * storage has none. A Mux upload (`mux:` key) has neither: Mux validates the
+   * file and fails the asset if it can't decode it.
    */
-  sha256: string | null;
-  checksum: string | null;
+  sha256?: string | null;
+  checksum?: string | null;
   width?: number;
   height?: number;
 };
@@ -132,10 +136,11 @@ export type FinalizedMedia = {
  * ask the API what it got.
  *
  * The middle step deliberately doesn't go through this server's API surface —
- * `target.url` is wherever storage says: a relative local route, or an
- * absolute presigned S3 URL (which `mediaUrl` passes through untouched). The
- * PUT sends exactly `target.headers` — with S3 they're part of the signature,
- * so adding to or changing them fails the upload.
+ * `target.url` is wherever the API says: a relative local route, an absolute
+ * presigned S3 URL, or (audio and video) a Mux direct upload URL; `mediaUrl`
+ * passes absolute ones through untouched. The PUT sends exactly
+ * `target.headers` — with S3 they're part of the signature, so adding to or
+ * changing them fails the upload. Mux wants none; the file body is enough.
  *
  * `onProgress` reports 0..1 and only fires on native; the web path has no
  * progress events to hook without dropping to XHR.
@@ -169,7 +174,7 @@ export async function uploadFile(
     const { key, target } = await init(blob.size);
     const res = await fetch(mediaUrl(target.url), {
       method: target.method,
-      headers: target.headers,
+      headers: target.headers ?? {},
       body: blob,
     });
     if (!res.ok) throw new Error((await res.text()) || `Upload failed (${res.status})`);
@@ -184,7 +189,7 @@ export async function uploadFile(
   const result = await file.upload(mediaUrl(target.url), {
     httpMethod: target.method,
     uploadType: UploadType.BINARY_CONTENT,
-    headers: target.headers,
+    headers: target.headers ?? {},
     mimeType: type,
     onProgress: onProgress
       ? ({ bytesSent, totalBytes }) => onProgress(totalBytes > 0 ? bytesSent / totalBytes : 0)
@@ -264,6 +269,7 @@ export type MemoryCard = {
   title: string;
   occurredAt: string;
   location: string | null;
+  /** An image, always: the first photo, a video's Mux poster (never the video), or a generated stand-in. */
   heroUrl: string;
   excerpt: string | null;
   mediaCount: number;
@@ -279,13 +285,29 @@ export type MemoryCard = {
 
 export type MediaType = "PHOTO" | "VIDEO" | "AUDIO";
 
-/** SKIPPED: a video over the server's `transcribeMaxVideoSeconds`; not transcribed yet. */
-export type TranscriptStatus = "PENDING" | "READY" | "FAILED" | "SKIPPED";
+export type TranscriptStatus = "PENDING" | "READY" | "FAILED";
+
+/**
+ * Where an audio or video clip is in Mux's processing. PROCESSING until Mux
+ * has an asset ready to play; FAILED when Mux couldn't decode the file.
+ */
+export type MediaStatus = "PROCESSING" | "READY" | "FAILED";
 
 export type MediaItem = {
   id: string;
   type: MediaType;
-  url: string;
+  /**
+   * Photo: a read URL. Video: a signed Mux HLS playlist (`….m3u8?token=…`).
+   * Audio: a signed Mux `audio.m4a`. Null for a clip until it's READY.
+   */
+  url: string | null;
+  /**
+   * Audio and video only. Photos may leave it out (or say READY); read it
+   * through `mediaStatus`.
+   */
+  status?: MediaStatus | null;
+  /** Video only: a signed Mux poster frame (a JPEG). Null until READY. */
+  posterUrl?: string | null;
   caption: string | null;
   width: number;
   height: number;
@@ -297,13 +319,21 @@ export type MediaItem = {
   transcript: string | null;
 };
 
+/**
+ * A photo is always READY; a clip says where Mux is with it. A clip with no
+ * status at all is treated as READY when it has a URL to play.
+ */
+export function mediaStatus(item: Pick<MediaItem, "type" | "status" | "url">): MediaStatus {
+  if (item.type === "PHOTO") return "READY";
+  return item.status ?? (item.url ? "READY" : "PROCESSING");
+}
+
 export type Memory = MemoryCard & {
   story: string | null;
   transcript: string | null;
   /**
    * Rolled up from the clips: PENDING if any is, else FAILED if any did, else
-   * READY if any was transcribed, else SKIPPED (every clip too long); null
-   * with no clips.
+   * READY if any was transcribed; null with no clips.
    */
   transcriptStatus: TranscriptStatus | null;
   createdAt: string;
@@ -448,6 +478,7 @@ export type MosaicTile = {
   id: string;
   title: string;
   occurredAt: string;
+  /** An image, like `MemoryCard.heroUrl`: a video tile gets its poster. */
   url: string;
   isVideo: boolean;
   hasAudio: boolean;

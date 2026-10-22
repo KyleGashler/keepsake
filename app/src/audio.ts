@@ -8,7 +8,7 @@ import { useState } from "react";
  * the player can report 0, and this stands in rather than a track with no end.
  */
 export function useClipPlayback(uri: string, durationS?: number | null) {
-  // Pin the source for the life of the card. A presigned read URL changes on
+  // Pin the source for the life of the card. A signed playback URL changes on
   // every refetch (the memory page polls while transcribing), and a new source
   // would rebuild the player mid-listen.
   const [source] = useState(uri);

@@ -8,6 +8,8 @@ import { ScrubTrack } from "../audio";
 
 export type HeroVideoProps = {
   uri: string;
+  /** The clip's Mux poster, shown until it first plays. */
+  posterUrl?: string | null;
   /** What the server knows, until the player reports its own. */
   durationS?: number | null;
   /** Stop playing (the viewer opened, the page lost focus). Doesn't auto-resume. */

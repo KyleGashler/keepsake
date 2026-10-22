@@ -61,7 +61,7 @@ export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (i
 
 /** A photo, or a video's still. */
 export function Thumb({ item }: { item: MediaItem }) {
-  if (item.type === "VIDEO") return <VideoStill uri={mediaUrl(item.url)} />;
+  if (item.type === "VIDEO") return <VideoStill item={item} />;
   return (
     <Image
       source={{ uri: mediaUrl(item.url) }}
