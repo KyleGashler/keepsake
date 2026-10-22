@@ -1,11 +1,15 @@
 import crypto from "node:crypto";
 import type { Readable } from "node:stream";
-import { Router } from "express";
+import { Router, type Request, type Response } from "express";
 import { fileTypeFromBuffer } from "file-type";
 import { imageSize } from "image-size";
 import { z } from "zod";
-import { TRANSCRIBE_MAX_VIDEO_SECONDS } from "../jobs/transcribe.js";
+import { jobQueue } from "../jobs/index.js";
+import { originAllowed } from "../lib/cors-origins.js";
 import { logger } from "../lib/logger.js";
+import { prisma } from "../lib/prisma.js";
+import { isMuxKey, kickSync, muxKey, snapshotPatch, updateMuxAsset, uploadIdFromKey, uploadPatch } from "../media-host/assets.js";
+import { MediaHostError, mediaHost, type HostUpload } from "../media-host/index.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
 import {
   ALLOWED_MIME_TYPES,
@@ -17,7 +21,7 @@ import {
 } from "../lib/mime.js";
 import { placeholderPng } from "../lib/placeholder.js";
 import { MEDIA_DIR, SignatureError } from "../storage/LocalDiskProvider.js";
-import { MAX_UPLOAD_BYTES, localProvider, originalKey, storage } from "../storage/index.js";
+import { MAX_UPLOAD_BYTES, UPLOAD_URL_TTL_SECONDS, localProvider, originalKey, storage } from "../storage/index.js";
 import { StorageKeyError } from "../storage/StorageProvider.js";
 
 export { MEDIA_DIR };
@@ -167,12 +171,14 @@ const initBody = z.object({
  * family has written the story. The server stays the one source of the number.
  */
 mediaApiRouter.get("/limits", (_req, res) => {
-  res.json({
-    maxUploadBytes: MAX_UPLOAD_BYTES,
-    // Longer videos are kept but not transcribed yet (TranscriptStatus.SKIPPED).
-    transcribeMaxVideoSeconds: TRANSCRIBE_MAX_VIDEO_SECONDS,
-  });
+  res.json({ maxUploadBytes: MAX_UPLOAD_BYTES });
 });
+
+/** Video and audio go to Mux; with no Mux credentials, they can't go anywhere. */
+const AV_UNAVAILABLE = {
+  error: "Video and audio uploads aren't available on this server yet",
+  code: "av_unavailable",
+} as const;
 
 /**
  * Phase one: authorise an upload, store nothing.
@@ -201,6 +207,42 @@ mediaApiRouter.post("/init", async (req, res) => {
   }
   if (!ALLOWED_MIME_TYPES.has(mimeType)) {
     return res.status(415).json({ error: `Unsupported media type: ${mimeType}` });
+  }
+
+  const type = mediaTypeFor(mimeType);
+  if (type !== "PHOTO") {
+    // Video and audio: a Mux direct upload. The MuxAsset row is the record
+    // that this family asked for it — finalize and POST /memories check it.
+    const host = mediaHost();
+    if (!host) return res.status(503).json(AV_UNAVAILABLE);
+
+    // A browser PUTs cross-origin, so Mux must allow the page's origin — but
+    // only one this API itself would answer. Native clients send no Origin.
+    const origin = req.get("origin");
+    if (origin && !originAllowed(origin, req)) {
+      return res.status(403).json({ error: "This origin may not upload", code: "origin_not_allowed" });
+    }
+    let upload: HostUpload;
+    try {
+      upload = await host.createUpload({ type, corsOrigin: origin ?? "*", passthrough: family.id });
+    } catch (err) {
+      if (!(err instanceof MediaHostError)) throw err;
+      req.log.error({ err }, "Mux direct upload failed");
+      return res.status(502).json({ error: "Couldn't reach the video service; try again", code: "media_host_error" });
+    }
+    if (!upload.url) throw new Error("Mux returned a direct upload without a URL");
+    await prisma.muxAsset.create({
+      data: { familyId: family.id, uploadId: upload.id, type, mimeType, bytes },
+    });
+    const expiresAt = new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000).toISOString();
+    // No headers to send: Mux's URL is a plain signed PUT that takes the
+    // file as the body. The client PUTs exactly as it does to storage.
+    return res.status(201).json({
+      uploadId: upload.id,
+      key: muxKey(upload.id),
+      mimeType,
+      target: { url: upload.url, method: "PUT", headers: {}, expiresAt },
+    });
   }
 
   const uploadId = crypto.randomUUID();
@@ -232,6 +274,8 @@ mediaApiRouter.post("/finalize", async (req, res) => {
   const parsed = finalizeBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { key } = parsed.data;
+
+  if (isMuxKey(key)) return finalizeMux(req, res, key);
 
   // Every query filters by family; a storage key is no different.
   if (!keyBelongsTo(key, family.id)) return res.status(404).json({ error: "Upload not found" });
@@ -289,6 +333,82 @@ mediaApiRouter.post("/finalize", async (req, res) => {
     },
   });
 });
+
+/** How long finalize waits for Mux to notice an upload that just finished. */
+const MUX_FINALIZE_WAIT_MS = 8_000;
+const MUX_FINALIZE_POLL_MS = 1_000;
+
+/**
+ * Finalize for a `mux:` key: confirm with Mux that the upload is this
+ * family's and has arrived. No sniff or checksum — Mux decodes the file
+ * itself and fails the asset if it can't. Mux turns a finished upload into an
+ * asset a moment after the PUT returns, so a `waiting` upload is asked about
+ * again for a few seconds before finalize gives up with a 409.
+ *
+ * Starts the `mux.sync` job that follows the asset until it settles.
+ */
+async function finalizeMux(req: Request, res: Response, key: string) {
+  const family = req.ctx.family;
+  const row = await prisma.muxAsset.findFirst({ where: { uploadId: uploadIdFromKey(key), familyId: family.id } });
+  if (!row) return res.status(404).json({ error: "Upload not found" });
+
+  const host = mediaHost();
+  if (!host) return res.status(503).json(AV_UNAVAILABLE);
+
+  let upload: HostUpload;
+  try {
+    upload = await host.getUpload(row.uploadId);
+    const deadline = Date.now() + MUX_FINALIZE_WAIT_MS;
+    while (upload.status === "waiting" && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, MUX_FINALIZE_POLL_MS));
+      upload = await host.getUpload(row.uploadId);
+    }
+  } catch (err) {
+    if (err instanceof MediaHostError) {
+      req.log.error({ err }, "Mux upload lookup failed");
+      return res.status(502).json({ error: "Couldn't reach the video service; try again", code: "media_host_error" });
+    }
+    throw err;
+  }
+
+  // Belt and braces: the row says it's ours, and so must Mux.
+  if (upload.passthrough !== family.id) return res.status(404).json({ error: "Upload not found" });
+  if (upload.status === "waiting") {
+    return res.status(409).json({ error: "The upload hasn't arrived yet — PUT the file first", code: "upload_incomplete" });
+  }
+
+  let settled = await updateMuxAsset({ id: row.id }, (r) => uploadPatch(r, upload));
+  if (upload.status !== "asset_created" || !settled) {
+    return res.status(422).json({
+      error: `The upload ${upload.status === "timed_out" ? "expired" : "failed"}; upload the file again`,
+      code: "upload_failed",
+    });
+  }
+
+  // Read the asset once now, best effort, so its playback id (and with it a
+  // poster URL) is known before the first sync run. The job covers a miss.
+  if (upload.assetId) {
+    try {
+      const snap = await host.getAsset(upload.assetId);
+      settled = (await updateMuxAsset({ id: row.id }, (r) => snapshotPatch(r, snap))) ?? settled;
+    } catch (err) {
+      req.log.warn({ err }, "Mux asset read at finalize failed; mux.sync will retry");
+    }
+  }
+  await kickSync(jobQueue(), row.id);
+
+  res.json({
+    media: {
+      key,
+      type: settled.type,
+      mimeType: settled.mimeType,
+      bytes: settled.bytes,
+      // Nothing of ours to digest: the bytes went to Mux.
+      sha256: null,
+      checksum: null,
+    },
+  });
+}
 
 /** How much finalize reads to sniff a type: file-type's own sample size. */
 const SNIFF_BYTES = 4100;

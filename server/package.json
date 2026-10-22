@@ -20,6 +20,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1147.0",
     "@aws-sdk/s3-request-presigner": "^3.1147.0",
+    "@mux/mux-node": "^15.5.0",
     "@prisma/client": "^6.19.0",
     "cors": "^2.8.5",
     "express": "^5.3.0",

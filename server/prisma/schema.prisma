@@ -6,9 +6,11 @@
 // also carries the role (OWNER / CONTRIBUTOR / VIEWER). Children are Person rows
 // and never Users. Invites bring new Users into a family.
 //
-// Media rows point at objects in a storage provider (storageKey) and gain
-// Derivatives — thumbnails, display renditions, posters, waveforms. Background
-// work (deriving, transcription, narration, push) runs through the Job table.
+// Photo Media rows point at objects in a storage provider (storageKey) and gain
+// Derivatives — thumbnails, display renditions, waveforms. Video and audio live
+// on Mux instead: a Media row links to a MuxAsset, which carries the playback
+// id, poster, captions and transcript. Background work (Mux sync, narration,
+// push) runs through the Job table.
 // Subscription and DeviceToken back billing and push.
 //
 // Several columns are placeholders that later phases fill: Memory.palette and
@@ -52,10 +54,12 @@ enum MembershipRole {
   VIEWER
 }
 
-/// Lifecycle of an uploaded object. Two-phase upload: init → UPLOADING,
-/// finalize → READY.
+/// Lifecycle of an uploaded object. Photos: init → UPLOADING, finalize →
+/// READY. Video and audio are PROCESSING while Mux transcodes them, then READY
+/// (playable) or FAILED (Mux couldn't decode the file).
 enum MediaStatus {
   UPLOADING
+  PROCESSING
   READY
   FAILED
 }
@@ -82,14 +86,13 @@ enum StorySource {
   AI_DRAFT
 }
 
-/// Progress of speech-to-text over one AUDIO or VIDEO clip. Null on a Media
-/// row means transcription doesn't apply (photos, placeholders). SKIPPED is
-/// a video longer than TRANSCRIBE_MAX_VIDEO_SECONDS: no job was queued.
+/// Progress of speech-to-text (Mux generated captions) over one AUDIO or
+/// VIDEO clip. Null on a Media row means transcription doesn't apply (photos,
+/// placeholders).
 enum TranscriptStatus {
   PENDING
   READY
   FAILED
-  SKIPPED
 }
 
 enum JobStatus {
@@ -120,6 +123,7 @@ model Family {
   invites      Invite[]
   subscription Subscription?
   pillarCovers PillarCover[]
+  muxAssets    MuxAsset[]
 }
 
 /// An individual whose life is part of the family's story.
@@ -246,7 +250,8 @@ model Media {
   sortOrder        Int               @default(0)
   isOriginal       Boolean           @default(true)
   /// Key of the original object in the storage provider. Null for the
-  /// generated placeholders the demo family ships with.
+  /// generated placeholders the demo family ships with, and for video and
+  /// audio, which live on Mux (see `muxAssetId`).
   storageKey       String?
   mimeType         String?
   bytes            Int?
@@ -258,19 +263,76 @@ model Media {
   /// instead of reading the object back to hash it.
   checksum         String?
   status           MediaStatus       @default(READY)
-  /// What the transcriber heard in this clip, written by the `ai.transcribe`
-  /// job. Memory.transcript is the family's editable copy; this one is the
+  /// What Mux's captions heard in this clip, copied from its MuxAsset.
+  /// Memory.transcript is the family's editable copy; this one is the
   /// machine's, kept per clip.
   transcript       String?
   transcriptStatus TranscriptStatus?
-  /// Soft delete of the row. The original object itself is never deleted.
+  /// The Mux upload/asset behind a VIDEO or AUDIO clip. Null for photos,
+  /// placeholders and pre-Mux rows.
+  muxAssetId       String?
+  /// Soft delete of the row. The original object (or Mux asset) is never deleted.
   deletedAt        DateTime?
   createdAt        DateTime          @default(now())
 
   memory      Memory       @relation(fields: [memoryId], references: [id], onDelete: Cascade)
+  muxAsset    MuxAsset?    @relation(fields: [muxAssetId], references: [id], onDelete: SetNull)
   derivatives Derivative[]
 
   @@index([memoryId])
+  @@index([muxAssetId])
+}
+
+/// One Mux direct upload and the asset it becomes. Created by
+/// `POST /api/media/init`; filled in by finalize, Mux's webhooks and the
+/// `mux.sync` job, in whatever order they arrive. Every field is a fact Mux
+/// reported, merged so a replayed or late event can't move it backwards, and
+/// `status` is computed from them (see media-host/assets.ts). Linked Media
+/// rows copy what they show from here. Nothing ever deletes the Mux asset:
+/// it is the only copy of the family's clip.
+model MuxAsset {
+  id              String            @id @default(cuid())
+  familyId        String
+  uploadId        String            @unique
+  assetId         String?           @unique
+  /// The signed playback id. Every URL to the clip is a JWT over it.
+  playbackId      String?
+  /// AUDIO or VIDEO, from the type the upload was declared as. Audio isn't
+  /// playable until its `audio.m4a` static rendition is.
+  type            MediaType
+  /// The declared type and size at init; Mux doesn't report either back.
+  mimeType        String
+  bytes           Int
+  /// Computed: UPLOADING (no bytes yet), PROCESSING, READY (playable), FAILED.
+  status          MediaStatus       @default(UPLOADING)
+  /// Mux's direct-upload status: waiting, asset_created, errored, cancelled, timed_out.
+  uploadStatus    String            @default("waiting")
+  /// Mux's asset status: preparing, ready, errored. Null until there's an asset.
+  assetStatus     String?
+  /// The `audio.m4a` static rendition (AUDIO only): preparing, ready, errored, skipped.
+  renditionStatus String?
+  durationS       Int?
+  width           Int?
+  height          Int?
+  /// The asset's primary audio track: what captions are generated from.
+  /// Null on a ready asset means it has no sound.
+  audioTrackId    String?
+  /// The generated (`generated_vod`) text track the transcript is read from.
+  captionTrackId  String?
+  captionStatus   TranscriptStatus  @default(PENDING)
+  /// Plain text of the caption track, fetched by `mux.sync`.
+  transcript      String?
+  /// Why it failed, in Mux's words (or ours, when polling gave up).
+  error           String?
+  /// Set when `mux.sync` stopped polling without the asset settling.
+  syncGaveUpAt    DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  family Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  media  Media[]
+
+  @@index([familyId])
 }
 
 /// A generated rendition of a Media original: thumbnail, display size, video

@@ -15,11 +15,14 @@ primary_region = "sjc"
   # failed the 2026-10-17 deploy with "insufficient CPUs".)
   MEDIA_DIR = "/tmp/media"
   SEED_DEMO = "1"
-  # One machine: the job worker (transcription) runs inside the API process.
-  # DEEPGRAM_API_KEY is a secret (`fly secrets set`); without it clips are
-  # marked FAILED and can be retried from the memory page once it's set.
+  # One machine: the job worker (mux.sync) runs inside the API process.
   WORKER_INLINE = "1"
-  # Originals live in S3.
+  # Video and audio live on Mux (Production environment). Its credentials are
+  # secrets, not [env]: `fly secrets set MUX_TOKEN_ID=… MUX_TOKEN_SECRET=…
+  # MUX_SIGNING_KEY_ID=… MUX_SIGNING_KEY_PRIVATE=… MUX_WEBHOOK_SECRET=…`, with
+  # the webhook pointed at https://<app>.fly.dev/api/webhooks/mux. Without
+  # them the app runs and video/audio uploads answer 503.
+  # Photos, covers and avatars live in S3.
   STORAGE_PROVIDER = "s3"
   S3_BUCKET = "memories-and-more-memories"
   S3_REGION = "us-east-2"

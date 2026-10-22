@@ -9,8 +9,10 @@ import pinoHttp from "pino-http";
 import { createTokenVerifier } from "./auth/index.js";
 import { startWorker, type JobQueue } from "./jobs/index.js";
 import { requireFamily, requireUser } from "./auth/middleware.js";
+import { corsOrigins } from "./lib/cors-origins.js";
 import { logger } from "./lib/logger.js";
 import { prisma } from "./lib/prisma.js";
+import { mediaHost } from "./media-host/index.js";
 import { accountRouter } from "./routes/account.js";
 import { familyRouter } from "./routes/family.js";
 import { homeRouter } from "./routes/home.js";
@@ -20,6 +22,7 @@ import { memoriesRouter } from "./routes/memories.js";
 import { mosaicRouter } from "./routes/mosaic.js";
 import { peopleRouter } from "./routes/people.js";
 import { searchRouter } from "./routes/search.js";
+import { muxWebhookRouter } from "./routes/webhooks.js";
 import { UPLOAD_URL_TTL_SECONDS, localProvider, storage } from "./storage/index.js";
 
 const app = express();
@@ -29,6 +32,10 @@ const isProduction = process.env.NODE_ENV === "production";
 // Before anything else: a misconfigured verifier must stop the boot, not
 // quietly serve an open API. Throws in production unless dev auth is opted in.
 const tokenVerifier = createTokenVerifier();
+
+// Missing Mux credentials are not fatal: photos and everything else work, and
+// video/audio uploads answer 503. Resolved here so the warning is at boot.
+mediaHost();
 
 // Fly terminates TLS and forwards one X-Forwarded-For hop, so the rate
 // limiters see the real client address rather than the proxy's.
@@ -48,16 +55,7 @@ app.use(
   }),
 );
 
-/**
- * CORS_ORIGINS is a comma-separated allowlist. Unset in development means
- * "allow anything", because Expo Go on a phone arrives from whatever LAN
- * address Metro picked. Unset in production means same-origin only — the
- * hosted build serves the web bundle from this same server.
- */
-const corsOrigins = (process.env.CORS_ORIGINS ?? "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+// See lib/cors-origins.ts for what an empty CORS_ORIGINS means.
 const corsOptions: CorsOptions =
   corsOrigins.length > 0 ? { origin: corsOrigins } : { origin: !isProduction };
 app.use(cors(corsOptions));
@@ -77,6 +75,13 @@ app.use(
     autoLogging: { ignore: (req) => req.url === "/api/health" },
   }),
 );
+
+/**
+ * Mux's webhooks: before `express.json`, because the signature is over the raw
+ * bytes, and before the rate limiter and auth, because the caller is Mux and
+ * the signature is its credential.
+ */
+app.use("/api/webhooks/mux", muxWebhookRouter);
 
 app.use(express.json({ limit: "2mb" }));
 
@@ -100,12 +105,13 @@ const uploadLimiter = rateLimit({
 });
 
 // Health sits above the password gate and the limiters so the platform can
-// probe it however often it likes.
+// probe it however often it likes. `mux` says whether video and audio
+// uploads are configured; it's informational and never fails the check.
 app.get("/api/health", async (_req, res) => {
   const [db, media] = await Promise.all([checkDatabase(), checkMedia()]);
   const ok = db && media;
   if (!ok) logger.warn({ db, media }, "health check failing");
-  res.status(ok ? 200 : 503).json({ ok, db, media });
+  res.status(ok ? 200 : 503).json({ ok, db, media, mux: mediaHost() !== null });
 });
 
 async function checkDatabase(): Promise<boolean> {

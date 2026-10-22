@@ -1,6 +1,25 @@
 import { RENDER_VERSION } from "./placeholder.js";
 import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
-import type { Collection, Media, MediaType, Memory, Person, TranscriptStatus } from "@prisma/client";
+import { mediaHost } from "../media-host/index.js";
+import type {
+  Collection,
+  Media,
+  MediaStatus,
+  MediaType,
+  Memory,
+  MuxAsset,
+  Person,
+  TranscriptStatus,
+} from "@prisma/client";
+
+/**
+ * Load Media with this so the DTOs can sign a clip's URLs: `media: mediaInclude`.
+ * The types below require it, so a query that forgets won't compile.
+ */
+export const mediaInclude = { include: { muxAsset: true } } as const;
+
+/** A Media row with its Mux asset (null for photos, placeholders, pre-Mux rows). */
+export type MediaRow = Media & { muxAsset: MuxAsset | null };
 
 /**
  * Placeholder media is generated on demand; uploads are served from disk.
@@ -64,11 +83,64 @@ export async function mediaReadUrl(m: Pick<Media, "url" | "storageKey">) {
   return withVersion(m.url);
 }
 
-export async function mediaDto(m: Media) {
+/**
+ * A clip on Mux, as the client sees it: PROCESSING until the asset plays,
+ * then its signed URLs. `url` is HLS for video and the `audio.m4a` rendition
+ * for audio (HLS if Mux couldn't make the rendition); `posterUrl` is a signed
+ * frame, video only. Both null until READY, and null when the server has no
+ * Mux signing key to sign them with.
+ */
+async function muxMedia(m: MediaRow, asset: MuxAsset) {
+  const status: MediaStatus = asset.status === "READY" || asset.status === "FAILED" ? asset.status : "PROCESSING";
+  const host = mediaHost();
+  if (status !== "READY" || !host || !asset.playbackId) return { status, url: null, posterUrl: null };
+  const kind = m.type === "AUDIO" && asset.renditionStatus === "ready" ? "audio" : "hls";
+  const [url, posterUrl] = await Promise.all([
+    host.playbackUrl(asset.playbackId, kind, asset.durationS),
+    m.type === "VIDEO" ? host.posterUrl(asset.playbackId, asset.durationS) : null,
+  ]);
+  return { status, url, posterUrl };
+}
+
+/**
+ * The still that stands for a PHOTO or VIDEO in a card or tile: the photo
+ * itself, or a video's poster frame — never the video. A clip still
+ * processing gets its poster URL as soon as Mux has a playback id: it fails
+ * to load until Mux has a frame, and the client draws its own tile behind
+ * it meanwhile. Null when there's no still to give.
+ */
+export async function stillUrl(m: MediaRow): Promise<string | null> {
+  if (m.type === "PHOTO") return mediaReadUrl(m);
+  if (m.type !== "VIDEO" || !m.muxAsset?.playbackId || m.muxAsset.status === "FAILED") return null;
+  return mediaHost()?.posterUrl(m.muxAsset.playbackId, m.muxAsset.durationS) ?? null;
+}
+
+/**
+ * A memory's hero: the first PHOTO or VIDEO with a still, in the order
+ * given. Null when none has one.
+ */
+export async function heroStill(media: MediaRow[]): Promise<{ url: string; media: MediaRow } | null> {
+  for (const m of media) {
+    if (m.type !== "PHOTO" && m.type !== "VIDEO") continue;
+    const url = await stillUrl(m);
+    if (url) return { url, media: m };
+  }
+  return null;
+}
+
+export async function mediaDto(m: MediaRow) {
+  const av = m.muxAsset
+    ? await muxMedia(m, m.muxAsset)
+    : { status: m.status, url: await mediaReadUrl(m), posterUrl: null };
   return {
     id: m.id,
     type: m.type,
-    url: await mediaReadUrl(m),
+    /** PROCESSING | READY | FAILED. Photos and placeholders are READY. */
+    status: av.status,
+    /** Null while a clip is PROCESSING or FAILED. */
+    url: av.url,
+    /** A video's signed poster frame; null for everything else. */
+    posterUrl: av.posterUrl,
     caption: m.caption,
     width: m.width,
     height: m.height,
@@ -84,9 +156,7 @@ export async function mediaDto(m: Media) {
 /**
  * One status for the whole memory: PENDING while any clip is still being
  * transcribed, else FAILED if any clip failed, else READY if any clip was
- * transcribed, else SKIPPED if every clip was too long to transcribe, else
- * null (nothing to transcribe). A READY voice note beside a SKIPPED long
- * video is READY: there's a transcript to read.
+ * transcribed, else null (nothing to transcribe).
  */
 export function aggregateTranscriptStatus(
   media: Pick<Media, "transcriptStatus" | "deletedAt">[],
@@ -95,7 +165,6 @@ export function aggregateTranscriptStatus(
   if (statuses.has("PENDING")) return "PENDING";
   if (statuses.has("FAILED")) return "FAILED";
   if (statuses.has("READY")) return "READY";
-  if (statuses.has("SKIPPED")) return "SKIPPED";
   return null;
 }
 
@@ -129,7 +198,7 @@ export function collectionDto(c: Collection & { _count?: { memories: number }; p
 }
 
 type MemoryWithRelations = Memory & {
-  media?: Media[];
+  media?: MediaRow[];
   author?: Person | null;
   participants?: { person: Person }[];
   collections?: { collection: Collection }[];
@@ -139,13 +208,15 @@ const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
 
 export async function memoryCardDto(m: MemoryWithRelations) {
   const media = m.media?.filter((x) => !x.deletedAt) ?? [];
-  const hero = media.find((x) => x.type === "PHOTO" || x.type === "VIDEO");
+  const hero = await heroStill(media);
   return {
     id: m.id,
     title: m.title,
     occurredAt: m.occurredAt.toISOString(),
     location: m.location,
-    heroUrl: (hero ? await mediaReadUrl(hero) : null) ?? imageUrl(m.heroSeed, 1200, 900),
+    // A photo, or a video's poster frame (never the video itself); the
+    // generated stand-in when there's neither.
+    heroUrl: hero?.url ?? imageUrl(m.heroSeed, 1200, 900),
     excerpt: m.story ? m.story.replace(/\s+/g, " ").slice(0, 140) : null,
     mediaCount: media.length,
     hasAudio: media.some((x) => x.type === "AUDIO"),
@@ -183,7 +254,7 @@ export async function memoryDto(m: MemoryWithRelations) {
     transcriptStatus: aggregateTranscriptStatus(m.media ?? []),
     createdAt: m.createdAt.toISOString(),
     author: m.author ? personDto(m.author) : null,
-    media: await Promise.all(m.media?.map(mediaDto) ?? []),
+    media: await Promise.all(m.media?.filter((x) => !x.deletedAt).map(mediaDto) ?? []),
     collections:
       m.collections?.map((mc) => ({
         id: mc.collection.id,
