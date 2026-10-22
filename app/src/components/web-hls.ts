@@ -53,8 +53,20 @@ export function useHlsSource(
         if (!Hls.isSupported()) return fail();
         const hls = new Hls();
         destroy = () => hls.destroy();
+        // hls.js already retries individual requests. A fatal error gets a
+        // couple of recoveries first (restart loading, rebuild the decoder)
+        // so a CDN blip mid-clip doesn't end playback.
+        let recoveries = 0;
         hls.on(Hls.Events.ERROR, (_event, data) => {
           if (!data.fatal) return;
+          if (recoveries < 2 && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+            recoveries += 1;
+            return hls.startLoad();
+          }
+          if (recoveries < 2 && data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+            recoveries += 1;
+            return hls.recoverMediaError();
+          }
           destroy?.();
           destroy = undefined;
           fail();
