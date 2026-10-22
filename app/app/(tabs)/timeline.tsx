@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Column, PageHeader, Sparkle } from "../../src/components/journey";
 import { colors, fonts, radius, spacing } from "../../src/theme";
@@ -12,6 +13,8 @@ export default function TimelineScreen() {
           title="Timeline"
           sparkle
           subtitle="Every memory, in the order it happened."
+          onSettings={() => router.push("/family")}
+          onSearch={() => router.push("/search")}
         />
         <View style={styles.card}>
           <Sparkle size={30} variant="filled" />

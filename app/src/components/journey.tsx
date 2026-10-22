@@ -119,6 +119,7 @@ export function PageHeader({
   sparkle = false,
   sparkleAtEnd = false,
   onSettings,
+  onSearch,
   children,
 }: {
   title: string;
@@ -135,12 +136,21 @@ export function PageHeader({
   sparkleAtEnd?: boolean;
   /** Shows the gear button top-right. */
   onSettings?: () => void;
+  /** Shows a search button beside the gear. */
+  onSearch?: () => void;
   /** Anything that belongs between the subtitle and the page body. */
   children?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const goBack =
     onBack ?? (() => (router.canGoBack() ? router.back() : router.replace(backFallback)));
+  const actions =
+    onSearch || onSettings ? (
+      <View style={styles.headerActions}>
+        {onSearch ? <HeaderButton icon="search" label="Search" onPress={onSearch} /> : null}
+        {onSettings ? <GearButton onPress={onSettings} /> : null}
+      </View>
+    ) : null;
 
   return (
     <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
@@ -156,7 +166,7 @@ export function PageHeader({
             <Ionicons name="chevron-back" size={22} color={colors.ink} />
             <Text style={styles.backLabel}>{backLabel}</Text>
           </Pressable>
-          {onSettings ? <GearButton onPress={onSettings} /> : null}
+          {actions}
         </View>
       ) : null}
 
@@ -172,11 +182,9 @@ export function PageHeader({
             ) : null}
           </View>
         </View>
-        {/* Without a back row, the gear sits level with the title, as on the Library landing. */}
-        {onSettings && !backLabel ? (
-          <View style={eyebrow ? styles.gearBesideTitle : undefined}>
-            <GearButton onPress={onSettings} />
-          </View>
+        {/* Without a back row, the buttons sit level with the title, as on the Library landing. */}
+        {actions && !backLabel ? (
+          <View style={eyebrow ? styles.gearBesideTitle : undefined}>{actions}</View>
         ) : null}
       </View>
       {/* Full width, under the gear too, so a one-line subtitle stays one line. */}
@@ -187,15 +195,27 @@ export function PageHeader({
 }
 
 export function GearButton({ onPress }: { onPress: () => void }) {
+  return <HeaderButton icon="settings-outline" label="Settings" onPress={onPress} />;
+}
+
+function HeaderButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
   return (
     <Pressable
       onPress={onPress}
       hitSlop={8}
       accessibilityRole="button"
-      accessibilityLabel="Settings"
+      accessibilityLabel={label}
       style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
     >
-      <Ionicons name="settings-outline" size={22} color={colors.ink} />
+      <Ionicons name={icon} size={22} color={colors.ink} />
     </Pressable>
   );
 }
@@ -433,6 +453,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     backgroundColor: colors.surfaceAlt,
   },
+  headerActions: { flexDirection: "row", gap: spacing.sm },
   headerMain: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   headerText: { flex: 1 },
   eyebrow: { marginBottom: spacing.xs },

@@ -2,11 +2,12 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
-import { StardustCluster } from "../../src/components/brand";
-import { AppHeader, ErrorState, Loading, Screen } from "../../src/components/ui";
-import { colors, MAX_WIDTH, radius, spacing, type } from "../../src/theme";
+import { Column, PageHeader } from "../../src/components/journey";
+import { ErrorState, Loading } from "../../src/components/ui";
+import { colors, MAX_WIDTH, radius, spacing } from "../../src/theme";
 
 const GAP = 10;
 const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
@@ -19,8 +20,9 @@ const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
 export default function MosaicScreen() {
   const { data, error, loading, refetch } = useApi<{ tiles: MosaicTile[] }>("/api/mosaic");
   const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
 
-  const contentWidth = Math.min(width, MAX_WIDTH) - spacing.lg * 2;
+  const contentWidth = Math.min(width, MAX_WIDTH) - spacing.xl * 2;
   const columnCount = contentWidth > 560 ? 3 : 2;
   const columnWidth = (contentWidth - GAP * (columnCount - 1)) / columnCount;
 
@@ -39,20 +41,23 @@ export default function MosaicScreen() {
     return cols;
   }, [data, columnCount, columnWidth]);
 
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
-  if (loading && !data) return <Loading label="Arranging the mosaic…" />;
-
   return (
-    <>
-      <AppHeader subtitle="Mosaic" title="The whole picture" />
-      <Screen>
-        {/* Whimsical shape 3/6 — stardust, for the archive scattered by palette. */}
-        <View style={styles.intro}>
-          <StardustCluster size={46} />
-          <Text style={[type.body, { flex: 1 }]}>
-            Not by date, not by folder — by how it all feels together.
-          </Text>
-        </View>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      showsVerticalScrollIndicator={false}
+    >
+      <Column>
+        <PageHeader
+          eyebrow="Little by little"
+          title="Mosaic"
+          sparkle
+          subtitle="Not by date, not by folder — by how it all feels together."
+          onSettings={() => router.push("/family")}
+          onSearch={() => router.push("/search")}
+        />
+        {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
+        {loading && !data ? <Loading label="Arranging the mosaic…" /> : null}
         <View style={{ flexDirection: "row", gap: GAP }}>
           {columns.map((column, i) => (
             // oxlint-disable-next-line react/no-array-index-key -- columns are positions; tiles move between them
@@ -83,18 +88,13 @@ export default function MosaicScreen() {
             </View>
           ))}
         </View>
-      </Screen>
-    </>
+      </Column>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  intro: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
+  screen: { flex: 1, backgroundColor: colors.bg },
   tile: { borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surfaceAlt },
   badge: {
     position: "absolute",

@@ -84,6 +84,7 @@ export default function LibraryScreen() {
           sparkle
           subtitle="A comprehensive storykeeping archive."
           onSettings={() => router.push("/family")}
+          onSearch={() => router.push("/search")}
         />
         {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
         {loading && !data ? <Loading /> : null}
