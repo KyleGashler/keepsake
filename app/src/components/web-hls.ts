@@ -5,34 +5,41 @@ import { isHlsUrl } from "../playback";
  * HLS on the web, for the `.web.tsx` players only — native expo-video plays
  * HLS itself, so nothing on a phone imports this.
  *
- * Mux streams video as HLS (`….m3u8`). Safari plays that in a plain
- * `<video>`; Chrome and Firefox don't, so there hls.js feeds the element
- * through Media Source Extensions. hls.js is loaded on first use, never in
- * the main bundle.
+ * Mux streams video as HLS (`….m3u8`). Wherever Media Source Extensions
+ * exist, hls.js feeds the element, even in browsers that claim native HLS:
+ * Chrome's built-in HLS (155) fails Mux streams on segment requests that
+ * hls.js loads fine. Native playback is the fallback for browsers without
+ * MSE (older iOS Safari). hls.js is loaded on first use, never in the main
+ * bundle.
  */
 
 const HLS_MIME = "application/vnd.apple.mpegurl";
 
-let nativeHls: boolean | undefined;
-function playsHlsNatively() {
-  if (nativeHls === undefined) {
-    nativeHls = typeof document !== "undefined" && document.createElement("video").canPlayType(HLS_MIME) !== "";
+let useNativeHls: boolean | undefined;
+function prefersNativeHls() {
+  if (useNativeHls === undefined) {
+    const mse =
+      typeof window !== "undefined" &&
+      ("MediaSource" in window || "ManagedMediaSource" in window);
+    useNativeHls =
+      !mse && typeof document !== "undefined" && document.createElement("video").canPlayType(HLS_MIME) !== "";
   }
-  return nativeHls;
+  return useNativeHls;
 }
 
 /**
  * The `src` to give a `<video>` for `uri`. A plain file, or HLS in a browser
- * that plays it natively, comes straight back. Otherwise this returns
- * undefined (leave `src` off) and attaches hls.js to the element instead;
- * a stream hls.js can't play calls `onError`, like the element's own error.
+ * without MSE that plays it natively, comes straight back. Otherwise this
+ * returns undefined (leave `src` off) and attaches hls.js to the element
+ * instead; a stream hls.js can't play calls `onError`, like the element's own
+ * error.
  */
 export function useHlsSource(
   video: RefObject<HTMLVideoElement | null>,
   uri: string,
   onError?: () => void,
 ): string | undefined {
-  const needsHlsJs = isHlsUrl(uri) && !playsHlsNatively();
+  const needsHlsJs = isHlsUrl(uri) && !prefersNativeHls();
   const fail = useEffectEvent(() => onError?.());
 
   useEffect(() => {
