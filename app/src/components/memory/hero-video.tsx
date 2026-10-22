@@ -1,7 +1,9 @@
 import { useEventListener } from "expo";
+import { Image } from "expo-image";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
+import { videoSource } from "../../playback";
 import { VideoControls, type HeroVideoProps } from "./video-controls";
 
 export type { HeroVideoProps };
@@ -16,24 +18,29 @@ function seekPlayer(player: VideoPlayer, seconds: number) {
  * the page's own drawn over it. Full screen hands over to the system player,
  * which brings its own controls.
  *
- * Nothing is transcoded yet (docs/PLAN.md, "Decision: video, for now"); a
- * clip this device can't decode fires `onError` and the caller offers the
- * original instead.
+ * The stream is Mux's HLS, already transcoded for every device. Its poster
+ * covers the picture until the first play, so there's no black box while the
+ * player warms up. A clip that still can't play fires `onError`.
  */
-export function HeroVideo({ uri, durationS, paused = false, onError }: HeroVideoProps) {
-  // Pinned: a presigned URL changes on every refetch, and a new source would
+export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }: HeroVideoProps) {
+  // Pinned: a signed URL changes on every refetch, and a new source would
   // rebuild the player mid-watch.
-  const [source] = useState(uri);
+  const [source] = useState(() => videoSource(uri));
+  const [poster] = useState(posterUrl);
   const view = useRef<VideoView>(null);
   const player = useVideoPlayer(source, (p) => {
     p.loop = false;
     p.timeUpdateEventInterval = 0.25;
   });
   const [playing, setPlaying] = useState(false);
+  const [started, setStarted] = useState(false);
   const [position, setPosition] = useState(0);
   const [total, setTotal] = useState(durationS ?? 0);
 
-  useEventListener(player, "playingChange", ({ isPlaying }) => setPlaying(isPlaying));
+  useEventListener(player, "playingChange", ({ isPlaying }) => {
+    setPlaying(isPlaying);
+    if (isPlaying) setStarted(true);
+  });
   useEventListener(player, "timeUpdate", ({ currentTime }) => setPosition(currentTime));
   useEventListener(player, "statusChange", ({ status }) => {
     if (status === "error") onError?.();
@@ -72,6 +79,14 @@ export function HeroVideo({ uri, durationS, paused = false, onError }: HeroVideo
         allowsPictureInPicture={false}
         style={StyleSheet.absoluteFill}
       />
+      {poster && !started ? (
+        <Image
+          source={{ uri: poster }}
+          style={StyleSheet.absoluteFill}
+          contentFit="cover"
+          transition={200}
+        />
+      ) : null}
       <Pressable
         style={StyleSheet.absoluteFill}
         onPress={toggle}

@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Image } from "expo-image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Modal,
   Platform,
   Pressable,
@@ -14,7 +15,7 @@ import {
   type NativeSyntheticEvent,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { mediaUrl, type MediaItem } from "../../api";
+import { mediaStatus, mediaUrl, type MediaItem } from "../../api";
 import { fonts, radius, spacing } from "../../theme";
 import { VideoClip } from "../video";
 import { Thumb } from "./gallery";
@@ -89,9 +90,7 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
       >
         {items.map((item, i) => (
           <View key={item.id} style={[styles.page, { width }]}>
-            {item.type === "VIDEO" && i === current ? (
-              <VideoClip uri={mediaUrl(item.url)} style={styles.media} />
-            ) : null}
+            {item.type === "VIDEO" && i === current ? <ViewerVideo item={item} /> : null}
             {item.type === "PHOTO" ? (
               <Image
                 source={{ uri: mediaUrl(item.url) }}
@@ -165,8 +164,38 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
   );
 }
 
+/** The video in view: playing once Mux has it ready, a word about it until then. */
+function ViewerVideo({ item }: { item: MediaItem }) {
+  const status = mediaStatus(item);
+  const [failed, setFailed] = useState(false);
+  if (status === "READY" && item.url && !failed) {
+    return (
+      <VideoClip
+        uri={mediaUrl(item.url)}
+        posterUrl={item.posterUrl}
+        onError={() => setFailed(true)}
+        style={styles.media}
+      />
+    );
+  }
+  return (
+    <View style={[styles.media, styles.videoNote]}>
+      {status === "PROCESSING" ? (
+        <ActivityIndicator color="rgba(255,255,255,0.8)" />
+      ) : (
+        <Ionicons name="videocam-off-outline" size={28} color="rgba(255,255,255,0.7)" />
+      )}
+      <Text style={styles.videoNoteText}>
+        {status === "PROCESSING" ? "Preparing video…" : "This video can't play right now."}
+      </Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: "#000" },
+  videoNote: { alignItems: "center", justifyContent: "center", gap: spacing.md },
+  videoNoteText: { fontFamily: fonts.sansSemiBold, fontSize: 15, color: "rgba(255,255,255,0.8)" },
   page: { height: "100%", justifyContent: "center" },
   media: { width: "100%", height: "72%" },
   top: {

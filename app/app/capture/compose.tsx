@@ -27,7 +27,7 @@ import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
 import { AppHeader, Button, Loading, Screen } from "../../src/components/ui";
 import { draft, type DraftAsset } from "../../src/draft";
-import { duration, errorMessage, lengthInWords } from "../../src/format";
+import { duration, errorMessage } from "../../src/format";
 import { colors, radius, spacing, type } from "../../src/theme";
 
 const PILLARS: PillarKey[] = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"];
@@ -56,12 +56,6 @@ function toIso(date: string) {
 
 function toggle(list: string[], id: string) {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
-}
-
-/** Which videos the skip notice is about, out of how many were picked. */
-function skippedVideos(total: number, long: number) {
-  if (total <= 1) return "this video";
-  return long > 1 ? "these videos" : "one video";
 }
 
 export default function ComposeScreen() {
@@ -100,19 +94,6 @@ export default function ComposeScreen() {
   const hasVideo = visuals.some((a) => a.mime.startsWith("video/"));
   // Arrived from the video recorder without its clip (a reload drops the draft).
   const missingVideo = params.mode === "video" && !visuals.length;
-  // Long videos are kept but not transcribed yet; the server owns the number.
-  // A video of unknown length is transcribed, so it isn't counted here.
-  const videos = visuals.filter((a) => a.mime.startsWith("video/"));
-  const longVideos = limits
-    ? videos.filter((a) => a.durationS !== undefined && a.durationS > limits.transcribeMaxVideoSeconds)
-    : [];
-  const someTranscribed = recordings.length > 0 || videos.length > longVideos.length || (audioMode && !hasVideo);
-  const skipMessage =
-    longVideos.length && limits
-      ? `Over ${lengthInWords(limits.transcribeMaxVideoSeconds)}, so ${
-          skippedVideos(videos.length, longVideos.length)
-        } won't be transcribed yet.`
-      : null;
 
   const people = peopleData?.people ?? [];
   const author = authorId ?? people.find((p) => p.role === "PARENT")?.id ?? people[0]?.id ?? null;
@@ -141,7 +122,7 @@ export default function ComposeScreen() {
         // Everything but the caption comes from the server's own reading of the
         // bytes; the picker's dimensions only fill in what it couldn't measure.
         // Audio has no dimensions to send; a clip's length comes from the
-        // recorder (or the transcriber fills it in later).
+        // recorder (or Mux fills it in once the clip is processed).
         const audio = uploaded.type === "AUDIO";
         const timed = audio || uploaded.type === "VIDEO";
         media.push({
@@ -149,7 +130,8 @@ export default function ComposeScreen() {
           storageKey: uploaded.key,
           mimeType: uploaded.mimeType,
           bytes: uploaded.bytes,
-          // Whichever digest finalize recorded: storage's checksum, or its own sha256.
+          // Whichever digest finalize recorded: storage's checksum, or its own
+          // sha256. A Mux clip has neither (Mux validates the file itself).
           ...(uploaded.checksum ? { checksum: uploaded.checksum } : {}),
           ...(uploaded.sha256 ? { sha256: uploaded.sha256 } : {}),
           ...(timed && asset.durationS && asset.durationS > 0 ? { durationS: Math.round(asset.durationS) } : {}),
@@ -263,12 +245,11 @@ export default function ComposeScreen() {
             </View>
           </ScrollView>
         ) : null}
-        {(audioMode || hasVideo) && someTranscribed ? (
+        {audioMode || hasVideo ? (
           <Text style={[type.caption, { marginTop: spacing.sm }]}>
             The transcript will be written automatically after you save.
           </Text>
         ) : null}
-        {skipMessage ? <Text style={[type.caption, { marginTop: spacing.sm }]}>{skipMessage}</Text> : null}
         {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
 
         <Field label="Title">

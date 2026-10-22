@@ -678,6 +678,25 @@ transcripts land on the memory. Replaying a webhook changes nothing.
 without loading video; video plays in Chrome, Safari and Expo Go; audio plays
 on web and phone.
 
+As built: `hls.js` 1.7.3 (Chrome/Firefox lack native HLS) lives behind
+`src/components/web-hls.ts`, imported only by the `.web.tsx` players and
+loaded lazily (its own web chunk). Current desktop Chrome reports native HLS
+(`canPlayType` → "maybe") and plays the stream itself; hls.js runs where it
+says "". Native passes `contentType: "hls"` to expo-video for `.m3u8` URLs
+(`src/playback.ts`). The hero shows `posterUrl` until first play (web: the
+`poster` attribute; phone: an `<Image>` over the player). Client-side
+assumptions where the contract is silent (all in `src/api.ts`): `status` may
+be missing on photos and is read through `mediaStatus()` (photo → READY; a
+clip with no status → READY if it has a url, else PROCESSING); `posterUrl`
+is optional; init's `target.headers`, `expiresAt` and `uploadId` are optional;
+finalize's `sha256`/`checksum` are optional (absent for `mux:` keys); a
+video-only memory's `heroUrl` is drawn over the teal tile, so whatever the
+server sends while PROCESSING shows through. Polling (3 s) runs while any
+clip is PROCESSING or the transcript is PENDING. A player error on a READY
+clip shows "can't play right now" with Try again (refetch for a fresh token,
+then a new player); FAILED shows "couldn't prepare" with no retry. The
+"Open original" link is gone (there's no original file to open).
+
 #### M3. Walkthrough
 Fresh database, web and phone: record a video, record audio, pick an iPhone
 HEVC video from the library. Each shows "Preparing…", then a poster, plays,
