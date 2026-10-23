@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
-import { colors, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
+import { colors, layout, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
 
 export function Screen({
@@ -29,13 +29,13 @@ export function Screen({
 }) {
   const insets = useSafeAreaInsets();
   const body = (
-    <View style={[styles.column, padded && { paddingHorizontal: spacing.lg }]}>{children}</View>
+    <View style={[styles.column, styles.body, padded && { paddingHorizontal: layout.gutter }]}>{children}</View>
   );
   if (!scroll) return <View style={styles.screen}>{body}</View>;
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + 120 }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
       {body}
@@ -66,7 +66,7 @@ export function AppHeader({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.headerWrap, { paddingTop: insets.top + spacing.md }]}>
+    <View style={[styles.headerWrap, { paddingTop: insets.top + layout.top }]}>
       <View style={styles.headerRow}>
         <View style={styles.headerLeft}>
           {back ? (
@@ -107,9 +107,18 @@ export function AppHeader({
   );
 }
 
-export function SectionHeader({ label, action }: { label: string; action?: ReactNode }) {
+export function SectionHeader({
+  label,
+  action,
+  first = false,
+}: {
+  label: string;
+  action?: ReactNode;
+  /** Directly under the page header, which already leaves its own space. */
+  first?: boolean;
+}) {
   return (
-    <View style={styles.sectionHeader}>
+    <View style={[styles.sectionHeader, first && { marginTop: 0 }]}>
       <Text style={type.label}>{label}</Text>
       {action}
     </View>
@@ -360,15 +369,20 @@ export function PreviewNote({ children }: { children: ReactNode }) {
   );
 }
 
+/** Room under a pinned header's title before the page scrolls beneath it. */
+const HEADER_BOTTOM = spacing.sm;
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   column: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" },
-  headerWrap: { backgroundColor: colors.bg, paddingBottom: spacing.sm },
+  /** With the header's own bottom padding, the page header's gap above the content. */
+  body: { paddingTop: layout.afterHeader - HEADER_BOTTOM },
+  headerWrap: { backgroundColor: colors.bg, paddingBottom: HEADER_BOTTOM },
   headerRow: {
     width: "100%",
     maxWidth: MAX_WIDTH,
     alignSelf: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.gutter,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
@@ -390,7 +404,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
-    marginTop: spacing.xl,
+    marginTop: layout.section,
     marginBottom: spacing.md,
   },
   card: {

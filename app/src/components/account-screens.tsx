@@ -318,7 +318,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   nudge: {
-    marginTop: spacing.lg,
+    marginBottom: spacing.lg,
     padding: spacing.lg,
     borderRadius: radius.md,
     backgroundColor: colors.accentSoft,

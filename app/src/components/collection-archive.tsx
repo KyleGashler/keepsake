@@ -15,7 +15,7 @@ import { useCanContribute } from "../auth/session-context";
 import { childAge, count, possessive } from "../format";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, routes } from "../routes";
-import { colors, fonts, radius, spacing } from "../theme";
+import { colors, fonts, layout, radius, spacing } from "../theme";
 import { ChildPortrait } from "./child-header";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
 
@@ -94,12 +94,12 @@ export function CollectionArchive({
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       <Column>
-        <View style={{ paddingTop: insets.top + spacing.lg }}>
+        <View style={{ paddingTop: insets.top + layout.top }}>
           <BackRow label={backLabel} parent={backParent} />
 
           <View style={styles.discWrap}>
@@ -449,8 +449,8 @@ const styles = StyleSheet.create({
   search: { marginTop: spacing.xl },
   chipsRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md },
   // Chips scroll edge to edge on a narrow phone, past the column's gutter.
-  chipsScroll: { flexGrow: 1, marginHorizontal: -spacing.xl },
-  chips: { gap: spacing.sm, paddingHorizontal: spacing.xl },
+  chipsScroll: { flexGrow: 1, marginHorizontal: -layout.gutter },
+  chips: { gap: spacing.sm, paddingHorizontal: layout.gutter },
   spinner: { position: "absolute", right: 0 },
   chip: {
     flexDirection: "row",

@@ -681,7 +681,7 @@ function Stat({ value, label }: { value: number; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  stats: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
+  stats: { flexDirection: "row", gap: spacing.sm },
   stat: {
     flex: 1,
     alignItems: "center",

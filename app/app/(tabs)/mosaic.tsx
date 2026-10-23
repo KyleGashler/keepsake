@@ -8,7 +8,7 @@ import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
 import { Column, PageHeader } from "../../src/components/journey";
 import { FamilyPill } from "../../src/components/family-switcher";
 import { ErrorState, Loading } from "../../src/components/ui";
-import { colors, MAX_WIDTH, radius, spacing } from "../../src/theme";
+import { colors, layout, MAX_WIDTH, radius, spacing } from "../../src/theme";
 
 const GAP = 10;
 const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
@@ -23,7 +23,7 @@ export default function MosaicScreen() {
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
-  const contentWidth = Math.min(width, MAX_WIDTH) - spacing.xl * 2;
+  const contentWidth = Math.min(width, MAX_WIDTH) - layout.gutter * 2;
   const columnCount = contentWidth > 560 ? 3 : 2;
   const columnWidth = (contentWidth - GAP * (columnCount - 1)) / columnCount;
 
@@ -45,7 +45,7 @@ export default function MosaicScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
       <Column>

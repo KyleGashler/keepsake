@@ -159,7 +159,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     paddingHorizontal: spacing.lg,
     paddingVertical: 11,
-    marginTop: spacing.sm,
   },
   input: { flex: 1, fontSize: 15.5, color: colors.ink },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },

@@ -16,7 +16,7 @@ import { StardustCluster } from "../../src/components/brand";
 import { AppHeader, Button } from "../../src/components/ui";
 import { draft } from "../../src/draft";
 import { clock, errorMessage } from "../../src/format";
-import { colors, MAX_WIDTH, radius, spacing, type } from "../../src/theme";
+import { colors, layout, MAX_WIDTH, radius, spacing, type } from "../../src/theme";
 
 type Phase = "asking" | "denied" | "ready" | "starting" | "recording" | "paused" | "stopping" | "review";
 
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
     width: "100%",
     maxWidth: MAX_WIDTH,
     alignSelf: "center",
-    paddingHorizontal: spacing.lg,
+    paddingHorizontal: layout.gutter,
     backgroundColor: colors.bg,
   },
   centre: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: spacing.lg },

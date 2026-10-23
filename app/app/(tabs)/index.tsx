@@ -18,7 +18,7 @@ import {
   SectionHeader,
 } from "../../src/components/ui";
 import { relativeTime } from "../../src/format";
-import { colors, radius, spacing, type } from "../../src/theme";
+import { colors, layout, radius, spacing, type } from "../../src/theme";
 
 /**
  * Home is the front porch of the family's story — a welcome, the people in it,
@@ -39,7 +39,7 @@ export default function HomeScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
       <Column>
@@ -65,11 +65,12 @@ function HomeBody({ data }: { data: HomePayload }) {
   const prompt = useCanContribute() ? data.prompt : null;
   return (
     <>
-      <SectionHeader label="Your People" />
+      <SectionHeader label="Your People" first />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: spacing.lg, paddingRight: spacing.lg }}
+        style={styles.rail}
+        contentContainerStyle={[styles.railContent, { gap: spacing.lg }]}
       >
         {data.people.map((person) => (
           <PersonChip
@@ -117,7 +118,8 @@ function HomeBody({ data }: { data: HomePayload }) {
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ gap: spacing.md, paddingRight: spacing.lg }}
+        style={styles.rail}
+        contentContainerStyle={[styles.railContent, { gap: spacing.md }]}
       >
         {data.storySoFar.map((memory) => (
           <MemoryTile key={memory.id} memory={memory} />
@@ -151,6 +153,9 @@ function HomeBody({ data }: { data: HomePayload }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  // Rails scroll edge to edge, past the column's gutter, and rest aligned with it.
+  rail: { marginHorizontal: -layout.gutter },
+  railContent: { paddingHorizontal: layout.gutter },
   hero: {
     height: 300,
     borderRadius: radius.lg,
@@ -193,5 +198,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accent,
     marginHorizontal: 13,
   },
-  footer: { ...type.caption, textAlign: "center", marginTop: spacing.xxl },
+  footer: { ...type.caption, textAlign: "center", marginTop: layout.section },
 });

@@ -11,7 +11,7 @@ import { AddChildSheet } from "../../../../src/components/library-sheets";
 import { ErrorState, Loading } from "../../../../src/components/ui";
 import { childAge } from "../../../../src/format";
 import { routes } from "../../../../src/routes";
-import { colors, fonts, radius, spacing } from "../../../../src/theme";
+import { colors, fonts, layout, radius, spacing } from "../../../../src/theme";
 
 /**
  * Child Profiles (design/mockups/02): one photo card per child, oldest first,
@@ -36,7 +36,7 @@ export default function ChildProfilesScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
       <Column>
@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   pressed: { opacity: 0.7 },
   // Cards run wider than the type above them, as in the mockup.
-  cards: { gap: spacing.md, marginHorizontal: -spacing.sm - 2, marginTop: spacing.xs },
+  cards: { gap: spacing.lg, marginHorizontal: -spacing.sm - 2 },
 
   addRow: {
     flexDirection: "row",
@@ -139,7 +139,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: spacing.xxl,
     paddingHorizontal: spacing.lg,
-    marginTop: spacing.md,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceAlt,
     gap: spacing.md,

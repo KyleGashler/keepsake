@@ -198,188 +198,190 @@ function ComposeScreen() {
     >
       <AppHeader back subtitle="Capture" title="New memory" globalActions={false} />
       <Screen>
-        {params.prompt ? (
-          <View style={styles.promptEcho}>
-            <Ionicons name="sparkles-outline" size={15} color={colors.accentDeep} />
-            <Text style={[type.caption, { flex: 1, color: colors.inkSoft }]}>{params.prompt}</Text>
-          </View>
-        ) : null}
-
-        {recordings.length ? (
-          <View style={{ marginTop: spacing.lg, gap: spacing.sm }}>
-            {recordings.map((asset, i) => (
-              <AudioClip
-                key={asset.uri}
-                uri={asset.uri}
-                title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
-                durationS={asset.durationS}
-              />
-            ))}
-          </View>
-        ) : null}
-        {audioMode && !recordings.length ? (
-          // Arrived without a clip (a deep link, or a reload that dropped the
-          // in-memory draft): offer the recorder rather than an empty form.
-          <View style={styles.recordPrompt}>
-            <Text style={[type.body, { flex: 1 }]}>No recording attached yet.</Text>
-            <Button
-              label="Record"
-              icon="mic-outline"
-              onPress={() =>
-                router.replace({
-                  pathname: "/capture/record",
-                  params: {
-                    ...(params.prompt ? { prompt: params.prompt } : {}),
-                    ...(params.collectionId ? { collectionId: params.collectionId } : {}),
-                  },
-                })
-              }
-            />
-          </View>
-        ) : null}
-        {missingVideo ? (
-          <View style={styles.recordPrompt}>
-            <Text style={[type.body, { flex: 1 }]}>No video attached yet.</Text>
-            <Button
-              label="Record"
-              icon="videocam-outline"
-              onPress={() =>
-                router.replace({
-                  pathname: "/capture/video",
-                  params: {
-                    ...(params.prompt ? { prompt: params.prompt } : {}),
-                    ...(params.collectionId ? { collectionId: params.collectionId } : {}),
-                  },
-                })
-              }
-            />
-          </View>
-        ) : null}
-
-        {visuals.length ? (
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: spacing.lg }}>
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              {visuals.map((asset) =>
-                asset.mime.startsWith("video/") ? (
-                  <VideoThumb key={asset.uri} asset={asset} />
-                ) : (
-                  <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.thumb} contentFit="cover" />
-                ),
-              )}
+        <View style={styles.form}>
+          {params.prompt ? (
+            <View style={styles.promptEcho}>
+              <Ionicons name="sparkles-outline" size={15} color={colors.accentDeep} />
+              <Text style={[type.caption, { flex: 1, color: colors.inkSoft }]}>{params.prompt}</Text>
             </View>
-          </ScrollView>
-        ) : null}
-        {audioMode || hasVideo ? (
-          <Text style={[type.caption, { marginTop: spacing.sm }]}>
-            The transcript will be written automatically after you save.
-          </Text>
-        ) : null}
-        {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
+          ) : null}
 
-        <Field label="Title">
-          <TextInput
-            value={title}
-            onChangeText={setTitle}
-            placeholder="The morning we found out"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-          />
-        </Field>
-
-        <Field label="The story">
-          <TextInput
-            value={story}
-            onChangeText={setStory}
-            placeholder="What happened, and why it mattered…"
-            placeholderTextColor={colors.muted}
-            multiline
-            style={[styles.input, styles.multiline, { fontFamily: type.story.fontFamily, fontSize: 16 }]}
-          />
-        </Field>
-
-        <View style={{ flexDirection: "row", gap: spacing.md }}>
-          <Field label="Date" style={{ flex: 1 }}>
-            <TextInput
-              value={date}
-              onChangeText={setDate}
-              placeholder="YYYY-MM-DD"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-          </Field>
-          <Field label="Place" style={{ flex: 1.4 }}>
-            <TextInput
-              value={location}
-              onChangeText={setLocation}
-              placeholder="Home"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
-            />
-          </Field>
-        </View>
-
-        <Field label="Who's in it">
-          <View style={styles.chipWrap}>
-            {people.map((person) => (
-              <Chip
-                key={person.id}
-                label={person.name}
-                selected={participantIds.includes(person.id)}
-                onPress={() => setParticipantIds((ids) => toggle(ids, person.id))}
+          {recordings.length ? (
+            <View style={{ gap: spacing.sm }}>
+              {recordings.map((asset, i) => (
+                <AudioClip
+                  key={asset.uri}
+                  uri={asset.uri}
+                  title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
+                  durationS={asset.durationS}
+                />
+              ))}
+            </View>
+          ) : null}
+          {audioMode && !recordings.length ? (
+            // Arrived without a clip (a deep link, or a reload that dropped the
+            // in-memory draft): offer the recorder rather than an empty form.
+            <View style={styles.recordPrompt}>
+              <Text style={[type.body, { flex: 1 }]}>No recording attached yet.</Text>
+              <Button
+                label="Record"
+                icon="mic-outline"
+                onPress={() =>
+                  router.replace({
+                    pathname: "/capture/record",
+                    params: {
+                      ...(params.prompt ? { prompt: params.prompt } : {}),
+                      ...(params.collectionId ? { collectionId: params.collectionId } : {}),
+                    },
+                  })
+                }
               />
-            ))}
-          </View>
-        </Field>
+            </View>
+          ) : null}
+          {missingVideo ? (
+            <View style={styles.recordPrompt}>
+              <Text style={[type.body, { flex: 1 }]}>No video attached yet.</Text>
+              <Button
+                label="Record"
+                icon="videocam-outline"
+                onPress={() =>
+                  router.replace({
+                    pathname: "/capture/video",
+                    params: {
+                      ...(params.prompt ? { prompt: params.prompt } : {}),
+                      ...(params.collectionId ? { collectionId: params.collectionId } : {}),
+                    },
+                  })
+                }
+              />
+            </View>
+          ) : null}
 
-        <Field label="Saved by">
-          <View style={styles.chipWrap}>
-            {people
-              .filter((p) => p.role !== "CHILD")
-              .map((person) => (
+          {visuals.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                {visuals.map((asset) =>
+                  asset.mime.startsWith("video/") ? (
+                    <VideoThumb key={asset.uri} asset={asset} />
+                  ) : (
+                    <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.thumb} contentFit="cover" />
+                  ),
+                )}
+              </View>
+            </ScrollView>
+          ) : null}
+          {audioMode || hasVideo ? (
+            // Close under the media it's about, not a field's distance away.
+            <Text style={[type.caption, { marginTop: -spacing.lg }]}>
+              The transcript will be written automatically after you save.
+            </Text>
+          ) : null}
+          {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
+
+          <Field label="Title">
+            <TextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder="The morning we found out"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+            />
+          </Field>
+
+          <Field label="The story">
+            <TextInput
+              value={story}
+              onChangeText={setStory}
+              placeholder="What happened, and why it mattered…"
+              placeholderTextColor={colors.muted}
+              multiline
+              style={[styles.input, styles.multiline, { fontFamily: type.story.fontFamily, fontSize: 16 }]}
+            />
+          </Field>
+
+          <View style={{ flexDirection: "row", gap: spacing.md }}>
+            <Field label="Date" style={{ flex: 1 }}>
+              <TextInput
+                value={date}
+                onChangeText={setDate}
+                placeholder="YYYY-MM-DD"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+            </Field>
+            <Field label="Place" style={{ flex: 1.4 }}>
+              <TextInput
+                value={location}
+                onChangeText={setLocation}
+                placeholder="Home"
+                placeholderTextColor={colors.muted}
+                style={styles.input}
+              />
+            </Field>
+          </View>
+
+          <Field label="Who's in it">
+            <View style={styles.chipWrap}>
+              {people.map((person) => (
                 <Chip
                   key={person.id}
                   label={person.name}
-                  selected={author === person.id}
-                  onPress={() => setAuthorId(person.id)}
+                  selected={participantIds.includes(person.id)}
+                  onPress={() => setParticipantIds((ids) => toggle(ids, person.id))}
                 />
               ))}
-          </View>
-        </Field>
+            </View>
+          </Field>
 
-        <Field label="Where it belongs">
-          <View style={[styles.chipWrap, { marginBottom: spacing.sm }]}>
-            {PILLARS.map((key) => (
-              <Chip key={key} label={PILLAR_LABELS[key]} selected={pillar === key} onPress={() => setPillar(key)} />
-            ))}
-          </View>
-          <View style={styles.chipWrap}>
-            {collections.map((collection) => (
-              <Chip
-                key={collection.id}
-                label={
-                  collection.personName ? `${collection.personName} · ${collection.name}` : collection.name
-                }
-                selected={collectionIds.includes(collection.id)}
-                onPress={() => setCollectionIds((ids) => toggle(ids, collection.id))}
-              />
-            ))}
-          </View>
-          {chosen.length ? (
-            <Text style={[type.caption, { marginTop: spacing.sm }]}>
-              Filed in {chosen.map((c) => c.name).join(", ")}
-            </Text>
-          ) : null}
-        </Field>
+          <Field label="Saved by">
+            <View style={styles.chipWrap}>
+              {people
+                .filter((p) => p.role !== "CHILD")
+                .map((person) => (
+                  <Chip
+                    key={person.id}
+                    label={person.name}
+                    selected={author === person.id}
+                    onPress={() => setAuthorId(person.id)}
+                  />
+                ))}
+            </View>
+          </Field>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+          <Field label="Where it belongs">
+            <View style={[styles.chipWrap, { marginBottom: spacing.sm }]}>
+              {PILLARS.map((key) => (
+                <Chip key={key} label={PILLAR_LABELS[key]} selected={pillar === key} onPress={() => setPillar(key)} />
+              ))}
+            </View>
+            <View style={styles.chipWrap}>
+              {collections.map((collection) => (
+                <Chip
+                  key={collection.id}
+                  label={
+                    collection.personName ? `${collection.personName} · ${collection.name}` : collection.name
+                  }
+                  selected={collectionIds.includes(collection.id)}
+                  onPress={() => setCollectionIds((ids) => toggle(ids, collection.id))}
+                />
+              ))}
+            </View>
+            {chosen.length ? (
+              <Text style={[type.caption, { marginTop: spacing.sm }]}>
+                Filed in {chosen.map((c) => c.name).join(", ")}
+              </Text>
+            ) : null}
+          </Field>
 
-        <Button
-          label={saving ? (progress ?? "Preserving…") : "Preserve this memory"}
-          icon="checkmark"
-          onPress={save}
-          disabled={saving || Boolean(oversizedMessage)}
-          style={{ marginTop: spacing.xl }}
-        />
+          {error ? <Text style={styles.error}>{error}</Text> : null}
+
+          <Button
+            label={saving ? (progress ?? "Preserving…") : "Preserve this memory"}
+            icon="checkmark"
+            onPress={save}
+            disabled={saving || Boolean(oversizedMessage)}
+          />
+        </View>
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -423,7 +425,7 @@ function Field({
   style?: object;
 }) {
   return (
-    <View style={[{ marginTop: spacing.xl }, style]}>
+    <View style={style}>
       <Text style={[type.label, { marginBottom: spacing.sm }]}>{label}</Text>
       {children}
     </View>
@@ -450,6 +452,7 @@ function Chip({
 }
 
 const styles = StyleSheet.create({
+  form: { gap: spacing.xl },
   promptEcho: {
     flexDirection: "row",
     gap: spacing.sm,
@@ -457,7 +460,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.accentSoft,
     borderRadius: radius.md,
     padding: spacing.md,
-    marginTop: spacing.md,
   },
   recordPrompt: {
     flexDirection: "row",
@@ -469,7 +471,6 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: spacing.md,
     paddingLeft: spacing.lg,
-    marginTop: spacing.lg,
   },
   thumb: { width: 96, height: 96, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
   videoThumb: { overflow: "hidden", alignItems: "center", justifyContent: "center" },
@@ -507,5 +508,5 @@ const styles = StyleSheet.create({
     backgroundColor: colors.surface,
   },
   chipLabel: { fontSize: 13.5, color: colors.ink },
-  error: { ...type.caption, color: "#9C4A38", marginTop: spacing.lg },
+  error: { ...type.caption, color: "#9C4A38" },
 });

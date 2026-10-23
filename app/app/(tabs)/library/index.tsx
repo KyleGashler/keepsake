@@ -11,7 +11,7 @@ import { ErrorState, Loading } from "../../../src/components/ui";
 import { pickAndUploadImage } from "../../../src/pick-image";
 import { friendlyError } from "../../../src/format";
 import { routes } from "../../../src/routes";
-import { colors, spacing } from "../../../src/theme";
+import { colors, layout, spacing } from "../../../src/theme";
 
 /** Child Profiles has its own screens; the other two pillars list their collections. */
 function open(pillar: LibraryPillar) {
@@ -77,7 +77,7 @@ export default function LibraryScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
       <Column>
@@ -133,6 +133,6 @@ export default function LibraryScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   // Cards run wider than the type above them, as in the mockup.
-  cards: { gap: spacing.md + 2, marginHorizontal: -spacing.sm - 2, marginTop: spacing.xs },
+  cards: { gap: spacing.lg, marginHorizontal: -spacing.sm - 2 },
   problem: { marginBottom: spacing.md },
 });

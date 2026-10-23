@@ -66,6 +66,23 @@ export const spacing = {
   xxl: 36,
 };
 
+/**
+ * One page rhythm for every screen, so moving between them never shifts the
+ * margins under your thumb.
+ */
+export const layout = {
+  /** Left and right of every page, sheet and header. */
+  gutter: spacing.xl,
+  /** Below the safe area, above a page's first row. */
+  top: spacing.lg,
+  /** Between a page's header and the first thing under it. */
+  afterHeader: spacing.xl,
+  /** Between one labelled section and the next. */
+  section: spacing.xxl,
+  /** Above the safe area, after the last row of a scroll. */
+  bottom: spacing.xxl,
+};
+
 export const radius = {
   sm: 10,
   md: 16,

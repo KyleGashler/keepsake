@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { mediaUrl } from "../api";
 import { glyphColorFor, iconSpec } from "../icons";
-import { colors, fonts, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
+import { colors, fonts, layout, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
 import { Twinkle } from "./brand";
 
 /**
@@ -166,7 +166,7 @@ export function PageHeader({
     ) : null;
 
   return (
-    <View style={[styles.header, { paddingTop: insets.top + spacing.lg }]}>
+    <View style={[styles.header, { paddingTop: insets.top + layout.top }]}>
       {backLabel ? (
         <View style={styles.headerTopRow}>
           <Pressable
@@ -450,11 +450,11 @@ export function Column({ children, style }: { children: ReactNode; style?: Style
 
 const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
-  column: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", paddingHorizontal: spacing.xl },
+  column: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", paddingHorizontal: layout.gutter },
 
   disc: { alignItems: "center", justifyContent: "center" },
 
-  header: { paddingBottom: spacing.lg },
+  header: { paddingBottom: layout.afterHeader },
   headerTopRow: {
     flexDirection: "row",
     alignItems: "center",

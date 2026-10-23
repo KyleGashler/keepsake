@@ -82,7 +82,7 @@ export default function PersonScreen() {
 }
 
 const styles = StyleSheet.create({
-  header: { flexDirection: "row", gap: spacing.lg, alignItems: "center", paddingTop: spacing.md },
+  header: { flexDirection: "row", gap: spacing.lg, alignItems: "center" },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     paddingVertical: 7,

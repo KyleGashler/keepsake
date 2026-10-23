@@ -13,7 +13,7 @@ import { Column, IconDisc, ListRow, PageHeader } from "../../../../src/component
 import { Avatar, EmptyState, ErrorState, Loading } from "../../../../src/components/ui";
 import { count } from "../../../../src/format";
 import { routes } from "../../../../src/routes";
-import { colors, fonts, radius, spacing } from "../../../../src/theme";
+import { colors, fonts, layout, radius, spacing } from "../../../../src/theme";
 
 /**
  * Arrival Stories and Family Life — minimally restyled until their own pass.
@@ -46,7 +46,7 @@ export default function PillarScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
       <Column>
@@ -56,6 +56,7 @@ export default function PillarScreen() {
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
+            style={styles.chipsScroll}
             contentContainerStyle={styles.chips}
           >
             {kids.map((child) => {
@@ -102,7 +103,9 @@ export default function PillarScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  chips: { gap: spacing.sm, paddingBottom: spacing.lg },
+  // Chips scroll edge to edge on a narrow phone, past the column's gutter.
+  chipsScroll: { flexGrow: 0, marginHorizontal: -layout.gutter, marginBottom: spacing.lg },
+  chips: { gap: spacing.sm, paddingHorizontal: layout.gutter },
   chip: {
     flexDirection: "row",
     alignItems: "center",

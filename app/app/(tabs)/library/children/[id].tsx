@@ -11,7 +11,7 @@ import { CreateCollectionSheet, EditChildSheet } from "../../../../src/component
 import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { possessive } from "../../../../src/format";
 import { backTo, routes } from "../../../../src/routes";
-import { colors, fonts, spacing } from "../../../../src/theme";
+import { colors, fonts, layout, spacing } from "../../../../src/theme";
 
 /**
  * One child's Collections (design/mockups/03): their photo, name, age and
@@ -50,7 +50,7 @@ export default function ChildCollectionsScreen() {
   return (
     <ScrollView
       style={styles.screen}
-      contentContainerStyle={{ paddingTop: insets.top + spacing.sm, paddingBottom: insets.bottom + spacing.xxl }}
+      contentContainerStyle={{ paddingTop: insets.top + layout.top, paddingBottom: insets.bottom + layout.bottom }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -152,17 +152,17 @@ const styles = StyleSheet.create({
     lineHeight: 42,
     letterSpacing: -0.4,
     color: colors.ink,
-    marginTop: spacing.lg,
+    marginTop: layout.afterHeader,
   },
-  sectionSubtitle: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 22, color: colors.inkSoft },
-  search: { marginTop: spacing.md, marginBottom: spacing.xs, height: 44 },
+  sectionSubtitle: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 22, color: colors.inkSoft, marginTop: spacing.xs },
+  search: { marginTop: spacing.lg, marginBottom: spacing.sm, height: 44 },
   noMatch: { fontFamily: fonts.sans, fontSize: 15, color: colors.muted, paddingVertical: spacing.lg },
 
   create: {
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.lg,
-    marginTop: spacing.sm,
+    marginTop: spacing.lg,
     paddingVertical: spacing.sm + 2,
     paddingRight: spacing.md,
     borderRadius: 14,

@@ -37,7 +37,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.sm,
     padding: spacing.xl,
-    marginTop: spacing.lg,
     borderRadius: radius.lg,
     backgroundColor: colors.surfaceAlt,
   },
