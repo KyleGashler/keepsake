@@ -173,11 +173,20 @@ a thrown handler.
 
 #### A7. CRUD completeness
 **Depends:** A3.
-**Do:** soft-delete memory (`deletedAt`, hidden everywhere, 30-day trash view
-in Family Hub, restore); remove media from a memory (unlink, never delete the
-original); people create/edit/delete; custom collections CRUD and
-add/remove memory; reorder media. Client screens for each.
-**Accept:** every mutation has a UI path.
+> **Decision (2026-10-23): hard delete, no trash or restore.** Deleting a
+> memory, or removing a photo/clip from one, deletes the rows and purges the
+> files: S3 originals + derivatives and the Mux asset, via a background
+> `media.purge` job (retried, so a slow provider never blocks the request).
+> "Originals are never deleted" now means never by the app on its own — only
+> an explicit family delete purges. `Memory.deletedAt` / `Media.deletedAt`
+> go away. The same purge path serves A16's account deletion.
+
+**Do:** hard-delete memory (confirm dialog, rows gone, files purged); remove
+media from a memory (same purge); people create/edit/delete; custom
+collections CRUD and add/remove memory; reorder media. Client screens for
+each.
+**Accept:** every mutation has a UI path; a deleted memory's S3 objects and
+Mux asset are gone once the job runs.
 
 #### A8. Client auth + data layer
 > **Auth half done (2026-10-22, with B1)** — see "Decision: auth". The
