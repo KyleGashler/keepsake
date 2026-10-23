@@ -2,10 +2,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { File as FsFile, UploadType } from "expo-file-system";
+import { auth } from "./auth";
+import { getFamilyId, useFamilyId } from "./auth/family-store";
 
 /**
- * v0 talks to an open API — no tokens, no session. Everything here assumes a
- * single family until accounts exist.
+ * Every call to the API carries the signed-in person's token and the family
+ * they're looking at (see `apiFetch`). Media bytes don't: they load as plain
+ * URLs — public placeholders, signed read URLs, Mux's signed playback — with
+ * no headers at all.
  */
 function resolveBaseUrl() {
   const configured: string | undefined = process.env.EXPO_PUBLIC_API_URL;
@@ -51,8 +55,44 @@ export function isNotFound(err: unknown) {
   return err instanceof ApiError && err.status === 404;
 }
 
-export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`);
+/**
+ * What a 401 does. The session (src/auth/session.tsx) replaces this so it can
+ * say why the person is back at the sign-in screen; until then, sign out.
+ */
+let unauthorizedHandler: () => void = () => void auth.signOut();
+
+export function onUnauthorized(handler: () => void) {
+  unauthorizedHandler = handler;
+}
+
+/**
+ * `fetch` against this API, signed: `Authorization: Bearer <token>` and, once
+ * a family is chosen, `x-family-id`. A 401 means the token is no good any
+ * more (expired past refresh, revoked, or minted for another project), so the
+ * person is signed out rather than left looking at errors.
+ *
+ * Only for `API_URL` paths. Upload targets (presigned S3, Mux, the local
+ * provider's tokened URL) are signed in their URL and must get nothing extra.
+ *
+ * `familyId` defaults to the current choice; `useApi` passes the one it
+ * rendered with, so a response can't land under a family it wasn't asked for.
+ */
+export async function apiFetch(
+  path: string,
+  init: RequestInit = {},
+  familyId: string | null = getFamilyId(),
+): Promise<Response> {
+  const token = await auth.getToken();
+  const headers = new Headers(init.headers);
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (familyId) headers.set("x-family-id", familyId);
+  const res = await fetch(`${API_URL}${path}`, { ...init, headers });
+  if (res.status === 401 && token) unauthorizedHandler();
+  return res;
+}
+
+export async function apiGet<T>(path: string, familyId?: string | null): Promise<T> {
+  const res = await apiFetch(path, {}, familyId);
   if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText} — ${path}`);
   return res.json();
 }
@@ -66,7 +106,7 @@ export async function apiSend<T>(
   method: "POST" | "PATCH" | "PUT" | "DELETE",
   body?: unknown,
 ): Promise<T> {
-  const res = await fetch(`${API_URL}${path}`, {
+  const res = await apiFetch(path, {
     method,
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -135,7 +175,8 @@ export type FinalizedMedia = {
  * Two-phase upload: ask the API where to put the bytes, put them there, then
  * ask the API what it got.
  *
- * The middle step deliberately doesn't go through this server's API surface —
+ * The middle step deliberately doesn't go through `apiFetch` (no bearer, no
+ * family header) or this server's API surface —
  * `target.url` is wherever the API says: a relative local route, an absolute
  * presigned S3 URL, or (audio and video) a Mux direct upload URL; `mediaUrl`
  * passes absolute ones through untouched. The PUT sends exactly
@@ -152,7 +193,7 @@ export async function uploadFile(
   onProgress?: (fraction: number) => void,
 ): Promise<FinalizedMedia> {
   const init = async (bytes: number): Promise<UploadInit> => {
-    const res = await fetch(`${API_URL}/api/media/init`, {
+    const res = await apiFetch("/api/media/init", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mimeType: type, bytes, filename: name }),
@@ -207,6 +248,8 @@ async function finalizeUpload(key: string) {
 /** Small stand-in for a data layer; swap for React Query when caching matters. */
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- T is the caller's word for the response's shape
 export function useApi<T>(path: string | null) {
+  // A different family is a different answer to the same path.
+  const familyId = useFamilyId();
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<Error | null>(null);
   const [loading, setLoading] = useState(true);
@@ -225,7 +268,7 @@ export function useApi<T>(path: string | null) {
     const request = ++latestRequest.current;
     if (!path) return;
     try {
-      const next = await apiGet<T>(path);
+      const next = await apiGet<T>(path, familyId);
       if (request !== latestRequest.current) return;
       setData(next);
       setError(null);
@@ -235,7 +278,7 @@ export function useApi<T>(path: string | null) {
     } finally {
       if (request === latestRequest.current) setLoading(false);
     }
-  }, [path]);
+  }, [path, familyId]);
 
   const load = useCallback(async () => {
     if (!path) return;
@@ -252,6 +295,22 @@ export function useApi<T>(path: string | null) {
 }
 
 // ---- Shapes returned by the API -------------------------------------------
+
+export type MembershipRole = "OWNER" | "CONTRIBUTOR" | "VIEWER";
+
+/** One family the signed-in person belongs to. */
+export type Membership = {
+  familyId: string;
+  familyName: string;
+  role: MembershipRole;
+  personId: string | null;
+};
+
+/** `GET /api/me` — reachable before belonging to any family. */
+export type MePayload = {
+  user: { id: string; email: string; displayName: string; emailVerified: boolean; createdAt: string };
+  memberships: Membership[];
+};
 
 export type Person = {
   id: string;

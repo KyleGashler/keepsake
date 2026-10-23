@@ -207,6 +207,9 @@ export function SheetInput({
   returnKeyType,
   maxLength,
   accessibilityLabel,
+  secureTextEntry,
+  autoComplete,
+  textContentType,
 }: Pick<
   TextInputProps,
   | "value"
@@ -222,6 +225,9 @@ export function SheetInput({
   | "returnKeyType"
   | "maxLength"
   | "accessibilityLabel"
+  | "secureTextEntry"
+  | "autoComplete"
+  | "textContentType"
 >) {
   return (
     <TextInput
@@ -239,6 +245,9 @@ export function SheetInput({
       returnKeyType={returnKeyType}
       maxLength={maxLength}
       accessibilityLabel={accessibilityLabel}
+      secureTextEntry={secureTextEntry}
+      autoComplete={autoComplete}
+      textContentType={textContentType}
       style={[styles.input, multiline && styles.inputMultiline]}
     />
   );
