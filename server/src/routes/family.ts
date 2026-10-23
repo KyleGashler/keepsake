@@ -99,7 +99,8 @@ const newInvite = z
 /**
  * Make an invite link. Single use, a week long, revocable. With an email it
  * is also sent there (EmailSender — the log until B6); a send that fails
- * still leaves a working link to share by hand, and says so in `emailed`.
+ * still leaves a working link to share by hand. `emailed` says whether it is
+ * on its way to an inbox — false for a failed send and for the console sender.
  */
 familyRouter.post("/family/invites", requireOwner, async (req, res) => {
   const { family, user } = req.ctx;
@@ -145,7 +146,8 @@ familyRouter.post("/family/invites", requireOwner, async (req, res) => {
           url: dto.url,
         }),
       );
-      emailed = true;
+      // Only true if it can reach an inbox: the console sender just logs it.
+      emailed = emailSender().delivers;
     } catch (err) {
       req.log.error({ err: errorMessage(err), inviteId: invite.id }, "invite email failed to send");
     }

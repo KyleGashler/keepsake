@@ -16,6 +16,11 @@ export type EmailMessage = {
 };
 
 export interface EmailSender {
+  /**
+   * Whether a sent message actually reaches an inbox. False for the console
+   * sender, so nothing tells a person "we emailed it" when nobody did.
+   */
+  readonly delivers: boolean;
   /** Resolves once the provider has accepted the message. Rejects if it didn't. */
   send: (message: EmailMessage) => Promise<void>;
 }

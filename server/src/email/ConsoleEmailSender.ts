@@ -7,6 +7,8 @@ import type { EmailMessage, EmailSender } from "./EmailSender.js";
  * invite link is in the API's output, ready to paste.
  */
 export class ConsoleEmailSender implements EmailSender {
+  readonly delivers = false;
+
   constructor(private readonly log: Logger) {}
 
   async send(message: EmailMessage) {

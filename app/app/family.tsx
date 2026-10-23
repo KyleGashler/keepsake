@@ -519,8 +519,12 @@ function InviteSheet({
             {invite.url}
           </Text>
         </View>
-        {emailed && invite.email ? (
-          <Text style={type.caption}>We've also emailed it to {invite.email}.</Text>
+        {invite.email ? (
+          <Text style={type.caption}>
+            {emailed
+              ? `We've also emailed it to ${invite.email}.`
+              : `It wasn't emailed to ${invite.email} — share it yourself.`}
+          </Text>
         ) : null}
         {canCopy ? (
           <SheetButton
@@ -600,7 +604,7 @@ function InviteSheet({
       </Field>
       <Field
         label="Their email (optional)"
-        hint="Emailing invites isn't switched on yet — share the link yourself, by message or however your family talks."
+        hint="We'll email the link where email is switched on. Either way you can share it yourself, by message or however your family talks."
       >
         <SheetInput
           value={email}
