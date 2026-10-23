@@ -53,3 +53,13 @@ export function goBackOr(fallback: Href) {
   if (router.canGoBack()) router.back();
   else router.replace(fallback);
 }
+
+/**
+ * Switching family or signing out: back to Home first, so nothing left on
+ * screen belongs to the family (or the person) being left.
+ */
+export function leaveFor(change: () => void) {
+  if (router.canDismiss()) router.dismissAll();
+  router.replace("/");
+  change();
+}

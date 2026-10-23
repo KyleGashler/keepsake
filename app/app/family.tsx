@@ -16,9 +16,11 @@ import {
 } from "../src/api";
 import { useSession } from "../src/auth/session-context";
 import { VerifyEmailNudge } from "../src/components/account-screens";
+import { FamilySwitchSheet } from "../src/components/family-switcher";
 import { ActionSheet, Field, Sheet, SheetButton, SheetError, SheetInput, type SheetAction } from "../src/components/sheet";
 import { AppHeader, Avatar, ErrorState, Loading, PreviewNote, Screen, SectionHeader } from "../src/components/ui";
 import { friendlyError, monthDay } from "../src/format";
+import { leaveFor } from "../src/routes";
 import { INVITE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from "../src/roles";
 import { canCopy, copyLink, shareLink } from "../src/share-link";
 import { SUPPORT_EMAIL } from "../src/support";
@@ -30,16 +32,6 @@ const SETTINGS = [
   { icon: "download-outline" as const, label: "Export the archive", detail: "Originals, always" },
   { icon: "help-circle-outline" as const, label: "Support", detail: SUPPORT_EMAIL },
 ];
-
-/**
- * Switching family or signing out: back to Home first, so nothing left on
- * screen belongs to the family (or the person) being left.
- */
-function leaveFor(change: () => void) {
-  if (router.canDismiss()) router.dismissAll();
-  router.replace("/");
-  change();
-}
 
 /**
  * Family Hub is administrative rather than emotional, which is why it's a modal
@@ -267,19 +259,7 @@ export default function FamilyHubScreen() {
 
         <PreviewNote>Billing isn't set up in this build yet.</PreviewNote>
 
-        <ActionSheet
-          visible={switching}
-          onClose={() => setSwitching(false)}
-          title="Switch family"
-          subtitle="Which archive would you like to look at?"
-          actions={session.memberships.map((m) => ({
-            label: m.familyId === session.family?.familyId ? `${m.familyName} (current)` : m.familyName,
-            icon: "people-outline" as const,
-            onPress: () => {
-              if (m.familyId !== session.family?.familyId) leaveFor(() => session.selectFamily(m.familyId));
-            },
-          }))}
-        />
+        <FamilySwitchSheet visible={switching} onClose={() => setSwitching(false)} />
 
         <ActionSheet
           visible={managing !== null}

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiSend, useApi, type LibraryPayload, type LibraryPillar, type PillarKey } from "../../../src/api";
 import { useCanContribute } from "../../../src/auth/session-context";
 import { Column, PageHeader, PhotoCard } from "../../../src/components/journey";
+import { FamilyEyebrow } from "../../../src/components/family-switcher";
 import { ActionSheet, SheetError } from "../../../src/components/sheet";
 import { ErrorState, Loading } from "../../../src/components/ui";
 import { pickAndUploadImage } from "../../../src/pick-image";
@@ -81,7 +82,7 @@ export default function LibraryScreen() {
     >
       <Column>
         <PageHeader
-          eyebrow="Little by little"
+          eyebrow={<FamilyEyebrow />}
           title="Library"
           sparkle
           subtitle="A comprehensive storykeeping archive."

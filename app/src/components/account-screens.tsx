@@ -193,7 +193,7 @@ export function ChooseFamilyScreen() {
     <AuthFrame
       eyebrow="Welcome back"
       title="Which archive?"
-      subtitle="You belong to more than one family. You can switch any time from Family Hub."
+      subtitle="You belong to more than one family. To switch later, tap the family name at the top of Home."
       footer={<SignedInAs />}
     >
       <View>

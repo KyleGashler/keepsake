@@ -6,6 +6,7 @@ import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "re
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
 import { Column, PageHeader } from "../../src/components/journey";
+import { FamilyEyebrow } from "../../src/components/family-switcher";
 import { ErrorState, Loading } from "../../src/components/ui";
 import { colors, MAX_WIDTH, radius, spacing } from "../../src/theme";
 
@@ -49,7 +50,7 @@ export default function MosaicScreen() {
     >
       <Column>
         <PageHeader
-          eyebrow="Little by little"
+          eyebrow={<FamilyEyebrow />}
           title="Mosaic"
           sparkle
           subtitle="Not by date, not by folder — by how it all feels together."

@@ -123,8 +123,8 @@ export function PageHeader({
   children,
 }: {
   title: string;
-  /** e.g. "Little by little" — rendered in spaced capitals. */
-  eyebrow?: string;
+  /** e.g. "Little by little" — rendered in spaced capitals. Or a ready-made one, like `FamilyEyebrow`. */
+  eyebrow?: string | ReactNode;
   subtitle?: string;
   /** Shows "‹ {backLabel}" above the title. Goes back, or to `backFallback` on a cold deep link. */
   backLabel?: string;
@@ -172,7 +172,7 @@ export function PageHeader({
 
       <View style={styles.headerMain}>
         <View style={styles.headerText}>
-          {eyebrow ? <Text style={[type.eyebrow, styles.eyebrow]}>{eyebrow}</Text> : null}
+          {typeof eyebrow === "string" ? <Text style={[type.eyebrow, styles.eyebrow]}>{eyebrow}</Text> : eyebrow}
           <View style={styles.titleRow}>
             <Text style={styles.title} accessibilityRole="header">
               {title}
