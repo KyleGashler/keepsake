@@ -14,6 +14,7 @@ import {
   assertUploadable,
   type ByteRange,
   type ObjectHead,
+  type ReadUrlOptions,
   type StorageProvider,
   type UploadTarget,
 } from "./StorageProvider.js";
@@ -45,9 +46,10 @@ function resolveSecret() {
 type TokenScope = "u" | "r";
 
 type UploadClaims = { key: string; mimeType: string; bytes: number; expiresAt: Date };
-type ReadClaims = { key: string; expiresAt: Date };
+type ReadClaims = { key: string; expiresAt: Date; downloadAs?: string };
 
-type Payload = { v: 1; s: TokenScope; k: string; e: number; m?: string; b?: number };
+/** `d`: a read token's download filename (served as an attachment). */
+type Payload = { v: 1; s: TokenScope; k: string; e: number; m?: string; b?: number; d?: string };
 
 export class SignatureError extends Error {}
 
@@ -135,9 +137,15 @@ export class LocalDiskProvider implements StorageProvider {
     return true;
   }
 
-  async getReadUrl(key: string, ttlSeconds: number): Promise<string> {
+  async getReadUrl(key: string, ttlSeconds: number, options?: ReadUrlOptions): Promise<string> {
     assertSafeKey(key);
-    const token = sign({ v: 1, s: "r", k: key, e: Math.floor(Date.now() / 1000) + ttlSeconds });
+    const token = sign({
+      v: 1,
+      s: "r",
+      k: key,
+      e: Math.floor(Date.now() / 1000) + ttlSeconds,
+      ...(options?.downloadAs ? { d: options.downloadAs } : {}),
+    });
     return `/media/o/${token}`;
   }
 
@@ -183,7 +191,7 @@ export class LocalDiskProvider implements StorageProvider {
 
   verifyReadToken(token: string): ReadClaims {
     const p = verify(token, "r");
-    return { key: p.k, expiresAt: new Date(p.e * 1000) };
+    return { key: p.k, expiresAt: new Date(p.e * 1000), ...(typeof p.d === "string" ? { downloadAs: p.d } : {}) };
   }
 
   /**

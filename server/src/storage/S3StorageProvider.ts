@@ -19,8 +19,10 @@ import {
   assertFamilyPrefix,
   assertSafeKey,
   assertUploadable,
+  attachmentDisposition,
   type ByteRange,
   type ObjectHead,
+  type ReadUrlOptions,
   type StorageProvider,
   type UploadTarget,
 } from "./StorageProvider.js";
@@ -187,7 +189,7 @@ export class S3StorageProvider implements StorageProvider {
     return versions + deleteMarkers <= 1;
   }
 
-  async getReadUrl(key: string, ttlSeconds: number): Promise<string> {
+  async getReadUrl(key: string, ttlSeconds: number, options?: ReadUrlOptions): Promise<string> {
     assertSafeKey(key);
     return getSignedUrl(
       this.presigner,
@@ -197,6 +199,8 @@ export class S3StorageProvider implements StorageProvider {
         // Same policy as the local `/media/o` route: family media must never sit
         // in a shared cache, nor outlive the URL that fetched it.
         ResponseCacheControl: `private, max-age=${ttlSeconds}`,
+        // A `response-content-disposition` override, inside the signature.
+        ...(options?.downloadAs ? { ResponseContentDisposition: attachmentDisposition(options.downloadAs) } : {}),
       }),
       { expiresIn: ttlSeconds },
     );

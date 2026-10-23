@@ -31,7 +31,7 @@ import { colors, fonts, radius, spacing, type } from "../src/theme";
 const SETTINGS = [
   { icon: "lock-closed-outline" as const, label: "Privacy & ownership", detail: "Your family owns every memory" },
   { icon: "card-outline" as const, label: "Subscription", detail: "Not billed in this build" },
-  { icon: "download-outline" as const, label: "Export the archive", detail: "Originals, always" },
+  { icon: "download-outline" as const, label: "Downloading", detail: "Per memory: open one, then ⋯ → Download" },
   { icon: "help-circle-outline" as const, label: "Support", detail: SUPPORT_EMAIL },
 ];
 

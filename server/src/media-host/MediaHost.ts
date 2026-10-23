@@ -46,6 +46,28 @@ export interface MediaHost {
   playbackUrl: (playbackId: string, kind: "hls" | "audio", durationS: number | null) => Promise<string>;
   /** Signed poster frame. */
   posterUrl: (playbackId: string, durationS: number | null) => Promise<string>;
+  /**
+   * The signed `audio.m4a` rendition, served as an attachment named
+   * `filename` (Mux's `download` option, carried in the token's claims).
+   * Give the extension too: without one Mux names the file `.mp4`.
+   */
+  audioDownloadUrl: (playbackId: string, filename: string) => Promise<string>;
+  /**
+   * Ask for temporary master access: Mux prepares the asset's full-quality
+   * master as an MP4 and serves it at a URL that works for 24 hours, then
+   * withdraws it. Mux refuses a second request while a master exists, so
+   * `requested` says whether this call started one (false: one was already
+   * there, and `master` is its current state).
+   */
+  requestMaster: (assetId: string) => Promise<{ requested: boolean; master: HostMaster | null }>;
+}
+
+/** An asset's master, while master access is on. */
+export interface HostMaster {
+  /** preparing, ready, errored */
+  status: string;
+  /** Only when ready. Append `download=<filename>`, and change nothing else. */
+  url: string | null;
 }
 
 export interface HostUpload {
@@ -83,6 +105,7 @@ const trackSchema = z.object({
 const renditionFileSchema = z.object({ name: text, status: text });
 const renditionsSchema = z.object({ files: z.array(renditionFileSchema).nullish() });
 const errorsSchema = z.object({ type: text, messages: z.array(z.string()).nullish() });
+const masterSchema = z.object({ status: text, url: text });
 
 export const assetSnapshotSchema = z.object({
   id: z.string(),
@@ -94,6 +117,8 @@ export const assetSnapshotSchema = z.object({
   tracks: z.array(trackSchema).nullish(),
   static_renditions: renditionsSchema.nullish(),
   errors: errorsSchema.nullish(),
+  master_access: text,
+  master: masterSchema.nullish(),
 });
 
 export type AssetSnapshot = z.infer<typeof assetSnapshotSchema>;

@@ -3,7 +3,7 @@ import { MediaHostUnavailableError, type MediaHost } from "./MediaHost.js";
 import { MuxMediaHost, type MuxConfig } from "./MuxMediaHost.js";
 
 export { MediaHostError, MediaHostUnavailableError } from "./MediaHost.js";
-export type { AssetSnapshot, HostUpload, MediaHost } from "./MediaHost.js";
+export type { AssetSnapshot, HostMaster, HostUpload, MediaHost } from "./MediaHost.js";
 export { verifyMuxWebhook } from "./MuxMediaHost.js";
 
 const REQUIRED = ["MUX_TOKEN_ID", "MUX_TOKEN_SECRET", "MUX_SIGNING_KEY_ID", "MUX_SIGNING_KEY_PRIVATE"] as const;
