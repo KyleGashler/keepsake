@@ -1,19 +1,19 @@
 # Keepsake — v0 prototype
 
 A working slice of Keepsake: a React Native app and an API, wired together and
-runnable with one command. **Dev-mode identity and no AI in this build** — a
-bearer token is taken at face value (see [Auth](#auth)) and nothing is
-generated. It exists to make the product architecture tangible enough to argue
-with.
+runnable with one command. **No AI in this build** — nothing is generated.
+Locally, sign-in is a development stand-in (an email, no password); the hosted
+build uses Firebase Auth (see [Auth](#auth)). It exists to make the product
+architecture tangible enough to argue with.
 
 ```bash
 docker compose up --build
 ```
 
-Then open **http://localhost:8081**. The database seeds itself on first boot
-with one demo family (the Bryners — two parents, two kids, two grandparents,
-24 memories across 36 collections), so there's something real to browse
-immediately.
+Then open **http://localhost:8081** and sign in as `demo@keepsake.local` (the
+form fills it in). The database seeds itself on first boot with one demo family
+(the Bryners — two parents, two kids, two grandparents, 24 memories across 36
+collections), so there's something real to browse immediately.
 
 | Service | URL | What it is |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ media, who was there, and inline editing of the narrative.
 
 These are stubbed and labelled in the UI rather than faked:
 
-- **Auth** — the request context, family scoping and roles are real; the *verification* isn't. A `dev:<email>` token is believed without proof. See [Auth](#auth).
+- **Roles** — sign-in, family scoping and the OWNER/CONTRIBUTOR/VIEWER memberships are real; what each role may do isn't enforced yet (A4). Locally a `dev:<email>` token is believed without proof. See [Auth](#auth).
 - **AI** — no narratives, tagging, or generated prompts yet. Transcripts are real: Mux's generated captions of each clip — see [Video and audio (Mux)](#video-and-audio-mux).
 - **Audio capture** — recording and playback need real files; the written form stands in, and typed transcripts land in the field transcription will eventually populate.
 - **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
@@ -48,28 +48,63 @@ These are stubbed and labelled in the UI rather than faked:
 ## Auth
 
 Every `/api` route except `/api/health` needs a signed-in user, and every query
-is scoped to one family. What's missing is the part that checks a credential is
-genuine — that's a `TokenVerifier`, and the only implementation so far is the
-development one.
+is scoped to one family. The API checks the credential with a `TokenVerifier`
+([server/src/auth/](server/src/auth/)); the app gets it from an `AuthProvider`
+([app/src/auth/](app/src/auth/)). Each side has two, chosen by an environment
+variable, and the two sides must agree:
 
-```
-Authorization: Bearer dev:ali@example.com
-```
+| Mode | API (`AUTH_MODE`) | App (`EXPO_PUBLIC_AUTH_MODE`) | Where |
+| --- | --- | --- | --- |
+| `dev` (default) | `DevTokenVerifier` believes `Bearer dev:<email>` | `DevAuthProvider`: an email field, no password | compose, Expo Go against a local API |
+| `firebase` | `FirebaseTokenVerifier` checks a Firebase ID token | `FirebaseAuthProvider`: email + password via the Firebase JS SDK | Fly |
 
-`DevTokenVerifier` believes that token: it signs you in as `ali@example.com`,
-creating the `User` row on first sight. There is no password and no signature.
-It is active only when `AUTH_MODE=dev` (the default outside production).
+**Dev mode.** `Bearer dev:ali@example.com` signs you in as `ali@example.com`,
+creating the `User` row on first sight. There is no password and no signature,
+and every dev identity counts as email-verified. `demo@keepsake.local` is the
+seeded OWNER of the demo family; any other address starts an account with no
+family, and the app offers to create one.
+
+**Firebase mode.** The app signs in with the Firebase JS SDK — the same code on
+the web and in Expo Go, no native module — and sends the user's ID token. The
+API verifies it with `firebase-admin` initialised with nothing but the project
+id: an ID token is checked against Google's public signing keys, so no
+service account is needed (one will be for account deletion, A16). A token
+without an email is refused. If Google's keys can't be fetched the API answers
+`503 auth_unavailable` rather than `401`, so the app doesn't sign anyone out
+over an outage. Sign-up sends Firebase's verification email; an unverified
+account can use the app, but accepting an invite will require a verified
+address (A4 — `req.ctx.emailVerified`, also on `GET /me`).
+
+**One email, one account.** `User.email` is unique. When a new Firebase
+identity's email already belongs to a `dev:` user, a *verified* address takes
+that user over (its `authProviderId` is rebound, memberships and all — this is
+how a real account inherits a family built under dev auth); unverified, the API
+answers `403 verify_email` and the app shows a verify-your-email screen. An
+email that belongs to another real account is `409 email_in_use`.
 
 | Variable | Meaning |
 | --- | --- |
-| `AUTH_MODE` | `dev` is the only implemented mode. `firebase` arrives with B1. |
-| `DEV_DEFAULT_USER` | An email. In dev mode, a request with **no** `Authorization` header is treated as that user. |
-| `ALLOW_DEV_AUTH_IN_PROD` | `1` lets `AUTH_MODE=dev` run under `NODE_ENV=production`. Without it the server refuses to boot, which is the point. |
+| `AUTH_MODE` | `dev` (default) or `firebase`. |
+| `FIREBASE_PROJECT_ID` | Required with `firebase` — the server refuses to boot without it. The project whose ID tokens are accepted. |
+| `DEV_DEFAULT_USER` | Dev mode only. A request with **no** `Authorization` header is treated as this email (compose sets `demo@keepsake.local`, so a bare `curl` works). |
+| `ALLOW_DEV_AUTH_IN_PROD` | `1` lets `AUTH_MODE=dev` run under `NODE_ENV=production`. Without it the server refuses to boot, which is the point. Nothing deployed sets it. |
 
-`DEV_DEFAULT_USER` is set to `demo@keepsake.local` (the seeded OWNER of the
-demo family) in `docker-compose.yml` and `fly.toml`. That's a stopgap: the app
-doesn't send a token yet, and won't until A8 gives it a sign-in screen. Unset
-the variable and the API behaves like production — no token, no access.
+The app reads these at bundle time (copy [app/.env.example](app/.env.example)
+to `app/.env` for local Firebase work; the root `Dockerfile` bakes the
+production values into the hosted web build):
+
+| Variable | Meaning |
+| --- | --- |
+| `EXPO_PUBLIC_AUTH_MODE` | `dev` (default) or `firebase`. |
+| `EXPO_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_APP_ID` | The Firebase web app's config (Project settings → Your apps). Public identifiers, not secrets. Required with `firebase`. |
+
+There are two Firebase projects, dev and prod: point a local Firebase build at
+dev, and keep `FIREBASE_PROJECT_ID` on Fly equal to the project the hosted
+bundle was built for.
+
+The app puts `Authorization: Bearer <token>` and `x-family-id` on every API
+call (`apiFetch` in [app/src/api.ts](app/src/api.ts)), and a `401` signs it
+out. Upload targets get neither — they are signed in their URL.
 
 A user in several families must say which one they mean:
 
@@ -96,10 +131,14 @@ curl -s -X POST $API/api/families -H "Authorization: $TOKEN" \
 belong to an archive; creating one makes you its OWNER and gives you a `Person`
 row inside it.
 
+The app asks `GET /api/me` after sign-in: no membership shows "Start your
+family's archive", several show a picker (the choice is remembered, and Family
+Hub can switch), one goes straight in.
+
 **Production needs a real verifier.** `createTokenVerifier()` throws at boot
-rather than serve dev auth under `NODE_ENV=production`, unless
-`ALLOW_DEV_AUTH_IN_PROD=1` is set — which the hosted demo does today, and logs
-loudly about, until the Firebase verifier (B1) replaces it.
+rather than serve dev auth under `NODE_ENV=production` (unless
+`ALLOW_DEV_AUTH_IN_PROD=1`), and rather than run `firebase` mode without a
+project id. The hosted demo runs `AUTH_MODE=firebase`.
 
 Media bytes are reachable without a bearer token because the client loads them
 as plain `<img>` URLs: `/media/gen/*` placeholders are public, and uploaded
@@ -343,6 +382,7 @@ app/                     Expo + expo-router
   app/(tabs)/              the five tabs; library/ is a nested stack (landing → children → child → collection)
   app/memory/[id].tsx      the immersive memory page
   src/api.ts               API client + response types
+  src/auth/                AuthProvider (dev / Firebase), session phases, chosen family
   src/theme.ts             palette, fonts, type scale, spacing
   src/components/journey.tsx  redesign primitives: PageHeader, PhotoCard, SearchField, IconDisc, ListRow, Sparkle
   src/routes.ts            route paths + openInLibrary

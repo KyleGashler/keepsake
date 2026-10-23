@@ -85,6 +85,11 @@ function friendly(err: unknown): AuthError {
       return new AuthError("This account has been turned off. Write to hello@keepsake.app for help.", code);
     case "auth/requires-recent-login":
       return new AuthError("Sign in again to do that.", code);
+    case "auth/invalid-api-key":
+    case "auth/api-key-not-valid":
+    case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
+      // A build with the wrong (or placeholder) EXPO_PUBLIC_FIREBASE_* values.
+      return new AuthError("Sign-in isn't set up correctly in this build. Please let us know.", code);
     default:
       return new AuthError("Something went wrong. Please try again.", code);
   }
