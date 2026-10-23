@@ -53,6 +53,10 @@ export const colors = {
   sage: brand.sage,
   duskBlue: brand.duskBlue,
   terracotta: brand.terracotta,
+  /** Delete, and anything else that can't be undone — terracotta deepened until small text holds AA on white. */
+  danger: "#B0452C",
+  /** The quiet wash behind a warning about what can't be undone. */
+  dangerSoft: "#FBEDE7",
   forest: brand.forest,
   overlay: "rgba(18,63,69,0.55)",
 };

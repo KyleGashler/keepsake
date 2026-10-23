@@ -253,7 +253,10 @@ export function SheetInput({
   );
 }
 
-/** The sheet's buttons: a filled teal pill, or a quiet outlined one. */
+/**
+ * The sheet's buttons: a filled teal pill, a quiet outlined one, or a filled
+ * red one (`danger`) for what can't be undone.
+ */
 export function SheetButton({
   label,
   onPress,
@@ -265,14 +268,14 @@ export function SheetButton({
 }: {
   label: string;
   onPress: () => void;
-  variant?: "primary" | "secondary";
+  variant?: "primary" | "secondary" | "danger";
   busy?: boolean;
   disabled?: boolean;
   icon?: keyof typeof Ionicons.glyphMap;
   style?: StyleProp<ViewStyle>;
 }) {
-  const primary = variant === "primary";
-  const fg = primary ? colors.onPrimary : colors.ink;
+  const filled = variant !== "secondary";
+  const fg = filled ? colors.onPrimary : colors.ink;
   return (
     <Pressable
       onPress={onPress}
@@ -281,7 +284,7 @@ export function SheetButton({
       accessibilityState={{ disabled: disabled || busy, busy }}
       style={({ pressed }) => [
         styles.button,
-        primary ? styles.buttonPrimary : styles.buttonSecondary,
+        BUTTON_VARIANT[variant],
         (disabled || busy) && styles.buttonDisabled,
         pressed && styles.pressed,
         style,
@@ -393,6 +396,7 @@ const styles = StyleSheet.create({
   },
   buttonPrimary: { backgroundColor: colors.primary },
   buttonSecondary: { borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
+  buttonDanger: { backgroundColor: colors.danger },
   buttonDisabled: { opacity: 0.5 },
   buttonLabel: { fontFamily: fonts.sansBold, fontSize: 16 },
 
@@ -402,7 +406,13 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     padding: spacing.md,
     borderRadius: radius.sm,
-    backgroundColor: "#FBEDE7",
+    backgroundColor: colors.dangerSoft,
   },
   errorText: { flex: 1, fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 20, color: colors.ink },
 });
+
+const BUTTON_VARIANT = {
+  primary: styles.buttonPrimary,
+  secondary: styles.buttonSecondary,
+  danger: styles.buttonDanger,
+} as const;
