@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
@@ -20,7 +20,16 @@ import { DeleteAccountSheet, DeleteFamilySheet } from "../src/components/deletio
 import { FamilySwitchSheet } from "../src/components/family-switcher";
 import { AddPersonSheet } from "../src/components/person-sheets";
 import { ActionSheet, Field, Sheet, SheetButton, SheetError, SheetInput, type SheetAction } from "../src/components/sheet";
-import { AppHeader, Avatar, ErrorState, Loading, PreviewNote, Screen, SectionHeader } from "../src/components/ui";
+import {
+  AppHeader,
+  Avatar,
+  ErrorState,
+  Loading,
+  PreviewNote,
+  Screen,
+  SectionHeader,
+  SmallButton,
+} from "../src/components/ui";
 import { friendlyError, monthDay } from "../src/format";
 import { leaveFor } from "../src/routes";
 import { INVITE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from "../src/roles";
@@ -68,6 +77,13 @@ export default function FamilyHubScreen() {
   const [removing, setRemoving] = useState<FamilyMember | null>(null);
   const [inviteActions, setInviteActions] = useState<Invite | null>(null);
   const [addingPerson, setAddingPerson] = useState(false);
+  // Home's "Invite" links here with ?invite=1, which opens the invite sheet.
+  const linkedInvite = useLocalSearchParams<{ invite?: string }>().invite;
+  const openInvite = inviting ?? (linkedInvite && isOwner ? {} : null);
+  const closeInvite = () => {
+    setInviting(null);
+    if (linkedInvite) router.setParams({ invite: undefined });
+  };
   const [deleting, setDeleting] = useState<"family" | "account" | null>(null);
   const [notice, setNotice] = useState<HubNotice | null>(null);
 
@@ -352,12 +368,12 @@ export default function FamilyHubScreen() {
 
         {deleting === "account" ? <DeleteAccountSheet onClose={() => setDeleting(null)} /> : null}
 
-        {inviting ? (
+        {openInvite ? (
           <InviteSheet
             familyName={data.family.name}
             people={invitable}
-            initialPersonId={inviting.personId}
-            onClose={() => setInviting(null)}
+            initialPersonId={openInvite.personId}
+            onClose={closeInvite}
             onCreated={() => void refreshAll()}
           />
         ) : null}
@@ -601,34 +617,6 @@ function Initials({ name }: { name: string }) {
   );
 }
 
-function SmallButton({
-  label,
-  icon,
-  filled = false,
-  accessibilityLabel,
-  onPress,
-}: {
-  label: string;
-  icon?: keyof typeof Ionicons.glyphMap;
-  filled?: boolean;
-  accessibilityLabel?: string;
-  onPress: () => void;
-}) {
-  const color = filled ? colors.onPrimary : colors.ink;
-  return (
-    <Pressable
-      onPress={onPress}
-      hitSlop={6}
-      accessibilityRole="button"
-      accessibilityLabel={accessibilityLabel ?? label}
-      style={({ pressed }) => [styles.smallButton, filled && styles.smallButtonFilled, pressed && { opacity: 0.7 }]}
-    >
-      {icon ? <Ionicons name={icon} size={15} color={color} /> : null}
-      <Text style={[styles.smallButtonLabel, { color }]}>{label}</Text>
-    </Pressable>
-  );
-}
-
 /**
  * Make an invite: who it's for (someone already in the archive, or someone
  * new), what they'll be able to do, and optionally an address to email it to.
@@ -867,19 +855,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   initialsText: { fontFamily: fonts.sansBold, fontSize: 14, color: colors.inkSoft },
-  smallButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    height: 32,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  smallButtonFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
-  smallButtonLabel: { fontFamily: fonts.sansBold, fontSize: 13.5 },
   linkBox: {
     padding: spacing.md,
     borderRadius: radius.sm,

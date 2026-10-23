@@ -556,7 +556,8 @@ export type HomePayload = {
   family: { id: string; name: string };
   greeting: { salutation: string; message: string };
   people: Person[];
-  prompt: { id: string; text: string; subtitle: string | null; imageUrl: string } | null;
+  /** Today's; the family's own prompts, or built-in ones when it has none. */
+  prompt: { id: string; text: string; subtitle: string | null; imageUrl: string };
   storySoFar: MemoryCard[];
   updates: {
     id: string;
@@ -566,6 +567,13 @@ export type HomePayload = {
     createdAt: string;
   }[];
   stats: { memoryCount: number; personCount: number };
+  /** Which first steps the family has taken, for Home's getting-started list. */
+  gettingStarted: {
+    firstMemory: boolean;
+    addedSomeone: boolean;
+    addedChild: boolean;
+    invitedSomeone: boolean;
+  };
 };
 
 /** One of the three Story Pillars, as the Library landing shows it. */

@@ -15,7 +15,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
-import { colors, layout, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
+import { colors, fonts, layout, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
 
 export function Screen({
@@ -150,6 +150,35 @@ export function SectionHeader({
   );
 }
 
+/** A compact pill button, the size of a section header's action. */
+export function SmallButton({
+  label,
+  icon,
+  filled = false,
+  accessibilityLabel,
+  onPress,
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  filled?: boolean;
+  accessibilityLabel?: string;
+  onPress: () => void;
+}) {
+  const color = filled ? colors.onPrimary : colors.ink;
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      style={({ pressed }) => [styles.smallButton, filled && styles.smallButtonFilled, pressed && { opacity: 0.7 }]}
+    >
+      {icon ? <Ionicons name={icon} size={15} color={color} /> : null}
+      <Text style={[styles.smallButtonLabel, { color }]}>{label}</Text>
+    </Pressable>
+  );
+}
+
 export function Card({
   children,
   style,
@@ -187,6 +216,12 @@ export function Avatar({ person, size = 56 }: { person: Person; size?: number })
         contentFit="cover"
         transition={200}
       />
+      {/* The avatar is a generated orb, so their initials say whose it is. */}
+      <View style={styles.initialsWrap} pointerEvents="none">
+        <Text style={[styles.initials, { fontSize: Math.round(size * 0.34) }]} allowFontScaling={false}>
+          {person.initials}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -432,6 +467,19 @@ const styles = StyleSheet.create({
     marginTop: layout.section,
     marginBottom: spacing.md,
   },
+  smallButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 32,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.surface,
+  },
+  smallButtonFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
+  smallButtonLabel: { fontFamily: fonts.sansBold, fontSize: 13.5 },
   card: {
     backgroundColor: colors.surface,
     borderRadius: radius.lg,
@@ -441,6 +489,8 @@ const styles = StyleSheet.create({
     ...shadow,
   },
   pressed: { opacity: 0.72 },
+  initialsWrap: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" },
+  initials: { fontFamily: fonts.sansBold, color: "#FFF7EF", letterSpacing: 0.5 },
   personChip: { width: 74, alignItems: "center", gap: 6 },
   personName: { fontSize: 13, fontWeight: "600", color: colors.ink },
   personRelation: { fontSize: 11, color: colors.muted },
