@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiSend, useApi, type LibraryPayload, type LibraryPillar, type PillarKey } from "../../../src/api";
+import { useCanContribute } from "../../../src/auth/session-context";
 import { Column, PageHeader, PhotoCard } from "../../../src/components/journey";
 import { ActionSheet, SheetError } from "../../../src/components/sheet";
 import { ErrorState, Loading } from "../../../src/components/ui";
@@ -28,6 +29,7 @@ export default function LibraryScreen() {
   const [busy, setBusy] = useState<PillarKey | null>(null);
   const [menuFor, setMenuFor] = useState<LibraryPillar | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const canContribute = useCanContribute();
 
   useFocusEffect(
     useCallback(() => {
@@ -101,7 +103,7 @@ export default function LibraryScreen() {
               subtitle={pillar.tagline}
               imageUrl={pillar.coverUrl}
               onPress={() => open(pillar)}
-              onEdit={() => editCover(pillar)}
+              onEdit={canContribute ? () => editCover(pillar) : undefined}
               editLabel={`Change the ${pillar.name} cover`}
               busy={busy === pillar.key}
             />

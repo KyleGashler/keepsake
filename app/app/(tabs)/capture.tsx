@@ -4,7 +4,8 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { ShootingStar } from "../../src/components/brand";
-import { AppHeader, Button, Screen } from "../../src/components/ui";
+import { AppHeader, Button, Screen, ViewOnlyState } from "../../src/components/ui";
+import { useCanContribute } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
 import { colors, radius, spacing, type } from "../../src/theme";
 
@@ -67,7 +68,20 @@ function toAssets(assets: ImagePicker.ImagePickerAsset[]): DraftAsset[] {
   }));
 }
 
-export default function CaptureScreen() {
+/** A VIEWER has no Capture tab, but a link can still land here. */
+export default function CaptureRoute() {
+  if (!useCanContribute()) {
+    return (
+      <>
+        <AppHeader subtitle="Capture" title="Preserve a moment" />
+        <ViewOnlyState onBack={() => router.replace("/")} />
+      </>
+    );
+  }
+  return <CaptureScreen />;
+}
+
+function CaptureScreen() {
   const [busy, setBusy] = useState<string | null>(null);
   // "Capture a moment" opens in place to ask which: a photo or a video.
   const [momentOpen, setMomentOpen] = useState(false);

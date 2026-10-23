@@ -42,6 +42,7 @@ import { MemorySheets, type SheetKind } from "../../src/components/memory/sheets
 import { MediaViewer } from "../../src/components/memory/viewer";
 import { WaveformPlayer } from "../../src/components/memory/waveform";
 import { Button, ErrorState, Loading, NotFoundState } from "../../src/components/ui";
+import { useCanContribute } from "../../src/auth/session-context";
 import { errorMessage, seasonOf, shortDate } from "../../src/format";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
 import { brand, colors, fonts, MAX_WIDTH, radius, shadow, spacing, type } from "../../src/theme";
@@ -80,6 +81,9 @@ export default function MemoryScreen() {
   const [pastHero, setPastHero] = useState(false);
   // Optimistic: the heart fills on tap, and goes back if the server says no.
   const [favorite, setFavorite] = useState<boolean | null>(null);
+  // A VIEWER reads (and keeps favourites, which are their own); every way
+  // into editing the memory is left out for them.
+  const canContribute = useCanContribute();
 
   // Coming back from a related memory (or one deleted from there) shows
   // what's true now. The hero pauses while you're away.
@@ -182,13 +186,20 @@ export default function MemoryScreen() {
     }
   }
 
+  const can = editHandlers(canContribute, {
+    more: () => setSheet("options"),
+    edit: () => setSheet("edit"),
+    retry: retryTranscripts,
+    editTranscript: startTranscriptEdit,
+  });
+
   const actions = (
     <TopActions
       floating={Boolean(hero)}
       favorite={isFavorite}
       onBack={back}
       onFavorite={toggleFavorite}
-      onMore={() => setSheet("options")}
+      onMore={can.more}
     />
   );
 
@@ -278,19 +289,24 @@ export default function MemoryScreen() {
               <Text style={[styles.title, !hero && styles.titleLarge]} accessibilityRole="header">
                 {memory.title}
               </Text>
-              <Pressable
-                onPress={() => setSheet("edit")}
-                hitSlop={10}
-                accessibilityRole="button"
-                accessibilityLabel="Edit memory"
-                style={({ pressed }) => [styles.pencil, pressed && { opacity: 0.6 }]}
-              >
-                <Ionicons name="pencil-outline" size={20} color={colors.inkSoft} />
-              </Pressable>
+              {can.edit ? (
+                <Pressable
+                  onPress={() => setSheet("edit")}
+                  hitSlop={10}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit memory"
+                  style={({ pressed }) => [styles.pencil, pressed && { opacity: 0.6 }]}
+                >
+                  <Ionicons name="pencil-outline" size={20} color={colors.inkSoft} />
+                </Pressable>
+              ) : null}
             </View>
 
             {view === "story" && memory.story ? (
-              <Pressable onLongPress={() => setSheet("edit")} style={{ marginTop: spacing.sm }}>
+              <Pressable
+                onLongPress={can.edit}
+                style={{ marginTop: spacing.sm }}
+              >
                 <StoryText story={memory.story} textOnly={memory.isTextOnly} />
               </Pressable>
             ) : null}
@@ -312,13 +328,13 @@ export default function MemoryScreen() {
                     status={transcriptStatus}
                     severalClips={clips.length > 1}
                     retrying={retrying}
-                    onRetry={retryTranscripts}
-                    onEdit={startTranscriptEdit}
+                    onRetry={can.retry}
+                    onEdit={can.editTranscript}
                   />
                 )}
               </View>
             ) : null}
-            {view === null ? (
+            {view === null && can.edit ? (
               <Pressable onPress={() => setSheet("edit")} style={styles.editLink} accessibilityRole="button">
                 <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
                 <Text style={styles.editLinkText}>Write the story of this memory</Text>
@@ -461,6 +477,18 @@ function HeroMedia({
  * white discs and stay put while the page scrolls under them; without one
  * they're an ordinary bar on paper.
  */
+type EditHandlers = {
+  more?: () => void;
+  edit?: () => void;
+  retry?: () => void;
+  editTranscript?: () => void;
+};
+
+/** Every way into changing the memory — or none, for someone who can only view. */
+function editHandlers(canContribute: boolean, handlers: Required<EditHandlers>): EditHandlers {
+  return canContribute ? handlers : {};
+}
+
 function TopActions({
   floating,
   favorite,
@@ -472,7 +500,8 @@ function TopActions({
   favorite: boolean;
   onBack: () => void;
   onFavorite: () => void;
-  onMore: () => void;
+  /** Absent for a VIEWER: every option in that menu changes the memory. */
+  onMore?: () => void;
 }) {
   const disc = [styles.disc, floating ? styles.discFloating : styles.discFlat];
   return (
@@ -495,9 +524,11 @@ function TopActions({
             color={favorite ? brand.terracotta : colors.ink}
           />
         </Pressable>
-        <Pressable onPress={onMore} hitSlop={8} accessibilityRole="button" accessibilityLabel="More options" style={disc}>
-          <Ionicons name="ellipsis-horizontal" size={20} color={colors.ink} />
-        </Pressable>
+        {onMore ? (
+          <Pressable onPress={onMore} hitSlop={8} accessibilityRole="button" accessibilityLabel="More options" style={disc}>
+            <Ionicons name="ellipsis-horizontal" size={20} color={colors.ink} />
+          </Pressable>
+        ) : null}
       </View>
     </View>
   );
@@ -552,8 +583,9 @@ function TranscriptPanel({
   status: TranscriptStatus | null;
   severalClips: boolean;
   retrying: boolean;
-  onRetry: () => void;
-  onEdit: () => void;
+  /** Both absent for a VIEWER, who reads the transcript but can't change it. */
+  onRetry?: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <>
@@ -573,12 +605,14 @@ function TranscriptPanel({
           <Text style={[type.caption, { flex: 1 }]}>
             We couldn't write the transcript for {severalClips ? "a recording" : "this recording"}.
           </Text>
-          <Button
-            label={retrying ? "Trying…" : "Try again"}
-            variant="secondary"
-            onPress={onRetry}
-            disabled={retrying}
-          />
+          {onRetry ? (
+            <Button
+              label={retrying ? "Trying…" : "Try again"}
+              variant="secondary"
+              onPress={onRetry}
+              disabled={retrying}
+            />
+          ) : null}
         </View>
       ) : null}
       {memory.transcript ? (
@@ -587,7 +621,7 @@ function TranscriptPanel({
         </Pressable>
       ) : null}
       {/* Typing one in by hand is always allowed; the pipeline never overwrites it. */}
-      {memory.transcript || status !== "PENDING" ? (
+      {onEdit && (memory.transcript || status !== "PENDING") ? (
         <Pressable onPress={onEdit} style={styles.editLink} accessibilityRole="button">
           <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
           <Text style={styles.editLinkText}>

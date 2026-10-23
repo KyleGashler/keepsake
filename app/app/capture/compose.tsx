@@ -25,7 +25,8 @@ import {
 } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
-import { AppHeader, Button, Loading, Screen } from "../../src/components/ui";
+import { AppHeader, Button, Loading, Screen, ViewOnlyState } from "../../src/components/ui";
+import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
 import { duration, errorMessage } from "../../src/format";
 import { colors, radius, spacing, type } from "../../src/theme";
@@ -58,11 +59,25 @@ function toggle(list: string[], id: string) {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
-export default function ComposeScreen() {
+/** Only someone who may add to the family composes; a VIEWER is told why not. */
+export default function ComposeRoute() {
+  if (!useCanContribute()) {
+    return (
+      <>
+        <AppHeader back subtitle="Capture" title="Preserve a moment" />
+        <ViewOnlyState onBack={() => router.replace("/")} />
+      </>
+    );
+  }
+  return <ComposeScreen />;
+}
+
+function ComposeScreen() {
   const params = useLocalSearchParams<{ prompt?: string; collectionId?: string; mode?: string }>();
   const { data: peopleData } = useApi<{ people: Person[] }>("/api/people");
   const { data: collectionsData } = useApi<{ collections: Collection[] }>("/api/collections");
   const { data: limits } = useApi<UploadLimits>("/api/media/limits");
+  const session = useSession();
 
   // Media picked in Capture is handed over once, on mount.
   const [assets] = useState(() => draft.take());
@@ -96,7 +111,16 @@ export default function ComposeScreen() {
   const missingVideo = params.mode === "video" && !visuals.length;
 
   const people = peopleData?.people ?? [];
-  const author = authorId ?? people.find((p) => p.role === "PARENT")?.id ?? people[0]?.id ?? null;
+  // Whoever is writing, by default: their own Person in this family (a
+  // grandparent who joined by invite writes as themselves), else the first
+  // parent, as before memberships carried one.
+  const self = session.family?.personId;
+  const author =
+    authorId ??
+    (self && people.some((p) => p.id === self) ? self : null) ??
+    people.find((p) => p.role === "PARENT")?.id ??
+    people[0]?.id ??
+    null;
 
   const collections = useMemo(
     () => (collectionsData?.collections ?? []).filter((c) => c.pillar === pillar),

@@ -41,10 +41,40 @@ export class ApiError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    /** The API's `error` code when it sent one (`forbidden_role`, `verify_email`, …). */
+    readonly code?: string,
+    /** The whole JSON body, for the few callers that need more than the code. */
+    readonly body?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
   }
+}
+
+/**
+ * The family's roles allow reading this but not changing it (a VIEWER, or a
+ * CONTRIBUTOR at an owner-only control). The UI hides what a role can't do;
+ * this is for whatever slips through — a stale role, a deep link.
+ */
+export function isForbiddenRole(err: unknown) {
+  return err instanceof ApiError && err.code === "forbidden_role";
+}
+
+const FORBIDDEN_ROLE_MESSAGE = "Your role in this family doesn't allow that. An owner can change it in Family Hub.";
+
+/** An error response as an ApiError: the `error` code if the body is JSON, the text otherwise. */
+async function errorFrom(res: Response) {
+  const text = await res.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    // Not JSON: the text is the message.
+  }
+  const code =
+    body && typeof body === "object" && "error" in body && typeof body.error === "string" ? body.error : undefined;
+  const message = code === "forbidden_role" ? FORBIDDEN_ROLE_MESSAGE : text || res.statusText;
+  return new ApiError(res.status, message, code, body);
 }
 
 /**
@@ -111,7 +141,7 @@ export async function apiSend<T>(
     headers: body === undefined ? undefined : { "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
-  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  if (!res.ok) throw await errorFrom(res);
   return JSON.parse((await res.text()) || "null");
 }
 
@@ -204,7 +234,7 @@ export async function uploadFile(
       const body: Partial<UploadLimits> | null = await res.json().catch(() => null);
       if (body?.maxUploadBytes) throw new Error(tooLargeMessage(type, body.maxUploadBytes));
     }
-    if (!res.ok) throw new Error((await res.text()) || res.statusText);
+    if (!res.ok) throw await errorFrom(res);
     return res.json();
   };
 
@@ -544,3 +574,75 @@ export type MosaicTile = {
   paletteHue: number;
   span: "single" | "wide" | "tall";
 };
+
+// ---- Family Hub, roles and invites -----------------------------------------
+
+/** One account in the family (a FamilyMembership). */
+export type FamilyMember = {
+  userId: string;
+  role: MembershipRole;
+  /** The role in words, from the server ("Owner", "Can add memories", "Can view"). */
+  permission: string;
+  name: string;
+  /** Shown to owners, and to each member for themselves; otherwise null. */
+  email: string | null;
+  isYou: boolean;
+  /** How they appear in the archive; null if their Person was removed. */
+  person: Person | null;
+  joinedAt: string;
+};
+
+/** Someone in the archive without an account: a child, or an adult not yet invited. */
+export type FamilyPerson = Person & {
+  /** Not a child and not linked to an account — an invite can name them. */
+  invitable: boolean;
+};
+
+/** `GET /api/family` */
+export type FamilyPayload = {
+  family: { id: string; name: string; createdAt: string };
+  /** The caller's own role here. */
+  role: MembershipRole;
+  members: FamilyMember[];
+  people: FamilyPerson[];
+  stats: { memoryCount: number; mediaCount: number; collectionCount: number; personCount: number };
+  subscription: { plan: string; status: string };
+};
+
+export type InviteStatus = "valid" | "expired" | "used" | "revoked";
+
+/** An invite as its family's owners see it (`/api/family/invites`). */
+export type Invite = {
+  id: string;
+  role: MembershipRole;
+  email: string | null;
+  personId: string | null;
+  /** The Person it names, or the name typed for someone new; null for neither. */
+  forName: string | null;
+  status: InviteStatus;
+  expiresAt: string;
+  createdAt: string;
+  /** The link to share: `<app>/join/<token>`. */
+  url: string;
+};
+
+/** `POST /api/family/invites` */
+export type InviteCreate = {
+  role: MembershipRole;
+  email?: string;
+  personId?: string;
+  name?: string;
+};
+
+/** `GET /api/invites/:token` — public, so only what the join screen shows. */
+export type InvitePreview = {
+  familyName: string;
+  inviterName: string;
+  role: MembershipRole;
+  forName: string | null;
+  status: InviteStatus;
+  expiresAt: string;
+};
+
+/** `POST /api/invites/:token/accept` */
+export type AcceptedInvite = { membership: Membership };

@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi, type ChildrenPayload } from "../../../../src/api";
+import { useCanContribute } from "../../../../src/auth/session-context";
 import { ChildCardBackdrop } from "../../../../src/components/child-header";
 import { Column, PageHeader, PhotoCard, Sparkle } from "../../../../src/components/journey";
 import { AddChildSheet } from "../../../../src/components/library-sheets";
@@ -21,6 +22,7 @@ export default function ChildProfilesScreen() {
   const { data, error, loading, refetch } = useApi<ChildrenPayload>("/api/children");
   const insets = useSafeAreaInsets();
   const [adding, setAdding] = useState(false);
+  const canContribute = useCanContribute();
 
   // Fresh photos and names after an edit deeper in the stack.
   useFocusEffect(
@@ -56,14 +58,16 @@ export default function ChildProfilesScreen() {
               Add a child and their collections are made for them — milestones, everyday moments, the things
               they say — ready for the first memory.
             </Text>
-            <Pressable
-              onPress={() => setAdding(true)}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
-            >
-              <Ionicons name="add" size={20} color={colors.onPrimary} />
-              <Text style={styles.emptyButtonLabel}>Add a child</Text>
-            </Pressable>
+            {canContribute ? (
+              <Pressable
+                onPress={() => setAdding(true)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+              >
+                <Ionicons name="add" size={20} color={colors.onPrimary} />
+                <Text style={styles.emptyButtonLabel}>Add a child</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
 
@@ -79,19 +83,21 @@ export default function ChildProfilesScreen() {
                 onPress={() => router.push(routes.child(child.id))}
               />
             ))}
-            <Pressable
-              onPress={() => setAdding(true)}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
-            >
-              <View style={styles.addCircle}>
-                <Ionicons name="add" size={24} color={colors.ink} />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.addTitle}>Add a child</Text>
-                <Text style={styles.addBody}>Start another story, little by little.</Text>
-              </View>
-            </Pressable>
+            {canContribute ? (
+              <Pressable
+                onPress={() => setAdding(true)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
+              >
+                <View style={styles.addCircle}>
+                  <Ionicons name="add" size={24} color={colors.ink} />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.addTitle}>Add a child</Text>
+                  <Text style={styles.addBody}>Start another story, little by little.</Text>
+                </View>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </Column>

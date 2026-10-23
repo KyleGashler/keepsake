@@ -21,6 +21,8 @@ import {
 import { AUTH_ACTION_PATH } from "../src/auth";
 import { AuthActionScreen } from "../src/components/auth-action-screen";
 import { SignedOutFlow } from "../src/components/auth-screens";
+import { JoinScreen } from "../src/components/join-screen";
+import { JOIN_PATH_PREFIX } from "../src/roles";
 import { colors } from "../src/theme";
 
 // oxlint-disable-next-line react/only-export-components -- expo-router reads unstable_settings from the layout module
@@ -74,6 +76,7 @@ function Gate() {
   const { phase } = useSession();
   const pathname = usePathname();
   const [actionLinkDone, setActionLinkDone] = useState(false);
+  const [joinDoneFor, setJoinDoneFor] = useState<string | null>(null);
   // The one exception to "one screen per phase": the page that emailed links
   // (verify, reset password) open. Whoever follows one may be signed out,
   // mid-restore, stuck on verify-email, or in the archive — and the link has
@@ -83,12 +86,21 @@ function Gate() {
   // same URL, and app/auth/action.tsx sends anyone who reaches the archive
   // that way to its start.
   const onActionLink = pathname === AUTH_ACTION_PATH && !actionLinkDone;
+  // The same exception for invite links, so an invitee can be signed out or
+  // have no family yet and still land on the invitation rather than on sign-in
+  // or Create Family. The account-problem phases (verify-email takeover,
+  // email in use, can't reach the API) still come first: nothing on the join
+  // screen can get past them, and the URL is still here once they're solved.
+  const joinToken = pathname.startsWith(JOIN_PATH_PREFIX) ? pathname.slice(JOIN_PATH_PREFIX.length) : null;
+  const onJoinLink =
+    joinToken !== null && joinToken !== "" && joinDoneFor !== pathname && !(phase === "verifyEmail" || phase === "emailInUse" || phase === "accountError");
 
   useEffect(() => {
     if (phase !== "restoring" || onActionLink) SplashScreen.hide();
   }, [phase, onActionLink]);
 
   if (onActionLink) return <AuthActionScreen onDone={() => setActionLinkDone(true)} />;
+  if (onJoinLink) return <JoinScreen token={joinToken} onDone={() => setJoinDoneFor(pathname)} />;
 
   switch (phase) {
     case "restoring":

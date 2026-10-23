@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, useApi, type HomePayload } from "../../src/api";
+import { useCanContribute } from "../../src/auth/session-context";
 import { Twinkle } from "../../src/components/brand";
 import { Column, PageHeader } from "../../src/components/journey";
 import {
@@ -58,7 +59,8 @@ export default function HomeScreen() {
 }
 
 function HomeBody({ data }: { data: HomePayload }) {
-  const { prompt } = data;
+  // Today's prompt is an invitation to capture, which a VIEWER can't take up.
+  const prompt = useCanContribute() ? data.prompt : null;
   return (
     <>
       <SectionHeader label="Your People" />

@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ChildSummary, CollectionArchivePayload, MemoryCard, PillarKey } from "../api";
+import { useCanContribute } from "../auth/session-context";
 import { childAge, count, possessive } from "../format";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, routes } from "../routes";
@@ -74,8 +75,11 @@ export function CollectionArchive({
   const groups = groupByYear(memories);
   const Entry = entryRendererFor(collection.kind);
 
-  const capture = () =>
-    router.push({ pathname: "/capture/compose", params: { collectionId: collection.id } });
+  // A VIEWER can't add memories, so the ways in to capture aren't offered.
+  const canContribute = useCanContribute();
+  const capture = canContribute
+    ? () => router.push({ pathname: "/capture/compose", params: { collectionId: collection.id } })
+    : undefined;
   const clearFilters = () => {
     setText("");
     onFiltersChange(NO_FILTERS);
@@ -150,7 +154,7 @@ export function CollectionArchive({
               )}
             </View>
 
-            {groups.length > 0 ? (
+            {groups.length > 0 && capture ? (
               <AddCard
                 title="Add to this collection"
                 subtitle={`Save a new memory to ${collection.name}.`}
@@ -331,17 +335,24 @@ function EmptyCollection({
 }: {
   child: ChildSummary | null;
   name: string;
-  onCapture: () => void;
+  /** Absent for someone who can only view: there's nothing for them to do here yet. */
+  onCapture?: () => void;
 }) {
   return (
     <View style={styles.emptyPanel}>
       <Sparkle size={26} />
       <Text style={styles.emptyTitle}>A page waiting for its first memory</Text>
-      <Text style={styles.emptyBody}>
-        Start {child ? `${possessive(child.name)} ${name}` : name} with a moment worth keeping. It will
-        live here, alongside every one that follows.
-      </Text>
-      <PillButton label="Preserve the first one" icon="add" onPress={onCapture} />
+      {onCapture ? (
+        <>
+          <Text style={styles.emptyBody}>
+            Start {child ? `${possessive(child.name)} ${name}` : name} with a moment worth keeping. It will
+            live here, alongside every one that follows.
+          </Text>
+          <PillButton label="Preserve the first one" icon="add" onPress={onCapture} />
+        </>
+      ) : (
+        <Text style={styles.emptyBody}>Nothing has been saved to {name} yet.</Text>
+      )}
     </View>
   );
 }
