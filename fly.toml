@@ -13,7 +13,9 @@ primary_region = "sjc"
   # space only. (A volume pins the machine to one physical host, which is what
   # failed the 2026-10-17 deploy with "insufficient CPUs".)
   MEDIA_DIR = "/tmp/media"
-  SEED_DEMO = "1"
+  # No SEED_DEMO: with real sign-in nobody could reach a seeded demo family
+  # (it belongs to a dev identity), so production starts empty and the first
+  # person to sign up creates their own.
   # One machine: the job worker (mux.sync) runs inside the API process.
   WORKER_INLINE = "1"
   # Video and audio live on Mux (Production environment). Its credentials are
