@@ -1,6 +1,7 @@
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import type { JobQueue } from "./JobQueue.js";
+import { mediaPurgeHandler } from "./media-purge.js";
 import { muxSyncHandler } from "./mux-sync.js";
 import { PostgresJobQueue, type PostgresJobQueueOptions } from "./PostgresJobQueue.js";
 
@@ -31,6 +32,7 @@ export function startWorker(options: WorkerOptions = {}): JobQueue {
       ? new PostgresJobQueue(prisma, { log: logger.child({ component: "jobs" }), ...options })
       : jobQueue();
   queue.register("mux.sync", muxSyncHandler(queue));
+  queue.register("media.purge", mediaPurgeHandler());
   queue.start();
   return queue;
 }

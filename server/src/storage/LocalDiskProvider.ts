@@ -151,6 +151,16 @@ export class LocalDiskProvider implements StorageProvider {
     await fsp.rm(this.pathFor(key), { force: true });
   }
 
+  /** A family deleted what this file belongs to. A disk keeps no versions, so one rm is all of it. */
+  async purgeForFamilyDelete(key: string): Promise<void> {
+    assertSafeKey(key);
+    const target = this.pathFor(key);
+    await fsp.rm(target, { force: true });
+    // Tidy the now-empty `<familyId>/<uploadId>/` directory; a sibling
+    // (another rendition) keeps it, and that's fine.
+    await fsp.rmdir(path.dirname(target)).catch(() => undefined);
+  }
+
   async healthCheck(): Promise<boolean> {
     await fsp.access(OBJECTS_DIR, fs.constants.W_OK);
     return true;

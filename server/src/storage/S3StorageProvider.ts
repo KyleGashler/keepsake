@@ -1,6 +1,7 @@
 import { Readable } from "node:stream";
 import {
   DeleteObjectCommand,
+  DeleteObjectsCommand,
   GetObjectCommand,
   HeadBucketCommand,
   HeadObjectCommand,
@@ -222,6 +223,48 @@ export class S3StorageProvider implements StorageProvider {
   async delete(key: string): Promise<void> {
     assertDeletable(key);
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  /**
+   * Every version of `key` and every delete marker, gone. A plain
+   * DeleteObject on a versioned bucket (production's is) only hides the
+   * object behind a marker; a family that deleted a photo is owed more than
+   * that. On an unversioned bucket the listing shows the one "null" version,
+   * and deleting it is the ordinary delete.
+   *
+   * Needs `s3:ListBucketVersions`, `s3:DeleteObject` and
+   * `s3:DeleteObjectVersion` on the key (docs/aws/iam-policy.json).
+   */
+  async purgeForFamilyDelete(key: string): Promise<void> {
+    assertSafeKey(key);
+    let keyMarker: string | undefined;
+    let versionIdMarker: string | undefined;
+    for (;;) {
+      const out = await this.client.send(
+        new ListObjectVersionsCommand({
+          Bucket: this.bucket,
+          Prefix: key,
+          KeyMarker: keyMarker,
+          VersionIdMarker: versionIdMarker,
+        }),
+      );
+      // Exact key only: `…/original.png` is also a prefix of `…/original.png.bak`.
+      const objects = [...(out.Versions ?? []), ...(out.DeleteMarkers ?? [])]
+        .filter((v) => v.Key === key)
+        .map((v) => ({ Key: key, VersionId: v.VersionId }));
+      if (objects.length) {
+        const result = await this.client.send(
+          new DeleteObjectsCommand({ Bucket: this.bucket, Delete: { Objects: objects, Quiet: true } }),
+        );
+        const failed = result.Errors ?? [];
+        if (failed.length) {
+          throw new Error(`S3 refused to delete ${failed.length} version(s) of ${key}: ${failed[0].Code ?? ""} ${failed[0].Message ?? ""}`);
+        }
+      }
+      if (!out.IsTruncated) break;
+      keyMarker = out.NextKeyMarker;
+      versionIdMarker = out.NextVersionIdMarker;
+    }
   }
 
   async healthCheck(): Promise<boolean> {

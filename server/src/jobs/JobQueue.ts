@@ -20,9 +20,24 @@ export interface JobPayloads {
    * began; polling gives up a fixed time after it.
    */
   "mux.sync": { muxAssetId: string; startedAt: number };
+  /**
+   * Remove for good the files behind rows a family just deleted. The rows
+   * are already gone when this runs, so the payload carries everything: the
+   * storage keys (originals and derivatives) and each Mux upload with its
+   * asset id, if it had one yet. See lib/purge.ts.
+   */
+  "media.purge": {
+    familyId: string;
+    storageKeys: string[];
+    muxAssets: { uploadId: string; assetId: string | null }[];
+    /** What was deleted, for the log: "memory", "media", "person". */
+    reason: string;
+  };
 }
 
 export type JobType = keyof JobPayloads;
+
+const purgedClip = z.object({ uploadId: z.string(), assetId: z.string().nullable() });
 
 /**
  * A payload comes back from the database as untyped JSON, so the queue checks
@@ -30,6 +45,12 @@ export type JobType = keyof JobPayloads;
  */
 export const jobPayloadSchemas: { [T in JobType]: z.ZodType<JobPayloads[T]> } = {
   "mux.sync": z.object({ muxAssetId: z.string(), startedAt: z.number() }),
+  "media.purge": z.object({
+    familyId: z.string(),
+    storageKeys: z.array(z.string()),
+    muxAssets: z.array(purgedClip),
+    reason: z.string(),
+  }),
 };
 
 export interface EnqueueOptions {
