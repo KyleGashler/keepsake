@@ -6,6 +6,8 @@ import {
   captionTrackPatch,
   isSettled,
   kickSync,
+  masterGonePatch,
+  masterPatch,
   renditionPatch,
   snapshotPatch,
   updateMuxAsset,
@@ -99,6 +101,20 @@ async function applyEvent(type: string, data: unknown) {
     case "video.asset.static_renditions.ready": {
       const snap = assetSnapshotSchema.parse(data);
       return updateMuxAsset({ assetId: snap.id, uploadId: snap.upload_id }, (r) => snapshotPatch(r, snap));
+    }
+
+    // Temporary master access, which a download asks for (lib/downloads.ts).
+    // The body is the asset, `master` and all; `asset.updated` above carries
+    // it too, and either way it merges the same.
+    case "video.asset.master.preparing":
+    case "video.asset.master.ready":
+    case "video.asset.master.errored": {
+      const snap = assetSnapshotSchema.parse(data);
+      return updateMuxAsset({ assetId: snap.id, uploadId: snap.upload_id }, (r) => masterPatch(r, snap.master));
+    }
+    case "video.asset.master.deleted": {
+      const snap = assetSnapshotSchema.parse(data);
+      return updateMuxAsset({ assetId: snap.id, uploadId: snap.upload_id }, (r) => masterGonePatch(r));
     }
 
     case "video.asset.track.ready":

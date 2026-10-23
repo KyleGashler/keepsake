@@ -327,6 +327,17 @@ model MuxAsset {
   error           String?
   /// Set when `mux.sync` stopped polling without the asset settling.
   syncGaveUpAt    DateTime?
+  /// Temporary master access (downloads, A17): preparing, ready, errored.
+  /// Null when never asked for, or after Mux reports it deleted.
+  masterStatus    String?
+  /// The master MP4's download URL, once ready. Mux keeps it valid for 24h.
+  masterUrl       String?
+  /// When `masterUrl` stops working: 24h after we asked. Mux refuses a new
+  /// request until then, so this is also when the next request can be made.
+  masterExpiresAt DateTime?
+  /// Last time a download request looked at Mux for the master's state;
+  /// throttles that polling (webhooks usually answer first).
+  masterCheckedAt DateTime?
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 

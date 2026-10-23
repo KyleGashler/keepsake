@@ -7,6 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { linkPair, memoryDetail } from "../lib/memory-detail.js";
 import { mediaInclude, memoryCardDtos } from "../lib/serialize.js";
+import { memoryDownloads } from "../lib/downloads.js";
 import { deleteAndPurge } from "../lib/purge.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
 import {
@@ -413,6 +414,26 @@ memoriesRouter.put("/memories/:id/media/order", requireContributor, async (req, 
 
   const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId }, include });
   res.json({ memory: await memoryDetail(familyId, req.ctx.user.id, updated) });
+});
+
+const downloadsBody = z.object({ timeZone: z.string().max(64).optional() }).optional();
+
+/**
+ * Every file of a memory, ready to save (A17; lib/downloads.ts): `{ files:
+ * [{ mediaId, type, filename, status, url?, expiresAt? }], unavailable }` in
+ * the memory's order. Any member may download what they can read, a VIEWER
+ * too. A POST because the first call for a video asks Mux to prepare its
+ * master; calling again is how the client polls, and never asks twice.
+ */
+memoriesRouter.post("/memories/:id/downloads", async (req, res) => {
+  const parsed = downloadsBody.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const result = await memoryDownloads(req.ctx.family.id, req.params.id, {
+    timeZone: parsed.data?.timeZone,
+    log: req.log,
+  });
+  if (!result) return res.status(404).json({ error: "Memory not found" });
+  res.json(result);
 });
 
 /** A memory of the caller's family, or null. */

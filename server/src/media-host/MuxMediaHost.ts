@@ -6,6 +6,7 @@ import {
   MediaHostError,
   assetSnapshotSchema,
   type AssetSnapshot,
+  type HostMaster,
   type HostUpload,
   type MediaHost,
 } from "./MediaHost.js";
@@ -158,6 +159,25 @@ export class MuxMediaHost implements MediaHost {
     return `https://image.mux.com/${playbackId}/thumbnail.jpg?token=${token}`;
   }
 
+  async audioDownloadUrl(playbackId: string, filename: string): Promise<string> {
+    // On a signed playback id, Mux wants playback options in the token's
+    // claims rather than the query string, so the URL carries only `token`.
+    const token = await this.sign(playbackId, "video", 0, { download: filename });
+    return `https://stream.mux.com/${playbackId}/audio.m4a?token=${token}`;
+  }
+
+  async requestMaster(assetId: string): Promise<{ requested: boolean; master: HostMaster | null }> {
+    try {
+      const asset = await call(() => this.mux.video.assets.updateMasterAccess(assetId, { master_access: "temporary" }));
+      return { requested: true, master: toHostMaster(asset.master) };
+    } catch (err) {
+      // While a master exists (until its 24 hours are up) Mux answers
+      // 400 "Download already exists". That one is already ours to read.
+      if (!(err instanceof MediaHostError && err.status === 400 && /already exists/i.test(err.message))) throw err;
+      return { requested: false, master: toHostMaster((await this.getAsset(assetId)).master) };
+    }
+  }
+
   /**
    * A playback JWT (RS256, `sub` playback id, `aud` v or t, `kid`), reused
    * for TOKEN_REUSE_SECONDS. Each one is valid for at least
@@ -233,6 +253,11 @@ function toHostUpload(upload: {
     passthrough: upload.new_asset_settings?.passthrough ?? null,
     error: upload.error ? (upload.error.message ?? upload.error.type ?? "upload errored") : null,
   };
+}
+
+function toHostMaster(master: { status?: string | null; url?: string | null } | null | undefined): HostMaster | null {
+  if (!master?.status) return null;
+  return { status: master.status, url: master.url ?? null };
 }
 
 /** Run an SDK call, turning its errors into MediaHostError with a retry opinion. */

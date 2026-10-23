@@ -23,7 +23,7 @@ import {
 import { placeholderPng } from "../lib/placeholder.js";
 import { MEDIA_DIR, SignatureError } from "../storage/LocalDiskProvider.js";
 import { MAX_UPLOAD_BYTES, UPLOAD_URL_TTL_SECONDS, localProvider, originalKey, storage } from "../storage/index.js";
-import { StorageKeyError } from "../storage/StorageProvider.js";
+import { StorageKeyError, attachmentDisposition } from "../storage/StorageProvider.js";
 
 export { MEDIA_DIR };
 
@@ -145,6 +145,8 @@ mediaBytesRouter.get("/o/:token", async (req, res) => {
   // Family media is not public: a shared cache must never hold it, and a
   // browser must not hold it longer than the token that fetched it is valid.
   res.setHeader("Cache-Control", `private, max-age=${remaining}`);
+  // A download URL (A17) saves as a file, as S3's signed disposition does.
+  if (claims.downloadAs) res.setHeader("Content-Disposition", attachmentDisposition(claims.downloadAs));
 
   const body = await provider.stream(claims.key);
   body.on("error", (err: Error) => {

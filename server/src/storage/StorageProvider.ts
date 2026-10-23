@@ -31,6 +31,22 @@ export interface UploadTarget {
 /** Inclusive byte offsets, as in an HTTP `Range: bytes=start-end` header. */
 export type ByteRange = { start: number; end: number };
 
+export type ReadUrlOptions = {
+  /** Serve as an attachment saved under this filename. */
+  downloadAs?: string;
+};
+
+/**
+ * `Content-Disposition` for a download: `attachment` with the filename, an
+ * ASCII fallback (quotes and backslashes dropped, anything else non-ASCII
+ * as `_`) plus the exact name in RFC 5987 form for browsers that read it.
+ */
+export function attachmentDisposition(filename: string) {
+  const ascii = filename.replace(/[^\x20-\x7e]/g, "_").replace(/["\\]/g, "");
+  const exact = encodeURIComponent(filename).replace(/['()*]/g, (c) => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${exact}`;
+}
+
 export type ObjectHead = {
   bytes: number;
   /** `<algorithm>:<base64>` over the full object; see `head()`. */
@@ -67,8 +83,12 @@ export interface StorageProvider {
    * A URL a client can GET for `ttlSeconds`. May be a relative path (the local
    * provider returns `/media/o/<token>`); callers resolve it against the API
    * origin the way they already do for `/media/gen/...`.
+   *
+   * With `downloadAs`, the response says `Content-Disposition: attachment`
+   * with that filename, so a browser saves the file instead of showing it
+   * (the download sheet, A17). The filename is part of what's signed.
    */
-  getReadUrl: (key: string, ttlSeconds: number) => Promise<string>;
+  getReadUrl: (key: string, ttlSeconds: number, options?: ReadUrlOptions) => Promise<string>;
 
   /**
    * Read the object back — used for sniffing, hashing and future derivatives.

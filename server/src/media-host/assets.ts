@@ -94,6 +94,10 @@ type Patch = Partial<
     | "transcript"
     | "error"
     | "syncGaveUpAt"
+    | "masterStatus"
+    | "masterUrl"
+    | "masterExpiresAt"
+    | "masterCheckedAt"
   >
 >;
 
@@ -119,7 +123,7 @@ export function snapshotPatch(row: MuxAsset, snap: AssetSnapshot): Patch {
   const assetStatus = mergeProgress(row.assetStatus, snap.status);
   if (assetStatus !== row.assetStatus) patch.assetStatus = assetStatus;
 
-  Object.assign(patch, playbackFacts(row, snap), captionFacts(row, snap, assetStatus));
+  Object.assign(patch, playbackFacts(row, snap), captionFacts(row, snap, assetStatus), masterPatch(row, snap.master));
 
   if (assetStatus === "errored" && !row.error) {
     const messages = snap.errors?.messages?.filter(Boolean) ?? [];
@@ -203,6 +207,61 @@ export function renditionPatch(row: MuxAsset, name: string | null | undefined, s
   const renditionStatus = mergeProgress(row.renditionStatus, status);
   return renditionStatus === row.renditionStatus ? {} : { renditionStatus };
 }
+
+/**
+ * What Mux says about the asset's master (temporary master access, which
+ * downloads ask for; see lib/downloads.ts). Merged like every other fact: a
+ * late `preparing` can't undo `ready`. Absence says nothing — most events
+ * about an asset don't mention its master — so only `master.deleted`
+ * (`masterGonePatch`) clears it. A fresh request after the 24 hours sets the
+ * fields outright instead of merging (`masterRequestedPatch`).
+ */
+export function masterPatch(
+  row: MuxAsset,
+  master: { status?: string | null; url?: string | null } | null | undefined,
+): Patch {
+  if (!master?.status) return {};
+  const patch: Patch = {};
+  const masterStatus = mergeProgress(row.masterStatus, master.status);
+  if (masterStatus !== row.masterStatus) patch.masterStatus = masterStatus;
+  if (masterStatus === "ready" && master.url && master.url !== row.masterUrl) patch.masterUrl = master.url;
+  return patch;
+}
+
+/** Mux withdrew the master (`video.asset.master.deleted`): the 24 hours are up. */
+export function masterGonePatch(row: MuxAsset): Patch {
+  if (row.masterStatus === null && row.masterUrl === null) return {};
+  return { masterStatus: null, masterUrl: null };
+}
+
+/**
+ * A download asked Mux for the master just now. `requested` false means Mux
+ * already had one (asked for by an earlier request whose row we lost track
+ * of, or from Mux's dashboard), so when it lapses is unknown: assume soon.
+ */
+export function masterRequestedPatch(
+  row: MuxAsset,
+  result: { requested: boolean; master: { status: string; url: string | null } | null },
+  now: Date,
+): Patch {
+  const status = result.master?.status ?? (result.requested ? "preparing" : null);
+  let expiresAt = new Date(now.getTime() + MASTER_ACCESS_MS);
+  if (!result.requested) {
+    const known = row.masterExpiresAt && row.masterExpiresAt > now ? row.masterExpiresAt : null;
+    expiresAt = known ?? new Date(now.getTime() + ADOPTED_MASTER_MS);
+  }
+  return {
+    masterStatus: status,
+    masterUrl: status === "ready" ? (result.master?.url ?? null) : null,
+    masterExpiresAt: status ? expiresAt : null,
+    masterCheckedAt: now,
+  };
+}
+
+/** How long Mux keeps a temporary master: 24 hours from the request. */
+export const MASTER_ACCESS_MS = 24 * 60 * 60 * 1000;
+/** A master Mux already had when we asked: we don't know its age, so trust it for an hour. */
+const ADOPTED_MASTER_MS = 60 * 60 * 1000;
 
 /** Polling stopped with the asset unsettled: whatever is still pending fails. */
 export function giveUpPatch(row: MuxAsset): Patch {
