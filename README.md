@@ -238,7 +238,7 @@ per route by `requireRole` ([server/src/auth/middleware.ts](server/src/auth/midd
 | Role | May |
 | --- | --- |
 | `VIEWER` | Read everything; keep their own favourites. Every write answers `403 forbidden_role`. |
-| `CONTRIBUTOR` | Also add and edit memories, media, people, collections and Library covers. |
+| `CONTRIBUTOR` | Also add, edit and delete memories, media, people and collections, and set Library covers. Deleting a person who has an account here is refused (`409 person_is_member`) until an owner removes them from the family. |
 | `OWNER` | Also invite, revoke invites, change roles and remove members. A family always keeps at least one owner (`409 last_owner`). |
 
 An invite is a single-use link, good for 7 days and revocable
@@ -342,7 +342,7 @@ The policies are in [docs/aws/](docs/aws/); replace `REPLACE_WITH_BUCKET` in
 each. `us-west-1` is the region nearest Fly's `sjc`.
 
 1. **Bucket** — private, versioned, no lifecycle rules (nothing ever expires an
-   original):
+   original; one goes only when a family deletes it, see [Deleting](#deleting-hard-no-trash)):
    ```bash
    B=keepsake-originals-<suffix>; R=us-west-1
    aws s3api create-bucket --bucket $B --region $R --create-bucket-configuration LocationConstraint=$R
@@ -355,8 +355,9 @@ each. `us-west-1` is the region nearest Fly's `sjc`.
    `cors.json` lists the app's origins (the Fly host and local Metro) — add any
    other web origin. `bucket-policy.json` denies any PUT to an `original.*` key
    that isn't create-only (`If-None-Match: *`) and any non-TLS request.
-2. **IAM user** for the API — get/put/list on this bucket only, delete only for
-   non-originals ([docs/aws/iam-policy.json](docs/aws/iam-policy.json)):
+2. **IAM user** for the API — get/put/list on this bucket only, plus delete
+   (every version) for the purge job
+   ([docs/aws/iam-policy.json](docs/aws/iam-policy.json)):
    ```bash
    aws iam create-user --user-name keepsake-api
    aws iam put-user-policy --user-name keepsake-api --policy-name keepsake-media \
@@ -393,7 +394,40 @@ exponential backoff until `maxAttempts`, then marked `FAILED`. A job left
 The worker runs inside the API when `WORKER_INLINE=1` (compose and Fly set it),
 or on its own with `npm run worker` (`npm run worker:dev` off TypeScript).
 
-The one job today is `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux)).
+Two jobs today: `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux))
+and `media.purge` (see [Deleting](#deleting-hard-no-trash)).
+
+### Deleting: hard, no trash
+
+Deleting a memory, removing a photo or clip from one, or deleting a person
+deletes the rows at once — there is no trash and no restore — and enqueues a
+`media.purge` job for the files, in the same transaction
+([server/src/lib/purge.ts](server/src/lib/purge.ts)). The request never waits
+on S3 or Mux. The job carries every storage key (originals and derivatives)
+and every Mux upload/asset id, because the rows are gone when it runs; it
+purges storage through `StorageProvider.purgeForFamilyDelete` (on S3, every
+version and delete marker of the key) and then the Mux asset through
+`MediaHost.deleteAsset` (or cancels an upload still waiting for its bytes). A
+`MuxAsset` row is dropped, and its asset purged, only once no `Media` links to
+it. Any failure — Mux unconfigured, a 5xx, a token without delete permission —
+is retried with backoff, 20 attempts (about four hours); a `FAILED` purge
+keeps its payload on the `Job` row, so set it back to `QUEUED` with
+`attempts = 0` once the cause is fixed. Keys some other row still points at,
+and keys outside the family's prefix, are skipped with a log line.
+
+This is the only path that deletes an original or a Mux asset: the normal
+`StorageProvider.delete` still refuses originals, and the app never deletes
+either on its own.
+
+| Endpoint | Does |
+| --- | --- |
+| `DELETE /api/memories/:id` | The memory and everything hanging off it; purges its files. |
+| `DELETE /api/memories/:id/media/:mediaId` | One photo/video/recording; purges its files. A machine-written transcript is rebuilt without it. |
+| `PUT /api/memories/:id/media/order` | `{ mediaIds }`, every media id once: the new order (the first photo/video is the hero). |
+| `DELETE /api/people/:id` | Not for members (`409 person_is_member`). Their collections go (memories stay, unfiled from them); invites naming them are withdrawn; their photo is purged. |
+| `PATCH /api/collections/:id` | Name, description, icon, colour — a child's defaults too. |
+| `DELETE /api/collections/:id` | Memories stay. A child's defaults (with a `kind`) answer `409 default_collection`. |
+| `PUT` / `DELETE /api/collections/:id/memories/:memoryId` | File or unfile a memory. |
 
 | Variable | Meaning |
 | --- | --- |
@@ -458,9 +492,10 @@ polling does everything.
 A FAILED transcript is retried with
 `POST /api/memories/:id/media/:mediaId/transcribe`: if Mux has the caption
 text it is fetched again, otherwise the errored caption track is removed and
-captions are generated anew from the asset's audio track. Nothing ever deletes
-a Mux asset — it is the only copy — and soft-deleting a `Media` row leaves it
-alone.
+captions are generated anew from the asset's audio track. The asset is the
+only copy of the clip, so the app never deletes one on its own: only a family
+deleting the memory or the clip purges it (see
+[Deleting](#deleting-hard-no-trash)).
 
 Without the four required variables the server still boots, photos work,
 `/api/health` reports `"mux": false`, and AV init answers
@@ -538,8 +573,9 @@ the thumbnails, display renditions, posters and waveforms generated from it
 `MuxAsset` (the Mux upload, asset, playback id and transcript). `Job` is the durable work queue those derivatives run through (A6),
 and `Memory.palette` / `analysisStatus` / `storySource` are what the analysis
 and AI passes write back (A6, A13). `DeviceToken` and `Subscription` are for
-push and billing in Track B (B7, B9). Soft deletes (`deletedAt` on `Memory` and
-`Media`) exist because an original is never destroyed.
+push and billing in Track B (B7, B9). Deletes are hard (A7): there is no
+`deletedAt`, and a deleted memory's files are purged by a job (see
+[Deleting](#deleting-hard-no-trash)).
 
 The logotype is a custom drawing, so it isn't any font and can't be rebuilt from
 one. `design/extract_logo.py` traces it straight out of the brand sheet into

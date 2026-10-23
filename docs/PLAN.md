@@ -19,8 +19,9 @@ the callers.
 - Server: Express + Prisma in `server/`. Client: Expo Router in `app/`.
 - Run `npm run typecheck` in both packages before finishing.
 - Every new query filters by `familyId`. Never look a row up by id alone.
-- Original media is sacred: nothing deletes, overwrites or AI-alters what a
-  family uploaded. Re-encoding for playback (Mux) is fine; the content stays
+- Original media is sacred: nothing overwrites or AI-alters what a family
+  uploaded, and nothing deletes it on its own — only an explicit family
+  delete purges it (A7). Re-encoding for playback (Mux) is fine; the content stays
   true.
 - Don't add a dependency without a one-line justification in the PR.
 - One PR per task. Branch name `task/<id>-<slug>`.
@@ -187,6 +188,22 @@ collections CRUD and add/remove memory; reorder media. Client screens for
 each.
 **Accept:** every mutation has a UI path; a deleted memory's S3 objects and
 Mux asset are gone once the job runs.
+
+**As built (2026-10-23):** migration `20261023120000_a7_hard_delete`
+hard-deletes soft-deleted rows (their files and Mux assets left in place) and
+drops both `deletedAt` columns. `lib/purge.ts` deletes rows and enqueues
+`media.purge` (20 attempts) in one transaction; `jobs/media-purge.ts` purges
+storage via `StorageProvider.purgeForFamilyDelete` (all S3 versions) then Mux
+via `MediaHost.deleteAsset` / `cancelUpload`, skipping keys still referenced.
+Endpoints and rules are in README → Deleting. People: members (Person linked
+to a User or FamilyMembership) can't be deleted — an owner removes them in
+Family Hub first. Collections: a child's defaults (`kind` set) are renamable,
+not deletable; Arrival Stories defaults can be pruned. Media order is
+`Media.sortOrder`, used by every list, so reordering moves the hero. UI: memory
+⋯ → Arrange (up/down, remove) and Delete; person page ⋯ → edit / delete;
+Family Hub → Add someone; child gear → Delete; collection ⋯ → edit, choose its
+memories, delete. Prod needs the updated `docs/aws/iam-policy.json` applied
+and a Mux token with write (delete) permission.
 
 #### A8. Client auth + data layer
 > **Auth half done (2026-10-22, with B1)** — see "Decision: auth". The
@@ -600,8 +617,9 @@ frames by URL, and Whisper captions at no extra cost, so Deepgram, the
   accepted: the rule is that nothing *AI-alters* a family's content.
   Re-encoding for playback is fine. If we ever leave Mux, we export every
   master (master access, 24h download URLs per asset).
-- **Nothing deletes a Mux asset** except account deletion (A16). It is the
-  only copy. Soft-deleting a Media row leaves the asset alone.
+- **Nothing deletes a Mux asset on its own.** It is the only copy. Since A7
+  (2026-10-23) a family deleting the memory or the clip purges it, as account
+  deletion (A16) will.
 - **Cost:** see the comparison from 2026-10-22: roughly $0.25–0.40 per family
   per month in year one, growing with the archive. Storage dominates; the
   lever later is pruning long-unwatched assets, which now means exporting the

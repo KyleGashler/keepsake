@@ -14,16 +14,10 @@
       "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET/*"
     },
     {
-      "Sid": "DeleteDerivatives",
+      "Sid": "PurgeFamilyDeletes",
       "Effect": "Allow",
-      "Action": "s3:DeleteObject",
-      "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET/*"
-    },
-    {
-      "Sid": "NeverDeleteOriginals",
-      "Effect": "Deny",
       "Action": ["s3:DeleteObject", "s3:DeleteObjectVersion"],
-      "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET/*/original.*"
+      "Resource": "arn:aws:s3:::REPLACE_WITH_BUCKET/*"
     }
   ]
 }
