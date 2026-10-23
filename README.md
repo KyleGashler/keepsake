@@ -428,6 +428,26 @@ either on its own.
 | `PATCH /api/collections/:id` | Name, description, icon, colour — a child's defaults too. |
 | `DELETE /api/collections/:id` | Memories stay. Any collection, a child's suggested defaults included. |
 | `PUT` / `DELETE /api/collections/:id/memories/:memoryId` | File or unfile a memory. |
+| `DELETE /api/family` | Owners. The family, for everyone in it: every row, every file, every Mux asset. |
+| `GET /api/me/deletion` | What deleting the account would do: `allowed`, the families it `deletes` (with member and memory counts) and the ones it `leaves`. |
+| `DELETE /api/me` | Owners only (`403 not_an_owner`). Deletes every family they own, leaves the rest, deletes the User. |
+
+**Deleting a family, or an account.** An owner can delete a family outright,
+for every member, and only someone who owns a family can delete their account
+— which deletes every family they own (even ones with other owners), leaves
+the families where they contribute or view (their Person stays, unlinked, as
+when an owner removes them), and deletes the User row. The Family row is
+locked while it goes, so an upload or memory racing it fails cleanly
+(`403 forbidden`) rather than leaving rows behind. The purge is the same
+`media.purge` job with `wholeFamily` set: every Mux asset the family had, and
+everything under its storage prefix — uploads that never finalized included —
+through `StorageProvider.purgeFamilyObjects` (on S3, every version and delete
+marker; same IAM permissions as above). A second sweep runs 75 minutes later
+for bytes PUT through an upload URL issued before the delete. The server can't
+delete the Firebase user (it holds no service account); the app does, after
+`DELETE /api/me` answers, having reauthenticated first. If that step fails the
+person is signed out anyway, and signing in again only starts a fresh, empty
+account.
 
 | Variable | Meaning |
 | --- | --- |

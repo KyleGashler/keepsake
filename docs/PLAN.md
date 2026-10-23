@@ -258,11 +258,56 @@ only `server/src/ai/impl/`.
 
 #### A16. Account deletion + privacy surfaces
 **Depends:** A4, A5.
+> **Decision (2026-10-23): only owners delete accounts; an owner deleting a
+> family deletes it for everyone.** A user who owns at least one family may
+> delete their account; one who owns none is refused (`403 not_an_owner`) and
+> told to write to Support. Deleting the account deletes every family they
+> own outright — all its content, for every member, even when other members
+> or other owners exist — leaves every family where they're a contributor or
+> viewer (as `DELETE /family/members/:userId`: membership gone, their Person
+> stays, unlinked), and deletes the User. Owners can also delete one family
+> on its own ("Delete this family"); account deletion is built from that.
+> No transfer of ownership. The warning is unmistakable — everything is lost
+> for good, for everyone, no trash, no restore, we can't recover it — shows
+> each family to be deleted (members, memories) and each one merely left, and
+> encourages downloading first (memory ⋯ → Download, A17).
+
 **Do:** `DELETE /me` — leaves families, transfers or deletes solely-owned
 families after confirmation, enqueues storage purge; privacy policy and terms
 screens (placeholder copy, marked); COPPA note: children are `Person` rows,
 never `User` rows, enforced in A4.
 **Accept:** deletion leaves no rows or objects for the user.
+
+**As built (2026-10-23):** `GET /api/me/deletion` previews (`allowed`,
+`deletes` with member and memory counts, `leaves`); `DELETE /api/family`
+(owners) and `DELETE /api/me` delete, in one transaction each
+(`lib/account-deletion.ts`). A family delete (`deleteFamilyAndPurge` in
+`lib/purge.ts`) locks the family's MuxAsset rows, then the Family row `FOR
+UPDATE` — so an upload, finalize or memory create racing it waits, then fails
+its foreign key and answers `403 forbidden` (index.ts error handler; Mux
+init also cancels the upload it just made) — deletes the Family (every row
+cascades) and enqueues `media.purge` with `wholeFamily`: every MuxAsset the
+family had, linked or abandoned, and the whole `<familyId>/` storage prefix
+through the new `StorageProvider.purgeFamilyObjects` (local: the directory;
+S3: every version and delete marker under the prefix). A second, prefix-only
+purge runs 75 minutes later for bytes PUT through an upload URL issued before
+the delete. The job refuses a prefix purge if the Family row still exists.
+Account deletion locks the User row first (no new memberships, invites or
+favourites meanwhile), deletes each owned family, leaves the rest, deletes
+the User (device tokens, favourites and invites they sent cascade; invites
+they accepted keep the row with `acceptedById` nulled; any Person in a family
+they left stays, unlinked — it's the family's record). Deadlocks retry. The
+client's `AuthProvider.deleteAccount` reauthenticates (Firebase) before
+anything is deleted, then calls `DELETE /api/me`, holds every API request
+(one would recreate the User from a still-valid token), deletes the Firebase
+user and signs out; if `deleteUser` fails it signs out anyway and a later
+sign-in just gets a fresh, empty User via `resolveUser`. A `403 forbidden` on
+the family being shown (deleted by another owner, or removed) switches to
+another family or Create Family. UI: Family Hub → This family → Delete this
+family (type its name), Account → Delete account (password; `DELETE` in dev
+mode). Smoke-tested on a scratch DB with local storage. **Still to do:**
+privacy policy and terms screens, and the COPPA note — out of scope for this
+pass.
 
 ---
 
