@@ -16,7 +16,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
 import { colors, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
-import { KeepsakeMark, KeepsakeWordmark } from "./brand";
+import { BrandMark, Wordmark } from "./brand";
 
 export function Screen({
   children,
@@ -78,9 +78,9 @@ export function AppHeader({
               <Ionicons name="chevron-back" size={20} color={colors.ink} />
             </Pressable>
           ) : null}
-          {mark ? <KeepsakeMark size={38} /> : null}
+          {mark ? <BrandMark size={38} /> : null}
           {wordmark ? (
-            <KeepsakeWordmark width={152} />
+            <Wordmark width={152} />
           ) : (
             <View style={{ flexShrink: 1 }}>
               {subtitle ? <Text style={type.label}>{subtitle}</Text> : null}

@@ -1,5 +1,5 @@
 /**
- * The one seam between Keepsake and whoever vouches for a person's identity.
+ * The one seam between little by little and whoever vouches for a person's identity.
  *
  * Everything above this line — middleware, routes, family scoping — only ever
  * sees the fields below. `createTokenVerifier()` picks the implementation

@@ -14,7 +14,7 @@ const DISC = 62;
  * Presses go through the navigator's `tabPress` event, so the stack inside a
  * tab still pops to its root when its (already focused) tab is tapped again.
  */
-export function KeepsakeTabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
+export function TabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
       <View style={styles.row}>

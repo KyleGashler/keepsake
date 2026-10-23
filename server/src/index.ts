@@ -200,7 +200,7 @@ app.use((err: Error, req: express.Request, res: express.Response, _next: express
 });
 
 const server = app.listen(PORT, "0.0.0.0", () => {
-  logger.info({ port: PORT }, `Keepsake API listening on http://localhost:${PORT}`);
+  logger.info({ port: PORT }, `little by little API listening on http://localhost:${PORT}`);
 });
 
 /**

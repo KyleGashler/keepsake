@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Sparkle } from "../../src/components/journey";
-import { KeepsakeTabBar } from "../../src/components/tab-bar";
+import { TabBar } from "../../src/components/tab-bar";
 import { colors } from "../../src/theme";
 
 /**
@@ -13,7 +13,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       tabBar={({ state, descriptors, navigation, insets }) => (
-        <KeepsakeTabBar state={state} descriptors={descriptors} navigation={navigation} insets={insets} />
+        <TabBar state={state} descriptors={descriptors} navigation={navigation} insets={insets} />
       )}
       screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }}
     >

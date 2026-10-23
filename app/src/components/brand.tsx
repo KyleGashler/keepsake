@@ -1,41 +1,25 @@
-import { StyleSheet, View, type ColorValue, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet, Text, View, type ColorValue, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
-import { colors } from "../theme";
-import {
-  MARK_K_PATH,
-  MARK_RING_PATH,
-  MARK_VIEWBOX,
-  WORDMARK_PATH,
-  WORDMARK_TWINKLE_PATH,
-  WORDMARK_VIEWBOX,
-} from "./brand-artwork";
+import { colors, fonts } from "../theme";
 
 /**
- * The Keepsake brand kit (brand guide v1.0).
+ * The little by little brand kit.
  *
- * Two logo lockups — the wordmark and the K mark — plus the six approved
+ * Two logo lockups — the wordmark and the mark — plus the six approved
  * whimsical shapes. The guide is explicit that the shapes are used "sparingly
  * to bring moments of wonder and delight", so each one appears exactly once in
  * the app; the map of where lives in the comment above each usage.
  *
- * Both lockups are the guide's own artwork, traced out of the brand sheet (see
- * brand-artwork.ts). The guide says of the mark: "Do not alter or recreate" —
- * so these draw the paths as-is, and only the fills are themeable.
+ * Both lockups are typeset placeholders until the new logo artwork exists:
+ * the name in the display serif with the twinkle. The app icons are drawn the
+ * same way by design/make_icons.py — change both together.
  */
 
 /**
- * The logotype is drawn in a neutral near-black on the brand sheet, not in
- * Forest — every piece of type on the guide is, Forest being a palette colour
- * rather than a text one. App type uses Forest (colors.ink); the lockups keep
- * the ink they were drawn with.
+ * The logotype is drawn in a neutral near-black, not in the app's ink — the
+ * logo keeps its own colour wherever it appears.
  */
 const LOGO_INK = "#141716";
-
-/** Ratios come from the traced viewBoxes, so each lockup keeps its proportions. */
-function ratio(viewBox: string) {
-  const [w, h] = viewBox.split(" ").slice(2).map(Number);
-  return w / h;
-}
 
 type ShapeProps = {
   /** Width in points; height follows each shape's own aspect ratio. */
@@ -54,42 +38,45 @@ const TWINKLE =
 // Logos
 // ---------------------------------------------------------------------------
 
-const WORDMARK_RATIO = ratio(WORDMARK_VIEWBOX);
-const MARK_RATIO = ratio(MARK_VIEWBOX);
-
-/** Primary logo: the wordmark with its twinkle. */
-export function KeepsakeWordmark({
+/** Primary logo: the name with its twinkle. */
+export function Wordmark({
   width = 150,
   color = LOGO_INK,
   accent = colors.accent,
   style,
 }: {
-  /** Rendered width in points; height follows the lockup's ratio. */
+  /** Rendered width in points; the type is sized to fill it. */
   width?: number;
   color?: string;
   accent?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const height = width / WORDMARK_RATIO;
+  // DM Serif Display sets "little by little" about 6.6 ems wide; the twinkle
+  // takes the rest.
+  const fontSize = width / 7.4;
   return (
     <View
-      style={[{ width, height }, style]}
+      style={[styles.wordmark, { width }, style]}
       accessibilityRole="header"
-      accessibilityLabel="Keepsake"
+      accessibilityLabel="little by little"
     >
-      <Svg width={width} height={height} viewBox={WORDMARK_VIEWBOX}>
-        <Path d={WORDMARK_PATH} fill={color} />
-        <Path d={WORDMARK_TWINKLE_PATH} fill={accent} />
-      </Svg>
+      <Text
+        style={{ fontFamily: fonts.display, fontSize, lineHeight: fontSize * 1.2, color }}
+        numberOfLines={1}
+        importantForAccessibility="no"
+      >
+        little by little
+      </Text>
+      <Twinkle size={fontSize * 0.55} color={accent} style={{ marginTop: fontSize * 0.1 }} />
     </View>
   );
 }
 
 /**
- * Icon / mark: the K in its circle. The guide reserves this for the app icon
- * and "small spaces where the full logo does not fit".
+ * Icon / mark: "lbl" in its ring. For the app icon and small spaces where the
+ * full logo does not fit.
  */
-export function KeepsakeMark({
+export function BrandMark({
   size = 40,
   color = LOGO_INK,
   accent = colors.accent,
@@ -100,18 +87,24 @@ export function KeepsakeMark({
   accent?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  const height = size / MARK_RATIO;
+  const fontSize = size * 0.36;
   return (
     <View
-      style={[{ width: size, height }, style]}
+      style={[
+        styles.mark,
+        { width: size, height: size, borderRadius: size / 2, borderColor: accent, borderWidth: Math.max(1, size * 0.03) },
+        style,
+      ]}
       accessibilityRole="image"
-      accessibilityLabel="Keepsake"
+      accessibilityLabel="little by little"
     >
-      <Svg width={size} height={height} viewBox={MARK_VIEWBOX}>
-        {/* The ring is drawn broken where the K's swash crosses it. */}
-        <Path d={MARK_RING_PATH} fill={accent} />
-        <Path d={MARK_K_PATH} fill={color} />
-      </Svg>
+      <Text
+        style={{ fontFamily: fonts.display, fontSize, lineHeight: fontSize * 1.15, color }}
+        importantForAccessibility="no"
+      >
+        lbl
+      </Text>
+      <Twinkle size={size * 0.16} color={accent} style={{ marginBottom: fontSize * 0.5 }} />
     </View>
   );
 }
@@ -256,5 +249,7 @@ export function LittleMoon({ size = 24, color = colors.accent, opacity = 1, styl
 }
 
 const styles = StyleSheet.create({
+  wordmark: { flexDirection: "row", alignItems: "flex-start" },
+  mark: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
   shape: { pointerEvents: "none" },
 });

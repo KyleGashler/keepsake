@@ -21,7 +21,7 @@ export class FirebaseTokenVerifier implements TokenVerifier {
   constructor(projectId: string) {
     // A named app, so nothing else in the process that calls initializeApp()
     // (a future admin task, say) collides with this one.
-    const app: App = initializeApp({ projectId }, "keepsake-token-verifier");
+    const app: App = initializeApp({ projectId }, "token-verifier");
     this.auth = getAuth(app);
   }
 

@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, AuthError, DEV_DEFAULT_EMAIL } from "../auth";
 import { useSession } from "../auth/session-context";
 import { colors, fonts, spacing, type } from "../theme";
-import { KeepsakeWordmark } from "./brand";
+import { Wordmark } from "./brand";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
 /**
@@ -44,7 +44,7 @@ export function AuthFrame({
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.column}>
-          <KeepsakeWordmark width={148} style={styles.wordmark} />
+          <Wordmark width={148} style={styles.wordmark} />
           {eyebrow ? <Text style={[type.eyebrow, styles.eyebrow]}>{eyebrow}</Text> : null}
           <Text style={styles.title} accessibilityRole="header">
             {title}
@@ -58,7 +58,7 @@ export function AuthFrame({
   );
 }
 
-/** "New to Keepsake? Create an account" — a sentence with a tappable end. */
+/** "New to little by little? Create an account" — a sentence with a tappable end. */
 export function TextLink({ lead, label, onPress }: { lead?: string; label: string; onPress: () => void }) {
   return (
     <Text style={styles.linkLine}>
@@ -124,7 +124,7 @@ function SignIn({ email, setEmail, go, notice }: StepProps & { notice: string | 
       eyebrow="Welcome back"
       title="Sign in"
       subtitle="Your family's stories are right where you left them."
-      footer={<TextLink lead="New to Keepsake?" label="Create an account" onPress={() => go("signUp")} />}
+      footer={<TextLink lead="New to little by little?" label="Create an account" onPress={() => go("signUp")} />}
     >
       {notice ? <Notice>{notice}</Notice> : null}
       <Field label="Email">
@@ -238,7 +238,7 @@ function ForgotPassword({ email, setEmail, go }: StepProps) {
       <AuthFrame
         eyebrow="On its way"
         title="Check your inbox"
-        subtitle={`If there's a Keepsake account for ${sentTo}, a link to choose a new password is on its way. It can take a minute or two.`}
+        subtitle={`If there's a little by little account for ${sentTo}, a link to choose a new password is on its way. It can take a minute or two.`}
       >
         <SheetButton label="Back to sign in" onPress={() => go("signIn")} />
       </AuthFrame>
@@ -275,7 +275,7 @@ function ForgotPassword({ email, setEmail, go }: StepProps) {
 
 /**
  * Dev mode: an email, no password. The API's DevTokenVerifier takes the
- * address at its word; demo@keepsake.local opens the seeded family, and any
+ * address at its word; demo@littlebylittle.local opens the seeded family, and any
  * other address starts a new, empty account.
  */
 function DevSignIn({

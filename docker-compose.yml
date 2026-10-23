@@ -1,27 +1,31 @@
+# Named rather than taken from the checkout's folder, so containers and
+# volumes are called little-by-little-* wherever the repo is cloned.
+name: little-by-little
+
 # Where the API reaches the S3 emulator, and as whom. Inert unless
 # STORAGE_PROVIDER=s3 — see the Storage section of the README.
 x-s3-env: &s3-env
-  S3_BUCKET: keepsake-dev
+  S3_BUCKET: littlebylittle-dev
   S3_REGION: us-east-1
   S3_ENDPOINT: http://s3:9000
   S3_FORCE_PATH_STYLE: "1"
-  AWS_ACCESS_KEY_ID: keepsake
-  AWS_SECRET_ACCESS_KEY: keepsake-dev-secret
+  AWS_ACCESS_KEY_ID: littlebylittle
+  AWS_SECRET_ACCESS_KEY: littlebylittle-dev-secret
 
 services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: keepsake
-      POSTGRES_PASSWORD: keepsake
-      POSTGRES_DB: keepsake
+      POSTGRES_USER: littlebylittle
+      POSTGRES_PASSWORD: littlebylittle
+      POSTGRES_DB: littlebylittle
     ports:
       # Host port is 55432 to stay out of the way of any local Postgres.
       - "55432:5432"
     volumes:
       - db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U keepsake -d keepsake"]
+      test: ["CMD-SHELL", "pg_isready -U littlebylittle -d littlebylittle"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -29,7 +33,7 @@ services:
   api:
     build: ./server
     environment:
-      DATABASE_URL: postgresql://keepsake:keepsake@db:5432/keepsake
+      DATABASE_URL: postgresql://littlebylittle:littlebylittle@db:5432/littlebylittle
       PORT: "4000"
       MEDIA_DIR: /app/media
       SEED_DEMO: "1"
@@ -49,7 +53,7 @@ services:
       # request is treated as, which keeps the app working until it learns to
       # send a token (A8).
       AUTH_MODE: dev
-      DEV_DEFAULT_USER: demo@keepsake.local
+      DEV_DEFAULT_USER: demo@littlebylittle.local
       # `local` keeps originals on the `media` volume. To run against the S3
       # emulator instead: STORAGE_PROVIDER=s3 docker compose --profile s3 up
       STORAGE_PROVIDER: ${STORAGE_PROVIDER:-local}
@@ -88,8 +92,8 @@ services:
     image: rustfs/rustfs:1.0.1
     profiles: ["s3"]
     environment:
-      RUSTFS_ACCESS_KEY: keepsake
-      RUSTFS_SECRET_KEY: keepsake-dev-secret
+      RUSTFS_ACCESS_KEY: littlebylittle
+      RUSTFS_SECRET_KEY: littlebylittle-dev-secret
     ports:
       - "9300:9000"
     volumes:

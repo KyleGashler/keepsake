@@ -1,7 +1,7 @@
 import { Platform } from "react-native";
 
 /**
- * Keepsake should feel like a warm room, not a dashboard: paper, a deep-teal
+ * little by little should feel like a warm room, not a dashboard: paper, a deep-teal
  * ink, one golden-honey accent, and a display serif for the names of things.
  */
 

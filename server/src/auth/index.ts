@@ -30,7 +30,7 @@ export function createTokenVerifier(): TokenVerifier {
     if (!projectId) {
       throw new Error(
         "refusing to start: AUTH_MODE=firebase needs FIREBASE_PROJECT_ID " +
-          "(the Firebase project whose ID tokens this API accepts, e.g. keepsake-prod).",
+          "(the Firebase project whose ID tokens this API accepts, e.g. littlebylittle-prod).",
       );
     }
     logger.info({ projectId }, "auth: verifying Firebase ID tokens");

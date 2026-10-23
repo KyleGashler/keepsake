@@ -26,7 +26,7 @@ import {
 export const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve("media");
 export const OBJECTS_DIR = path.join(MEDIA_DIR, "objects");
 
-const DEV_SECRET = "keepsake-dev-media-signing-secret";
+const DEV_SECRET = "littlebylittle-dev-media-signing-secret";
 const SIGNING_SECRET = resolveSecret();
 
 function resolveSecret() {

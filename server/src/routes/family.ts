@@ -40,7 +40,7 @@ familyRouter.get("/family", async (req, res) => {
       permission: PERMISSION_LABELS[p.role],
     })),
     stats: { memoryCount, mediaCount, collectionCount, personCount: people.length },
-    subscription: { plan: "Keepsake Family (preview)", status: "Not billed in this build" },
+    subscription: { plan: "little by little Family (preview)", status: "Not billed in this build" },
   });
 });
 
@@ -71,7 +71,7 @@ familyRouter.post("/family/invites", async (req, res) => {
     invite: {
       name: parsed.data.name,
       role: parsed.data.role,
-      link: `https://keepsake.local/join/${family.id.slice(-6)}`,
+      link: `https://littlebylittle.local/join/${family.id.slice(-6)}`,
       note: "Placeholder link — invitations are not deliverable until accounts exist.",
     },
   });

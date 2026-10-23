@@ -135,11 +135,11 @@ async function ensureDemoUser(familyId: string) {
   if (owned) return;
 
   const demoUser = await prisma.user.upsert({
-    where: { authProviderId: "dev:demo@keepsake.local" },
+    where: { authProviderId: "dev:demo@littlebylittle.local" },
     update: {},
     create: {
-      authProviderId: "dev:demo@keepsake.local",
-      email: "demo@keepsake.local",
+      authProviderId: "dev:demo@littlebylittle.local",
+      email: "demo@littlebylittle.local",
       displayName: owner.name,
     },
   });
@@ -155,7 +155,7 @@ async function ensureDemoUser(familyId: string) {
   await prisma.familyMembership.create({
     data: { userId: demoUser.id, familyId, role: "OWNER", personId: owner.id },
   });
-  console.log(`Demo owner demo@keepsake.local attached to family ${familyId} as ${owner.name}.`);
+  console.log(`Demo owner demo@littlebylittle.local attached to family ${familyId} as ${owner.name}.`);
 }
 
 async function main() {

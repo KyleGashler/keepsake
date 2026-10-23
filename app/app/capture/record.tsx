@@ -325,7 +325,7 @@ function Denied({ onRetry }: { onRetry: () => void }) {
         <Ionicons name="mic-off-outline" size={26} color={colors.accentDeep} />
       </View>
       <Text style={[type.heading, { textAlign: "center", marginTop: spacing.lg }]}>
-        Keepsake can't hear you yet
+        We can't hear you yet
       </Text>
       <Text style={[type.body, { textAlign: "center", marginTop: spacing.sm, maxWidth: 420 }]}>
         {deniedAdvice(web, insecure)}
@@ -342,12 +342,12 @@ function Denied({ onRetry }: { onRetry: () => void }) {
 
 function deniedAdvice(web: boolean, insecure: boolean) {
   if (insecure) {
-    return "This page isn't on a secure connection, so the browser won't share the microphone. Open Keepsake over https (or on this computer at localhost) to record.";
+    return "This page isn't on a secure connection, so the browser won't share the microphone. Open little by little over https (or on this computer at localhost) to record.";
   }
   if (web) {
     return "Your browser is blocking the microphone for this site. Click the icon beside the address bar, allow the microphone, then come back here.";
   }
-  return "To record a conversation, Keepsake needs to use the microphone. You can turn it on in Settings.";
+  return "To record a conversation, little by little needs to use the microphone. You can turn it on in Settings.";
 }
 
 /** A rolling level: newest bar on the right, each one a ~90 ms sample. */

@@ -1,4 +1,4 @@
-# Keepsake — path to production
+# little by little — path to production
 
 Two tracks. **Track A** is work that lives entirely in this repo and needs no
 outside accounts; every task is a self-contained brief for a sub-agent.
@@ -807,7 +807,7 @@ B1 and the auth half of A8 landed together. What was decided:
   `AUTH_MODE` + `FIREBASE_PROJECT_ID` on the API, `EXPO_PUBLIC_AUTH_MODE` +
   `EXPO_PUBLIC_FIREBASE_*` in the app. Local development stays on
   `AUTH_MODE=dev` (compose unchanged), so seed data and
-  `Bearer dev:demo@keepsake.local` keep working.
+  `Bearer dev:demo@littlebylittle.local` keep working.
 - **The API verifies with `firebase-admin` `verifyIdToken()` initialised with
   the project id only.** Confirmed: it fetches Google's public securetoken
   certificates over HTTPS and needs no credentials. A service account comes

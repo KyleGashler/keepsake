@@ -1,6 +1,6 @@
-# Keepsake — v0 prototype
+# little by little — v0 prototype
 
-A working slice of Keepsake: a React Native app and an API, wired together and
+A working slice of little by little: a React Native app and an API, wired together and
 runnable with one command. **No AI in this build** — nothing is generated.
 Locally, sign-in is a development stand-in (an email, no password); the hosted
 build uses Firebase Auth (see [Auth](#auth)). It exists to make the product
@@ -10,7 +10,7 @@ architecture tangible enough to argue with.
 docker compose up --build
 ```
 
-Then open **http://localhost:8081** and sign in as `demo@keepsake.local` (the
+Then open **http://localhost:8081** and sign in as `demo@littlebylittle.local` (the
 form fills it in). The database seeds itself on first boot with one demo family
 (the Bryners — two parents, two kids, two grandparents, 24 memories across 36
 collections), so there's something real to browse immediately.
@@ -19,7 +19,7 @@ collections), so there's something real to browse immediately.
 | --- | --- | --- |
 | App | http://localhost:8081 | Expo dev server — React Native running on the web |
 | API | http://localhost:4000/api/health | Express + Prisma |
-| Postgres | `localhost:55432` | user / password / db all `keepsake` |
+| Postgres | `localhost:55432` | user / password / db all `littlebylittle` |
 
 ## What's here
 
@@ -60,7 +60,7 @@ variable, and the two sides must agree:
 
 **Dev mode.** `Bearer dev:ali@example.com` signs you in as `ali@example.com`,
 creating the `User` row on first sight. There is no password and no signature,
-and every dev identity counts as email-verified. `demo@keepsake.local` is the
+and every dev identity counts as email-verified. `demo@littlebylittle.local` is the
 seeded OWNER of the demo family; any other address starts an account with no
 family, and the app offers to create one.
 
@@ -86,7 +86,7 @@ email that belongs to another real account is `409 email_in_use`.
 | --- | --- |
 | `AUTH_MODE` | `dev` (default) or `firebase`. |
 | `FIREBASE_PROJECT_ID` | Required with `firebase` — the server refuses to boot without it. The project whose ID tokens are accepted. |
-| `DEV_DEFAULT_USER` | Dev mode only. A request with **no** `Authorization` header is treated as this email (compose sets `demo@keepsake.local`, so a bare `curl` works). |
+| `DEV_DEFAULT_USER` | Dev mode only. A request with **no** `Authorization` header is treated as this email (compose sets `demo@littlebylittle.local`, so a bare `curl` works). |
 | `ALLOW_DEV_AUTH_IN_PROD` | `1` lets `AUTH_MODE=dev` run under `NODE_ENV=production`. Without it the server refuses to boot, which is the point. Nothing deployed sets it. |
 
 The app reads these at bundle time (copy [app/.env.example](app/.env.example)
@@ -171,22 +171,22 @@ Firebase project or email involved). Java is required.
 
 ```bash
 # 1. The emulator (any directory; the demo- prefix means no real project)
-npx firebase-tools emulators:start --only auth --project demo-keepsake
+npx firebase-tools emulators:start --only auth --project demo-littlebylittle
 
 # 2. The API in firebase mode against the emulator, on a scratch database
-AUTH_MODE=firebase FIREBASE_PROJECT_ID=demo-keepsake \
+AUTH_MODE=firebase FIREBASE_PROJECT_ID=demo-littlebylittle \
 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-DATABASE_URL=postgresql://keepsake:keepsake@localhost:55432/<scratch db> \
+DATABASE_URL=postgresql://littlebylittle:littlebylittle@localhost:55432/<scratch db> \
 PORT=4100 npx tsx src/index.ts          # in server/
 
 # 3. The app, pointed at both (in app/; any non-empty Firebase values work)
 EXPO_PUBLIC_API_URL=http://localhost:4100 EXPO_PUBLIC_AUTH_MODE=firebase \
 EXPO_PUBLIC_FIREBASE_API_KEY=demo-api-key EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=localhost \
-EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-keepsake EXPO_PUBLIC_FIREBASE_APP_ID=1:0:web:0 \
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-littlebylittle EXPO_PUBLIC_FIREBASE_APP_ID=1:0:web:0 \
 EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR=http://127.0.0.1:9099 npx expo start --web
 
 # 4. The "emails": every code the emulator would have sent
-curl -s http://127.0.0.1:9099/emulator/v1/projects/demo-keepsake/oobCodes
+curl -s http://127.0.0.1:9099/emulator/v1/projects/demo-littlebylittle/oobCodes
 ```
 
 Open `http://localhost:8081/auth/action?mode=<requestType's mode>&oobCode=<oobCode>`
@@ -211,7 +211,7 @@ and a row belonging to another family is a `404` — an id never confirms itself
 
 ```bash
 API=http://localhost:4000
-TOKEN='Bearer dev:demo@keepsake.local'
+TOKEN='Bearer dev:demo@littlebylittle.local'
 
 curl -s $API/api/me -H "Authorization: $TOKEN"          # user + memberships
 curl -s $API/api/home -H "Authorization: $TOKEN"
@@ -285,7 +285,7 @@ writable).
 Compose ships an S3-compatible emulator ([RustFS](https://github.com/rustfs/rustfs)),
 behind the `s3` profile so the default stack doesn't start it. It validates
 SigV4 presigned URLs, conditional writes, versioning and bucket CORS, so it
-rejects the same uploads AWS would. `s3-init` creates the `keepsake-dev`
+rejects the same uploads AWS would. `s3-init` creates the `littlebylittle-dev`
 bucket, turns versioning on and allows `http://localhost:8081` (CORS).
 
 ```bash
@@ -293,8 +293,8 @@ STORAGE_PROVIDER=s3 docker compose --profile s3 up --build   # API on the emulat
 docker compose up                                            # back to the volume
 ```
 
-The emulator's S3 API is on `localhost:9300` (user `keepsake`, password
-`keepsake-dev-secret`). Presigned URLs point there, so uploads from a phone on
+The emulator's S3 API is on `localhost:9300` (user `littlebylittle`, password
+`littlebylittle-dev-secret`). Presigned URLs point there, so uploads from a phone on
 your LAN won't reach it; use the web build, or set `S3_PUBLIC_ENDPOINT` to your
 machine's LAN address. Outside compose, run the API with the same variables
 (`S3_ENDPOINT=http://localhost:9300`, no `S3_PUBLIC_ENDPOINT`) and create the
@@ -460,7 +460,7 @@ Wi-Fi finds the API without configuration. Override with `EXPO_PUBLIC_API_URL`
 if that guess is wrong.
 
 The API's CORS policy is an allowlist read from `CORS_ORIGINS` (comma-separated
-origins, e.g. `http://localhost:8081,https://keepsake.example`). It is
+origins, e.g. `http://localhost:8081,https://littlebylittle.example`). It is
 deliberately unset in `docker-compose.yml`: outside production an empty
 `CORS_ORIGINS` allows every origin, which is what lets a phone on an
 unpredictable LAN address reach the API. In production an empty `CORS_ORIGINS`

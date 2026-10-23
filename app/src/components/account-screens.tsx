@@ -4,9 +4,10 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-nati
 import { AuthError } from "../auth";
 import { useSession } from "../auth/session-context";
 import type { MembershipRole } from "../api";
+import { SUPPORT_EMAIL } from "../support";
 import { colors, fonts, radius, spacing, type } from "../theme";
 import { AuthFrame, Notice, TextLink } from "./auth-screens";
-import { KeepsakeMark } from "./brand";
+import { BrandMark } from "./brand";
 import { ListRow } from "./journey";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
@@ -23,8 +24,8 @@ import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
  */
 export function Splash() {
   return (
-    <View style={styles.splash} accessibilityLabel="Opening Keepsake">
-      <KeepsakeMark size={64} />
+    <View style={styles.splash} accessibilityLabel="Opening little by little">
+      <BrandMark size={64} />
       <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
     </View>
   );
@@ -79,7 +80,7 @@ export function VerifyEmailScreen() {
     <AuthFrame
       eyebrow="One more step"
       title="Verify your email"
-      subtitle={`There's already a Keepsake archive for ${user?.email ?? "this address"}. Follow the link we emailed you so we know it's yours, then come back here.`}
+      subtitle={`There's already a little by little archive for ${user?.email ?? "this address"}. Follow the link we emailed you so we know it's yours, then come back here.`}
       footer={<SignedInAs />}
     >
       {message ? <Notice>{message}</Notice> : null}
@@ -102,7 +103,7 @@ export function EmailInUseScreen() {
   return (
     <AuthFrame
       title="This email is taken"
-      subtitle={`Another Keepsake account already uses ${user?.email ?? "this address"}. Sign in with that account instead, or write to hello@keepsake.app and we'll sort it out.`}
+      subtitle={`Another little by little account already uses ${user?.email ?? "this address"}. Sign in with that account instead, or write to ${SUPPORT_EMAIL} and we'll sort it out.`}
     >
       <SheetButton label="Sign out" onPress={() => void signOut()} />
     </AuthFrame>

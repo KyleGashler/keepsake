@@ -44,7 +44,7 @@ export function RecorderNotice({
               <Ionicons name="videocam-off-outline" size={26} color={colors.accentDeep} />
             </View>
             <Text style={[type.heading, { textAlign: "center", marginTop: spacing.lg }]}>
-              {state === "unavailable" ? "The camera didn't start" : "Keepsake can't see you yet"}
+              {state === "unavailable" ? "The camera didn't start" : "We can't see you yet"}
             </Text>
             <Text style={[type.body, { textAlign: "center", marginTop: spacing.sm, maxWidth: 420 }]}>
               {noticeBody(state, web, message)}
@@ -71,13 +71,13 @@ export function RecorderNotice({
 
 function noticeBody(state: "denied" | "insecure" | "unavailable", web: boolean, message?: string) {
   if (state === "insecure") {
-    return "This page isn't on a secure connection, so the browser won't share the camera. Open Keepsake over https (or on this computer at localhost) to record.";
+    return "This page isn't on a secure connection, so the browser won't share the camera. Open little by little over https (or on this computer at localhost) to record.";
   }
   if (state === "unavailable") return message;
   if (web) {
     return "Your browser is blocking the camera or microphone for this site. Click the icon beside the address bar, allow both, then come back here.";
   }
-  return "To record a video, Keepsake needs the camera and the microphone. You can turn them on in Settings.";
+  return "To record a video, little by little needs the camera and the microphone. You can turn them on in Settings.";
 }
 
 function stageHint(recording: boolean, nearlyDone: boolean, maxDurationS: number) {

@@ -7,7 +7,7 @@ import { useSyncExternalStore } from "react";
  * `useFamilyId()` and refetch when it changes. Remembered across launches so
  * someone in two families isn't asked every time.
  */
-const STORAGE_KEY = "keepsake.familyId";
+const STORAGE_KEY = "littlebylittle.familyId";
 
 let current: string | null = null;
 const listeners = new Set<() => void>();

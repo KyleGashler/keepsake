@@ -28,6 +28,7 @@ import {
   type AuthProvider,
   type AuthUser,
 } from "./auth-provider";
+import { SUPPORT_EMAIL } from "../support";
 import { persistence } from "./firebase-persistence";
 
 /**
@@ -134,7 +135,7 @@ function friendly(err: unknown): AuthError {
     case "auth/network-request-failed":
       return new AuthError("Can't reach the sign-in service. Check your connection and try again.", code);
     case "auth/user-disabled":
-      return new AuthError("This account has been turned off. Write to hello@keepsake.app for help.", code);
+      return new AuthError(`This account has been turned off. Write to ${SUPPORT_EMAIL} for help.`, code);
     case "auth/requires-recent-login":
       return new AuthError("Sign in again to do that.", code);
     case "auth/invalid-api-key":

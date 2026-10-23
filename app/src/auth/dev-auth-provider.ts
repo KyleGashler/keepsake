@@ -11,10 +11,10 @@ import {
  * AsyncStorage is the device's storage natively and `window.localStorage` on
  * the web (that is its web implementation), so one key covers both.
  */
-const STORAGE_KEY = "keepsake.devAuth.email";
+const STORAGE_KEY = "littlebylittle.devAuth.email";
 
 /** Seeded OWNER of the demo family — what the dev sign-in form starts with. */
-export const DEV_DEFAULT_EMAIL = "demo@keepsake.local";
+export const DEV_DEFAULT_EMAIL = "demo@littlebylittle.local";
 
 /**
  * Development sign-in: an email and nothing else. The token is `dev:<email>`,

@@ -3,6 +3,7 @@ import { useEffect, useEffectEvent, useState } from "react";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { auth, AuthError, LINK_UNUSABLE, type ActionCodeInfo, type ActionCodes } from "../auth";
 import { useSession } from "../auth/session-context";
+import { SUPPORT_EMAIL } from "../support";
 import { colors, spacing } from "../theme";
 import { AuthFrame, Notice, TextLink } from "./auth-screens";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
@@ -204,7 +205,7 @@ function ResendVerification({ onDone }: { onDone: () => void }) {
       eyebrow="Link expired"
       title="This link has expired"
       subtitle={`Verification links work once, and only for a while. We can send a fresh one to ${user?.email ?? "you"}.`}
-      footer={<TextLink label="Continue to Keepsake" onPress={onDone} />}
+      footer={<TextLink label="Continue to little by little" onPress={onDone} />}
     >
       {sent ? <Notice>Sent. It can take a minute or two to arrive — check spam if it doesn't.</Notice> : null}
       <SheetError message={error} />
@@ -282,7 +283,7 @@ function ResetPassword({ code, codes, onDone }: ModeProps) {
     <AuthFrame
       eyebrow="It happens"
       title="Choose a new password"
-      subtitle={`For your Keepsake account, ${email}.`}
+      subtitle={`For your little by little account, ${email}.`}
     >
       <Field label="New password" hint="At least 6 characters.">
         <SheetInput
@@ -336,9 +337,9 @@ function RequestReset({ kind, onDone }: { kind: "reset" | "recover"; onDone: () 
       <AuthFrame
         eyebrow="On its way"
         title="Check your inbox"
-        subtitle={`If there's a Keepsake account for ${sentTo}, a new link to choose a password is on its way. It can take a minute or two.`}
+        subtitle={`If there's a little by little account for ${sentTo}, a new link to choose a password is on its way. It can take a minute or two.`}
       >
-        <SheetButton label="Back to Keepsake" variant="secondary" onPress={onDone} />
+        <SheetButton label="Back to little by little" variant="secondary" onPress={onDone} />
       </AuthFrame>
     );
   }
@@ -350,9 +351,9 @@ function RequestReset({ kind, onDone }: { kind: "reset" | "recover"; onDone: () 
       subtitle={
         kind === "reset"
           ? "Password reset links work once, and only for an hour. Send yourself a new one."
-          : "This link has been used or has expired. If your email was changed without you, reset your password to be safe — and write to hello@keepsake.app."
+          : `This link has been used or has expired. If your email was changed without you, reset your password to be safe — and write to ${SUPPORT_EMAIL}.`
       }
-      footer={<TextLink label="Back to Keepsake" onPress={onDone} />}
+      footer={<TextLink label="Back to little by little" onPress={onDone} />}
     >
       <Field label="Email">
         <SheetInput
@@ -415,7 +416,7 @@ function RecoverEmail({ code, codes, onDone }: ModeProps) {
       eyebrow="Changed back"
       title="Your email is restored"
       subtitle={`Your account's email is ${email ?? "back to what it was"} again. If you didn't ask for it to change, someone else may know your password — reset it to be safe.`}
-      footer={<TextLink label="Continue to Keepsake" onPress={onDone} />}
+      footer={<TextLink label="Continue to little by little" onPress={onDone} />}
     >
       {sent ? <Notice>{`A link to choose a new password is on its way to ${email}.`}</Notice> : null}
       <SheetError message={error} />
@@ -445,7 +446,7 @@ function Failed({ error, retry, onDone }: { error: AuthError; retry: () => void;
     <AuthFrame
       title="That didn't go through"
       subtitle={error.message}
-      footer={<TextLink label="Back to Keepsake" onPress={onDone} />}
+      footer={<TextLink label="Back to little by little" onPress={onDone} />}
     >
       <SheetButton label="Try again" icon="refresh" onPress={retry} />
     </AuthFrame>
@@ -456,9 +457,9 @@ function BrokenLink({ onDone }: { onDone: () => void }) {
   return (
     <AuthFrame
       title="This link doesn't work"
-      subtitle="Part of it may be missing — some email apps cut long links short. Open it again from the email, or ask for a new one from Keepsake."
+      subtitle="Part of it may be missing — some email apps cut long links short. Open it again from the email, or ask for a new one from little by little."
     >
-      <SheetButton label="Go to Keepsake" onPress={onDone} />
+      <SheetButton label="Go to little by little" onPress={onDone} />
     </AuthFrame>
   );
 }
@@ -470,7 +471,7 @@ function NotInDevMode({ onDone }: { onDone: () => void }) {
       title="Nothing to do here"
       subtitle="This build signs in without passwords, so it never sends verification or reset emails. Links like this one only work in a build that uses Firebase sign-in."
     >
-      <SheetButton label="Go to Keepsake" onPress={onDone} />
+      <SheetButton label="Go to little by little" onPress={onDone} />
     </AuthFrame>
   );
 }

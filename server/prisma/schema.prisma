@@ -1,4 +1,4 @@
-// Keepsake data model.
+// little by little data model.
 //
 // A Family is the tenancy boundary: every row that holds content hangs off one,
 // and every query filters by familyId. People in a family are Person rows; a

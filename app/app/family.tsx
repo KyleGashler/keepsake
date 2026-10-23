@@ -16,6 +16,7 @@ import {
   Screen,
   SectionHeader,
 } from "../src/components/ui";
+import { SUPPORT_EMAIL } from "../src/support";
 import { colors, radius, spacing, type } from "../src/theme";
 
 type Payload = {
@@ -29,7 +30,7 @@ const SETTINGS = [
   { icon: "lock-closed-outline" as const, label: "Privacy & ownership", detail: "Your family owns every memory" },
   { icon: "card-outline" as const, label: "Subscription", detail: "Not billed in this build" },
   { icon: "download-outline" as const, label: "Export the archive", detail: "Originals, always" },
-  { icon: "help-circle-outline" as const, label: "Support", detail: "hello@keepsake.app" },
+  { icon: "help-circle-outline" as const, label: "Support", detail: SUPPORT_EMAIL },
 ];
 
 /**

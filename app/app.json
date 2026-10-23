@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "Keepsake",
-    "slug": "keepsake",
-    "scheme": "keepsake",
+    "name": "little by little",
+    "slug": "little-by-little",
+    "scheme": "littlebylittle",
     "version": "0.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,10 +10,10 @@
     "backgroundColor": "#FBF8F2",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.keepsake.app"
+      "bundleIdentifier": "com.littlebylittle.app"
     },
     "android": {
-      "package": "com.keepsake.app",
+      "package": "com.littlebylittle.app",
       "adaptiveIcon": {
         "backgroundColor": "#FBF8F2",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -33,14 +33,14 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Keepsake needs access to your photos so you can preserve them as memories.",
-          "cameraPermission": "Keepsake needs your camera to capture a moment as it happens."
+          "photosPermission": "little by little needs access to your photos so you can preserve them as memories.",
+          "cameraPermission": "little by little needs your camera to capture a moment as it happens."
         }
       ],
       [
         "expo-audio",
         {
-          "microphonePermission": "Keepsake uses your microphone to record family conversations.",
+          "microphonePermission": "little by little uses your microphone to record family conversations.",
           "enableBackgroundRecording": false,
           "enableBackgroundPlayback": false
         }
@@ -49,8 +49,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Keepsake needs your camera to capture a moment as it happens.",
-          "microphonePermission": "Keepsake uses your microphone to record family conversations.",
+          "cameraPermission": "little by little needs your camera to capture a moment as it happens.",
+          "microphonePermission": "little by little uses your microphone to record family conversations.",
           "recordAudioAndroid": true,
           "barcodeScannerEnabled": false
         }
