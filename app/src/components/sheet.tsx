@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
     gap: spacing.md,
     paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.md,
+    paddingBottom: spacing.lg,
   },
   title: { fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.ink },
   subtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 21, color: colors.inkSoft, marginTop: 2 },
@@ -347,7 +347,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   body: { flexGrow: 0 },
-  bodyContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, gap: spacing.lg },
+  // Fields sit further from each other (xl) than a field's own label, input
+  // and hint do (sm), so each reads as one group.
+  bodyContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, gap: spacing.xl },
   footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, gap: spacing.sm },
 
   action: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md + 2 },

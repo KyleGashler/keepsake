@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   ApiError,
@@ -52,7 +52,7 @@ export default function FamilyHubScreen() {
   const [managing, setManaging] = useState<FamilyMember | null>(null);
   const [removing, setRemoving] = useState<FamilyMember | null>(null);
   const [inviteActions, setInviteActions] = useState<Invite | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<HubNotice | null>(null);
 
   if (error) return <ErrorState error={error} onRetry={refetch} />;
   if (loading && !data) return <Loading label="Opening Family Hub…" />;
@@ -63,20 +63,21 @@ export default function FamilyHubScreen() {
     await Promise.all([refetch(), isOwner ? pending.refetch() : Promise.resolve()]);
   };
 
-  /** Do `work`, say what went wrong if it did; true when it worked. */
-  const attempt = async (work: () => Promise<unknown>, fallback: string) => {
+  /** Do `work`, say what went wrong if it did (under `section`); true when it worked. */
+  const attempt = async (section: HubNotice["section"], work: () => Promise<unknown>, fallback: string) => {
     setNotice(null);
     try {
       await work();
       return true;
     } catch (err) {
-      setNotice(hubError(err, fallback));
+      setNotice({ section, text: hubError(err, fallback) });
       return false;
     }
   };
 
   const setRole = async (member: FamilyMember, role: MembershipRole) => {
     const ok = await attempt(
+      "members",
       () => apiSend(`/api/family/members/${member.userId}`, "PATCH", { role }),
       "Couldn't change their role just now.",
     );
@@ -87,6 +88,7 @@ export default function FamilyHubScreen() {
 
   const remove = async (member: FamilyMember) => {
     const ok = await attempt(
+      "members",
       () => apiSend(`/api/family/members/${member.userId}`, "DELETE"),
       "Couldn't remove them just now.",
     );
@@ -96,13 +98,23 @@ export default function FamilyHubScreen() {
   };
 
   const withdraw = async (invite: Invite) => {
-    await attempt(() => apiSend(`/api/family/invites/${invite.id}`, "DELETE"), "Couldn't withdraw it just now.");
+    await attempt(
+      "invites",
+      () => apiSend(`/api/family/invites/${invite.id}`, "DELETE"),
+      "Couldn't withdraw it just now.",
+    );
     await refreshAll();
   };
 
   const passOn = async (invite: Invite) => {
     const result = await shareLink(invite.url, inviteMessage(data.family.name));
-    if (result === "copied") setNotice("Invite link copied.");
+    if (result === "copied") setNotice({ section: "invites", text: "Invite link copied." });
+  };
+
+  const memberPress = (member: FamilyMember) => {
+    if (isOwner) return () => setManaging(member);
+    const person = member.person;
+    return person ? () => router.push(`/person/${person.id}`) : undefined;
   };
 
   const memberActions = (member: FamilyMember): SheetAction[] => [
@@ -141,121 +153,116 @@ export default function FamilyHubScreen() {
           <Stat value={data.stats.personCount} label="People" />
         </View>
 
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
-
-        <SectionHeader label="Members" />
-        <View style={{ gap: spacing.lg }}>
-          {data.members.map((member) => (
-            <MemberRow
+        <SectionHeader
+          label="Members"
+          action={isOwner ? <SmallButton label="Invite" icon="add" filled onPress={() => setInviting({})} /> : null}
+        />
+        <Notice notice={notice} section="members" />
+        <Group>
+          {data.members.map((member, i) => (
+            <Row
               key={member.userId}
-              member={member}
-              manageable={isOwner}
-              onPress={() => {
-                if (isOwner) setManaging(member);
-                else if (member.person) router.push(`/person/${member.person.id}`);
-              }}
+              first={i === 0}
+              leading={member.person ? <Avatar person={member.person} size={LEADING} /> : <Initials name={member.name} />}
+              title={`${member.name}${member.isYou ? " (you)" : ""}${member.person?.relation ? ` · ${member.person.relation}` : ""}`}
+              detail={`${member.permission}${member.email ? ` · ${member.email}` : ""}`}
+              trailing={<RowIcon name={isOwner ? "ellipsis-horizontal" : "chevron-forward"} />}
+              onPress={memberPress(member)}
             />
           ))}
-        </View>
+        </Group>
+        {isOwner && data.members.length === 1 && !pending.data?.invites.length ? (
+          <Text style={styles.groupHint}>
+            Invite a grandparent, an aunt, a co-parent — anyone who should see the archive.
+          </Text>
+        ) : null}
+
+        {isOwner && pending.data?.invites.length ? (
+          <>
+            <SectionHeader label="Waiting to join" />
+            <Notice notice={notice} section="invites" />
+            <Group>
+              {pending.data.invites.map((invite, i) => (
+                <Row
+                  key={invite.id}
+                  first={i === 0}
+                  leading={<LeadingIcon name="mail-outline" tint={colors.accentSoft} />}
+                  title={invite.forName ?? "Anyone with the link"}
+                  detail={`${ROLE_LABEL[invite.role]} · until ${monthDay(invite.expiresAt)}${invite.email ? ` · ${invite.email}` : ""}`}
+                  trailing={<RowIcon name="ellipsis-horizontal" />}
+                  onPress={() => setInviteActions(invite)}
+                />
+              ))}
+            </Group>
+          </>
+        ) : null}
 
         {data.people.length ? (
           <>
             <SectionHeader label="Also in the archive" />
-            <View style={{ gap: spacing.lg }}>
-              {data.people.map((person) => (
-                <PersonRow
+            <Group>
+              {data.people.map((person, i) => (
+                <Row
                   key={person.id}
-                  person={person}
+                  first={i === 0}
+                  leading={<Avatar person={person} size={LEADING} />}
+                  title={`${person.name}${person.relation ? ` · ${person.relation}` : ""}`}
+                  detail={person.role === "CHILD" ? "Child" : "No account yet"}
+                  trailing={
+                    isOwner && person.invitable ? (
+                      <SmallButton
+                        label="Invite"
+                        accessibilityLabel={`Invite ${person.name}`}
+                        onPress={() => setInviting({ personId: person.id })}
+                      />
+                    ) : (
+                      <RowIcon name="chevron-forward" />
+                    )
+                  }
                   onPress={() => router.push(`/person/${person.id}`)}
-                  onInvite={isOwner && person.invitable ? () => setInviting({ personId: person.id }) : undefined}
                 />
               ))}
-            </View>
-          </>
-        ) : null}
-
-        {isOwner ? (
-          <>
-            <SectionHeader label="Invite someone" />
-            <Text style={type.body}>
-              Make a link for a grandparent, an aunt, a co-parent — anyone who should see the archive. It works once and
-              lasts a week.
-            </Text>
-            <SheetButton label="Create an invite link" icon="link-outline" onPress={() => setInviting({})} />
-
-            {pending.data?.invites.length ? (
-              <>
-                <SectionHeader label="Waiting to join" />
-                <View style={{ gap: spacing.lg }}>
-                  {pending.data.invites.map((invite) => (
-                    <Pressable
-                      key={invite.id}
-                      onPress={() => setInviteActions(invite)}
-                      style={({ pressed }) => [styles.member, pressed && { opacity: 0.7 }]}
-                      accessibilityRole="button"
-                    >
-                      <View style={styles.inviteDisc}>
-                        <Ionicons name="mail-outline" size={20} color={colors.inkSoft} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.rowTitle}>{invite.forName ?? "Anyone with the link"}</Text>
-                        <Text style={type.caption}>
-                          {ROLE_LABEL[invite.role]} · until {monthDay(invite.expiresAt)}
-                          {invite.email ? ` · ${invite.email}` : ""}
-                        </Text>
-                      </View>
-                      <Ionicons name="ellipsis-horizontal" size={18} color={colors.muted} />
-                    </Pressable>
-                  ))}
-                </View>
-              </>
-            ) : null}
+            </Group>
           </>
         ) : null}
 
         <SectionHeader label="Settings" />
-        <View style={styles.settings}>
-          {SETTINGS.map((setting) => (
-            <View key={setting.label} style={styles.setting}>
-              <Ionicons name={setting.icon} size={18} color={colors.inkSoft} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, color: colors.ink }}>{setting.label}</Text>
-                <Text style={type.caption}>{setting.detail}</Text>
-              </View>
-            </View>
+        <Group>
+          {SETTINGS.map((setting, i) => (
+            <Row
+              key={setting.label}
+              first={i === 0}
+              leading={<LeadingIcon name={setting.icon} />}
+              title={setting.label}
+              detail={setting.detail}
+            />
           ))}
-        </View>
+        </Group>
 
         <SectionHeader label="Account" />
-        <View style={styles.settings}>
-          <View style={styles.setting}>
-            <Ionicons name="person-circle-outline" size={18} color={colors.inkSoft} />
-            <View style={{ flex: 1 }}>
-              <Text style={{ fontSize: 15, color: colors.ink }}>Signed in</Text>
-              <Text style={type.caption}>
-                {session.user?.email} · {ROLE_LABEL[data.role]}
-              </Text>
-            </View>
-          </View>
+        <Group>
+          <Row
+            first
+            leading={<LeadingIcon name="person-circle-outline" />}
+            title="Signed in"
+            detail={`${session.user?.email ?? ""} · ${ROLE_LABEL[data.role]}`}
+          />
           {session.memberships.length > 1 ? (
-            <Pressable onPress={() => setSwitching(true)} style={styles.setting} accessibilityRole="button">
-              <Ionicons name="swap-horizontal-outline" size={18} color={colors.inkSoft} />
-              <View style={{ flex: 1 }}>
-                <Text style={{ fontSize: 15, color: colors.ink }}>Switch family</Text>
-                <Text style={type.caption}>You belong to {session.memberships.length} archives</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={17} color={colors.muted} />
-            </Pressable>
+            <Row
+              leading={<LeadingIcon name="swap-horizontal-outline" />}
+              title="Switch family"
+              detail={`You belong to ${session.memberships.length} archives`}
+              trailing={<RowIcon name="chevron-forward" />}
+              onPress={() => setSwitching(true)}
+            />
           ) : null}
-          <Pressable
+          <Row
+            leading={<LeadingIcon name="log-out-outline" color={colors.terracotta} />}
+            title="Sign out"
+            destructive
             onPress={() => leaveFor(() => void session.signOut())}
-            style={styles.setting}
-            accessibilityRole="button"
-          >
-            <Ionicons name="log-out-outline" size={18} color={colors.terracotta} />
-            <Text style={{ fontSize: 15, color: colors.terracotta }}>Sign out</Text>
-          </Pressable>
-        </View>
+          />
+        </Group>
 
         <PreviewNote>Billing isn't set up in this build yet.</PreviewNote>
 
@@ -307,7 +314,7 @@ export default function FamilyHubScreen() {
                           icon: "copy-outline" as const,
                           onPress: () =>
                             void copyLink(inviteActions.url).then((r) => {
-                              if (r === "copied") setNotice("Invite link copied.");
+                              if (r === "copied") setNotice({ section: "invites", text: "Invite link copied." });
                             }),
                         },
                       ]
@@ -362,65 +369,80 @@ function inviteMessage(familyName: string) {
   return `Join ${familyName} on little by little:`;
 }
 
-function MemberRow({
-  member,
-  manageable,
+/** Every row's leading disc, so text lines up down the whole screen. */
+const LEADING = 40;
+
+type HubNotice = { section: "members" | "invites"; text: string };
+
+/** What just happened (or went wrong), shown at the top of the section it happened in. */
+function Notice({ notice, section }: { notice: HubNotice | null; section: HubNotice["section"] }) {
+  if (notice?.section !== section) return null;
+  return <Text style={styles.notice}>{notice.text}</Text>;
+}
+
+/** A white card of `Row`s. */
+function Group({ children }: { children: ReactNode }) {
+  return <View style={styles.group}>{children}</View>;
+}
+
+function Row({
+  leading,
+  title,
+  detail,
+  trailing,
   onPress,
+  destructive = false,
+  first = false,
 }: {
-  member: FamilyMember;
-  manageable: boolean;
-  onPress: () => void;
+  /** The top row of its group: no hairline above it. */
+  first?: boolean;
+  leading: ReactNode;
+  title: string;
+  detail?: string;
+  trailing?: ReactNode;
+  onPress?: () => void;
+  destructive?: boolean;
 }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.member, pressed && { opacity: 0.7 }]}>
-      {member.person ? <Avatar person={member.person} size={44} /> : <Initials name={member.name} />}
+    <Pressable
+      onPress={onPress}
+      disabled={!onPress}
+      accessibilityRole={onPress ? "button" : undefined}
+      style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceAlt }]}
+    >
+      {first ? null : <View style={styles.divider} />}
+      {leading}
       <View style={{ flex: 1 }}>
-        <Text style={styles.rowTitle}>
-          {member.name}
-          {member.isYou ? " (you)" : ""}
-          {member.person?.relation ? ` · ${member.person.relation}` : ""}
+        <Text style={[styles.rowTitle, destructive && { color: colors.terracotta }]} numberOfLines={1}>
+          {title}
         </Text>
-        <Text style={type.caption}>
-          {member.permission}
-          {member.email ? ` · ${member.email}` : ""}
-        </Text>
+        {detail ? (
+          <Text style={type.caption} numberOfLines={1}>
+            {detail}
+          </Text>
+        ) : null}
       </View>
-      <Ionicons name={manageable ? "ellipsis-horizontal" : "chevron-forward"} size={17} color={colors.muted} />
+      {trailing}
     </Pressable>
   );
 }
 
-function PersonRow({
-  person,
-  onPress,
-  onInvite,
+function RowIcon({ name }: { name: keyof typeof Ionicons.glyphMap }) {
+  return <Ionicons name={name} size={18} color={colors.muted} />;
+}
+
+function LeadingIcon({
+  name,
+  color = colors.inkSoft,
+  tint = colors.surfaceAlt,
 }: {
-  person: FamilyPerson;
-  onPress: () => void;
-  onInvite?: () => void;
+  name: keyof typeof Ionicons.glyphMap;
+  color?: string;
+  tint?: string;
 }) {
   return (
-    <View style={styles.member}>
-      <Pressable onPress={onPress} style={({ pressed }) => [styles.member, { flex: 1 }, pressed && { opacity: 0.7 }]}>
-        <Avatar person={person} size={44} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.rowTitle}>
-            {person.name}
-            {person.relation ? ` · ${person.relation}` : ""}
-          </Text>
-          <Text style={type.caption}>{person.role === "CHILD" ? "Child" : "No account yet"}</Text>
-        </View>
-      </Pressable>
-      {onInvite ? (
-        <Pressable
-          onPress={onInvite}
-          accessibilityRole="button"
-          accessibilityLabel={`Invite ${person.name}`}
-          style={({ pressed }) => [styles.smallButton, pressed && { opacity: 0.7 }]}
-        >
-          <Text style={styles.smallButtonLabel}>Invite</Text>
-        </Pressable>
-      ) : null}
+    <View style={[styles.disc, { backgroundColor: tint }]}>
+      <Ionicons name={name} size={19} color={color} />
     </View>
   );
 }
@@ -433,9 +455,37 @@ function Initials({ name }: { name: string }) {
     .join("")
     .toUpperCase();
   return (
-    <View style={styles.initials}>
+    <View style={[styles.disc, { backgroundColor: colors.surfaceAlt }]}>
       <Text style={styles.initialsText}>{initials}</Text>
     </View>
+  );
+}
+
+function SmallButton({
+  label,
+  icon,
+  filled = false,
+  accessibilityLabel,
+  onPress,
+}: {
+  label: string;
+  icon?: keyof typeof Ionicons.glyphMap;
+  filled?: boolean;
+  accessibilityLabel?: string;
+  onPress: () => void;
+}) {
+  const color = filled ? colors.onPrimary : colors.ink;
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel ?? label}
+      style={({ pressed }) => [styles.smallButton, filled && styles.smallButtonFilled, pressed && { opacity: 0.7 }]}
+    >
+      {icon ? <Ionicons name={icon} size={15} color={color} /> : null}
+      <Text style={[styles.smallButtonLabel, { color }]}>{label}</Text>
+    </Pressable>
   );
 }
 
@@ -492,7 +542,31 @@ function InviteSheet({
         onClose={onClose}
         title="Invite ready"
         subtitle={`${invite.forName ? `For ${invite.forName}. ` : ""}Works once, until ${monthDay(invite.expiresAt)}.`}
-        footer={<SheetButton label="Done" variant="secondary" onPress={onClose} />}
+        footer={
+          <>
+            {canCopy ? (
+              <SheetButton
+                label={copied ? "Copied" : "Copy the link"}
+                icon={copied ? "checkmark" : "copy-outline"}
+                onPress={() =>
+                  void copyLink(invite.url).then((r) => {
+                    if (r === "copied") setCopied(true);
+                  })
+                }
+              />
+            ) : null}
+            <SheetButton
+              label="Share the link"
+              icon="share-outline"
+              variant={canCopy ? "secondary" : "primary"}
+              onPress={() =>
+                void shareLink(invite.url, inviteMessage(familyName)).then((r) => {
+                  if (r === "copied") setCopied(true);
+                })
+              }
+            />
+          </>
+        }
       >
         <View style={styles.linkBox}>
           <Text selectable style={styles.linkText}>
@@ -506,27 +580,6 @@ function InviteSheet({
               : `It wasn't emailed to ${invite.email} — share it yourself.`}
           </Text>
         ) : null}
-        {canCopy ? (
-          <SheetButton
-            label={copied ? "Copied" : "Copy the link"}
-            icon={copied ? "checkmark" : "copy-outline"}
-            onPress={() =>
-              void copyLink(invite.url).then((r) => {
-                if (r === "copied") setCopied(true);
-              })
-            }
-          />
-        ) : null}
-        <SheetButton
-          label="Share the link"
-          icon="share-outline"
-          variant={canCopy ? "secondary" : "primary"}
-          onPress={() =>
-            void shareLink(invite.url, inviteMessage(familyName)).then((r) => {
-              if (r === "copied") setCopied(true);
-            })
-          }
-        />
       </Sheet>
     );
   }
@@ -536,19 +589,22 @@ function InviteSheet({
       visible
       onClose={onClose}
       title="Invite someone"
-      subtitle={`A link to join ${familyName}.`}
+      subtitle={`A link to join ${familyName}. It works once and lasts a week.`}
       footer={<SheetButton label="Create the link" onPress={() => void create()} busy={busy} />}
     >
-      <Field label="Who is this?">
-        <View style={styles.chips}>
-          {people.map((p) => (
-            <Chip key={p.id} label={p.name} selected={who === p.id} onPress={() => setWho(p.id)} />
-          ))}
-          <Chip label="Someone new" selected={who === "new"} onPress={() => setWho("new")} />
-        </View>
-      </Field>
+      {/* Only worth asking when there's someone in the archive to pick. */}
+      {people.length ? (
+        <Field label="Who is this?">
+          <View style={styles.chips}>
+            {people.map((p) => (
+              <Chip key={p.id} label={p.name} selected={who === p.id} onPress={() => setWho(p.id)} />
+            ))}
+            <Chip label="Someone new" selected={who === "new"} onPress={() => setWho("new")} />
+          </View>
+        </Field>
+      ) : null}
       {who === "new" ? (
-        <Field label="Their name" hint="How they'll appear in the archive. Leave it empty to use the name on their account.">
+        <Field label="Their name" hint="Leave it empty to use the name on their account.">
           <SheetInput
             value={name}
             onChangeText={setName}
@@ -584,7 +640,7 @@ function InviteSheet({
       </Field>
       <Field
         label="Their email (optional)"
-        hint="We'll email the link where email is switched on. Either way you can share it yourself, by message or however your family talks."
+        hint="Either way, you'll get a link to share yourself."
       >
         <SheetInput
           value={email}
@@ -636,35 +692,54 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.lg,
   },
   statValue: { fontFamily: type.title.fontFamily, fontSize: 22, color: colors.ink },
-  notice: { ...type.caption, color: colors.accentDeep, marginTop: spacing.md },
-  member: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-  rowTitle: { fontSize: 15.5, color: colors.ink, fontFamily: fonts.sans },
-  initials: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.surfaceAlt,
+  notice: { ...type.caption, color: colors.accentDeep, marginBottom: spacing.sm },
+  group: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radius.md,
+    overflow: "hidden",
+  },
+  row: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+    minHeight: 64,
+  },
+  /** Between rows, starting under the text — past the leading disc. */
+  divider: {
+    position: "absolute",
+    top: 0,
+    right: 0,
+    left: spacing.lg + LEADING + spacing.md,
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.line,
+  },
+  rowTitle: { fontSize: 15.5, lineHeight: 21, color: colors.ink, fontFamily: fonts.sansSemiBold },
+  groupHint: { ...type.caption, marginTop: spacing.sm, paddingHorizontal: spacing.xs },
+  disc: {
+    width: LEADING,
+    height: LEADING,
+    borderRadius: LEADING / 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  initialsText: { fontFamily: fonts.sansBold, color: colors.inkSoft },
-  inviteDisc: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  initialsText: { fontFamily: fonts.sansBold, fontSize: 14, color: colors.inkSoft },
   smallButton: {
-    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    height: 32,
     paddingHorizontal: spacing.md,
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.surface,
   },
-  smallButtonLabel: { fontFamily: fonts.sansBold, fontSize: 13.5, color: colors.ink },
+  smallButtonFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
+  smallButtonLabel: { fontFamily: fonts.sansBold, fontSize: 13.5 },
   linkBox: {
     padding: spacing.md,
     borderRadius: radius.sm,
@@ -692,7 +767,5 @@ const styles = StyleSheet.create({
     borderColor: colors.line,
     backgroundColor: colors.surface,
   },
-  roleOptionSelected: { borderColor: colors.primary },
-  settings: { gap: spacing.lg },
-  setting: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  roleOptionSelected: { borderColor: colors.primary, backgroundColor: colors.bg },
 });
