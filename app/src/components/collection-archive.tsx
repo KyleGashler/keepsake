@@ -43,9 +43,7 @@ const open = (memory: MemoryCard) => router.push(routes.memory(memory.id));
  * header never flashes away.
  *
  * Someone who can contribute also gets ⋯: edit the collection, choose which
- * memories are filed in it, and delete it — except a child's default
- * collections (those with a `kind`), which every child keeps; those can be
- * renamed instead.
+ * memories are filed in it, and delete it.
  */
 export function CollectionArchive({
   data,
@@ -104,13 +102,10 @@ export function CollectionArchive({
 
   const [sheet, setSheet] = useState<"menu" | "edit" | "file" | "delete" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const deletable = collection.kind === null;
   const menuActions: SheetAction[] = [
     { label: "Edit collection", icon: "create-outline", onPress: () => setSheet("edit") },
     { label: "Choose its memories", icon: "albums-outline", onPress: () => setSheet("file") },
-    ...(deletable
-      ? [{ label: "Delete collection", icon: "trash-outline" as const, destructive: true, onPress: () => setSheet("delete") }]
-      : []),
+    { label: "Delete collection", icon: "trash-outline", destructive: true, onPress: () => setSheet("delete") },
   ];
   const remove = async () => {
     try {
@@ -201,7 +196,6 @@ export function CollectionArchive({
         visible={sheet === "menu"}
         onClose={() => setSheet((s) => (s === "menu" ? null : s))}
         title={collection.name}
-        subtitle={deletable ? undefined : "Every child keeps this collection, so it can be renamed but not deleted."}
         actions={menuActions}
       />
       <ActionSheet

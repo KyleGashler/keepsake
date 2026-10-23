@@ -1,15 +1,14 @@
 import { PrismaClient, type Person } from "@prisma/client";
-import { ensureAllChildCollections, ensureChildCollections } from "./lib/child-collections.js";
+import { ensureChildCollections } from "./lib/child-collections.js";
 import { hueForSeed } from "./lib/placeholder.js";
 
 const prisma = new PrismaClient();
 
 /**
  * Seeds one demo family so the app has a story to tell on first run.
- * Idempotent: skips if a family already exists unless SEED_RESET=1. Every run
- * — skipped or not — also tops up every child's default collections (see
- * lib/child-collections.ts), which is how existing databases pick up new
- * defaults: this runs on every boot where SEED_DEMO=1.
+ * Idempotent: skips if a family already exists unless SEED_RESET=1. A child's
+ * default collections are given once, when the child is created (see
+ * lib/child-collections.ts); a skipped run never restores ones a family deleted.
  */
 
 /**
@@ -165,8 +164,6 @@ async function main() {
     // A database seeded before accounts existed has the family but no one who
     // can sign in to it. Attach the demo owner so the dev bridge resolves.
     await ensureDemoUser(existing.id);
-    const topUp = await ensureAllChildCollections(prisma);
-    if (topUp.changed) console.log(`Child collections topped up: ${topUp.changed} across ${topUp.children} children.`);
     return;
   }
   if (existing) {

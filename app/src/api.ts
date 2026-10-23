@@ -573,8 +573,8 @@ export type CollectionCreate = {
 
 /**
  * `PATCH /api/collections/:id` — any collection, a child's defaults included
- * (they keep their `kind`). Only collections without a `kind` can be deleted
- * (`DELETE /api/collections/:id`; `409 default_collection` otherwise).
+ * (they keep their `kind`). Any collection can be deleted, too
+ * (`DELETE /api/collections/:id`).
  */
 export type CollectionPatch = { name?: string; description?: string | null; icon?: string; color?: string };
 

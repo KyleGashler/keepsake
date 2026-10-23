@@ -426,7 +426,7 @@ either on its own.
 | `PUT /api/memories/:id/media/order` | `{ mediaIds }`, every media id once: the new order (the first photo/video is the hero). |
 | `DELETE /api/people/:id` | Not for members (`409 person_is_member`). Their collections go (memories stay, unfiled from them); invites naming them are withdrawn; their photo is purged. |
 | `PATCH /api/collections/:id` | Name, description, icon, colour — a child's defaults too. |
-| `DELETE /api/collections/:id` | Memories stay. A child's defaults (with a `kind`) answer `409 default_collection`. |
+| `DELETE /api/collections/:id` | Memories stay. Any collection, a child's suggested defaults included. |
 | `PUT` / `DELETE /api/collections/:id/memories/:memoryId` | File or unfile a memory. |
 
 | Variable | Meaning |

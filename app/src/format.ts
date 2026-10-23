@@ -186,7 +186,6 @@ export function friendlyError(err: unknown, fallback: string) {
 /** The API's refusals of a delete or reorder, in words. */
 const REFUSALS: Record<string, string> = {
   person_is_member: "They have an account in this family. An owner can remove them in Family Hub first.",
-  default_collection: "Every child keeps this collection. You can rename it instead.",
   order_mismatch: "Something changed while you were arranging. Close this and try again.",
 };
 

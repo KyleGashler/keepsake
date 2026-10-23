@@ -197,8 +197,9 @@ storage via `StorageProvider.purgeForFamilyDelete` (all S3 versions) then Mux
 via `MediaHost.deleteAsset` / `cancelUpload`, skipping keys still referenced.
 Endpoints and rules are in README → Deleting. People: members (Person linked
 to a User or FamilyMembership) can't be deleted — an owner removes them in
-Family Hub first. Collections: a child's defaults (`kind` set) are renamable,
-not deletable; Arrival Stories defaults can be pruned. Media order is
+Family Hub first. Collections: every default is a suggestion — renamable and
+deletable; defaults are created once, when a child is added, and never
+restored (the seed's boot top-up was removed). Media order is
 `Media.sortOrder`, used by every list, so reordering moves the hero. UI: memory
 ⋯ → Arrange (up/down, remove) and Delete; person page ⋯ → edit / delete;
 Family Hub → Add someone; child gear → Delete; collection ⋯ → edit, choose its

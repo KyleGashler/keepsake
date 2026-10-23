@@ -354,19 +354,15 @@ libraryRouter.patch("/collections/:id", requireContributor, async (req, res) => 
 /**
  * Delete a collection. The memories in it stay in the archive (and in any
  * other collection they're filed in); only this filing goes. A child's
- * default collections (those with a `kind`) can't be deleted —
- * `409 default_collection` — they're part of every child's Library and the
- * backfill would only bring them back; rename them instead. Arrival Stories
- * defaults have no kind and can be pruned.
+ * defaults are suggestions and go like any other.
  */
 libraryRouter.delete("/collections/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const collection = await prisma.collection.findFirst({
     where: { id: req.params.id, familyId: family.id },
-    select: { id: true, kind: true },
+    select: { id: true },
   });
   if (!collection) return res.status(404).json({ error: "Collection not found" });
-  if (collection.kind) return res.status(409).json({ error: "default_collection" });
 
   await prisma.collection.delete({ where: { id: collection.id } });
   res.status(204).end();
