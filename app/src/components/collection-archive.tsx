@@ -10,14 +10,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import type { ChildSummary, CollectionArchivePayload, MemoryCard, PillarKey } from "../api";
+import { apiSend, type ChildSummary, type CollectionArchivePayload, type MemoryCard, type PillarKey } from "../api";
 import { useCanContribute } from "../auth/session-context";
-import { childAge, count, possessive } from "../format";
+import { childAge, count, possessive, refusalMessage } from "../format";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, routes } from "../routes";
 import { colors, fonts, layout, radius, spacing } from "../theme";
 import { ChildPortrait } from "./child-header";
+import { FileMemoriesSheet } from "./file-memories-sheet";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
+import { EditCollectionSheet } from "./library-sheets";
+import { ActionSheet, type SheetAction } from "./sheet";
 
 const PILLAR_NAMES: Record<PillarKey, string> = {
   ARRIVAL_STORIES: "Arrival Stories",
@@ -38,16 +41,24 @@ const open = (memory: MemoryCard) => router.push(routes.memory(memory.id));
  * Filters are the caller's state, so the caller fetches with them; the
  * archive keeps showing the last payload while the next one loads, so the
  * header never flashes away.
+ *
+ * Someone who can contribute also gets ⋯: edit the collection, choose which
+ * memories are filed in it, and delete it — except a child's default
+ * collections (those with a `kind`), which every child keeps; those can be
+ * renamed instead.
  */
 export function CollectionArchive({
   data,
   filters,
   onFiltersChange,
+  onChanged,
   loading = false,
 }: {
   data: CollectionArchivePayload;
   filters: ArchiveFilters;
   onFiltersChange: (filters: ArchiveFilters) => void;
+  /** The collection or what's filed in it changed: load it again. */
+  onChanged: () => void;
   /** A fetch for new filters (or a refresh) is in flight. */
   loading?: boolean;
 }) {
@@ -91,6 +102,26 @@ export function CollectionArchive({
   const backLabel = ownedByChild ? child.name : PILLAR_NAMES[collection.pillar];
   const backParent: Href = ownedByChild ? routes.child(child.id) : routes.pillar(collection.pillar);
 
+  const [sheet, setSheet] = useState<"menu" | "edit" | "file" | "delete" | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const deletable = collection.kind === null;
+  const menuActions: SheetAction[] = [
+    { label: "Edit collection", icon: "create-outline", onPress: () => setSheet("edit") },
+    { label: "Choose its memories", icon: "albums-outline", onPress: () => setSheet("file") },
+    ...(deletable
+      ? [{ label: "Delete collection", icon: "trash-outline" as const, destructive: true, onPress: () => setSheet("delete") }]
+      : []),
+  ];
+  const remove = async () => {
+    try {
+      await apiSend(`/api/collections/${collection.id}`, "DELETE");
+    } catch (err) {
+      setNotice(refusalMessage(err, "Couldn't delete it just now. Please try again."));
+      return;
+    }
+    backTo(backParent);
+  };
+
   return (
     <ScrollView
       style={styles.screen}
@@ -100,7 +131,7 @@ export function CollectionArchive({
     >
       <Column>
         <View style={{ paddingTop: insets.top + layout.top }}>
-          <BackRow label={backLabel} parent={backParent} />
+          <BackRow label={backLabel} parent={backParent} onMore={canContribute ? () => setSheet("menu") : undefined} />
 
           <View style={styles.discWrap}>
             <IconDisc icon={collection.icon} color={collection.color} size={76} />
@@ -113,6 +144,7 @@ export function CollectionArchive({
             <Text style={styles.description}>{collection.description}</Text>
           ) : null}
           <Identity child={child} pillar={collection.pillar} memoryCount={collection.memoryCount} />
+          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
         </View>
 
         {isEmpty ? (
@@ -164,8 +196,47 @@ export function CollectionArchive({
           </>
         )}
       </Column>
+
+      <ActionSheet
+        visible={sheet === "menu"}
+        onClose={() => setSheet((s) => (s === "menu" ? null : s))}
+        title={collection.name}
+        subtitle={deletable ? undefined : "Every child keeps this collection, so it can be renamed but not deleted."}
+        actions={menuActions}
+      />
+      <ActionSheet
+        visible={sheet === "delete"}
+        onClose={() => setSheet((s) => (s === "delete" ? null : s))}
+        title={`Delete “${collection.name}”?`}
+        subtitle={
+          deleteCollectionMessage(collection.memoryCount)
+        }
+        actions={[{ label: "Delete collection", icon: "trash-outline", destructive: true, onPress: () => void remove() }]}
+      />
+      {sheet === "edit" ? (
+        <EditCollectionSheet collection={collection} onClose={() => setSheet(null)} onSaved={onChanged} />
+      ) : null}
+      {sheet === "file" ? (
+        <FileMemoriesSheet
+          collection={collection}
+          onClose={(changed) => {
+            setSheet(null);
+            if (changed) onChanged();
+          }}
+        />
+      ) : null}
     </ScrollView>
   );
+}
+
+/** What deleting a collection leaves alone, for its confirmation. */
+function deleteCollectionMessage(memoryCount: number) {
+  if (memoryCount === 0) return "It's empty, so nothing else changes.";
+  const memories =
+    memoryCount === 1
+      ? "The memory in it stays in the archive, and in any other collection it's filed in."
+      : `The ${memoryCount} memories in it stay in the archive, and in any other collection they're filed in.`;
+  return `${memories} Only this collection goes.`;
 }
 
 /**
@@ -189,7 +260,7 @@ function groupByYear(memories: MemoryCard[]) {
 // Header pieces
 // ---------------------------------------------------------------------------
 
-function BackRow({ label, parent }: { label: string; parent: Href }) {
+function BackRow({ label, parent, onMore }: { label: string; parent: Href; onMore?: () => void }) {
   return (
     <View style={styles.backRow}>
       <Pressable
@@ -202,6 +273,17 @@ function BackRow({ label, parent }: { label: string; parent: Href }) {
         <Ionicons name="chevron-back" size={22} color={colors.ink} />
         <Text style={styles.backLabel}>{label}</Text>
       </Pressable>
+      {onMore ? (
+        <Pressable
+          onPress={onMore}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel="Collection options"
+          style={({ pressed }) => [styles.more, pressed && styles.pressed]}
+        >
+          <Ionicons name="ellipsis-horizontal" size={24} color={colors.ink} />
+        </Pressable>
+      ) : null}
     </View>
   );
 }
@@ -422,7 +504,15 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   pressed: { opacity: 0.7 },
 
-  backRow: { flexDirection: "row", alignItems: "center", minHeight: 44, marginBottom: spacing.md },
+  backRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    minHeight: 44,
+    marginBottom: spacing.md,
+  },
+  more: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -8 },
+  notice: { fontFamily: fonts.sans, fontSize: 14, color: colors.terracotta, marginTop: spacing.md },
   back: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: -4 },
   backLabel: { fontFamily: fonts.sans, fontSize: 17, color: colors.ink },
 

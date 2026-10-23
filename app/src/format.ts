@@ -1,3 +1,5 @@
+import { ApiError } from "./api";
+
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -179,6 +181,19 @@ export function friendlyError(err: unknown, fallback: string) {
     return fallback;
   }
   return /failed to fetch|network/i.test(message) ? "Can't reach the archive right now." : message;
+}
+
+/** The API's refusals of a delete or reorder, in words. */
+const REFUSALS: Record<string, string> = {
+  person_is_member: "They have an account in this family. An owner can remove them in Family Hub first.",
+  default_collection: "Every child keeps this collection. You can rename it instead.",
+  order_mismatch: "Something changed while you were arranging. Close this and try again.",
+};
+
+/** Like `friendlyError`, but with the API's known refusal codes said in words. */
+export function refusalMessage(err: unknown, fallback: string) {
+  if (err instanceof ApiError && err.code && REFUSALS[err.code]) return REFUSALS[err.code];
+  return friendlyError(err, fallback);
 }
 
 const SEASONS = ["Winter", "Spring", "Summer", "Fall"] as const;
