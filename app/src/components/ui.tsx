@@ -322,6 +322,24 @@ export function NotFoundState({
   );
 }
 
+/**
+ * A screen for adding to the archive, reached by someone whose role only lets
+ * them look (a VIEWER, by a link or a stale tab). Says so, and offers a way out.
+ */
+export function ViewOnlyState({ onBack }: { onBack: () => void }) {
+  return (
+    <View style={styles.centered} accessibilityRole="summary">
+      <Ionicons name="eye-outline" size={26} color={colors.muted} />
+      <Text style={[type.title, { marginTop: spacing.md, textAlign: "center" }]}>You can look, not add</Text>
+      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>
+        Your role in this family lets you see everything in the archive. An owner can let you add memories from
+        Family Hub.
+      </Text>
+      <Button label="Back to Home" variant="secondary" icon="chevron-back" onPress={onBack} style={{ marginTop: spacing.lg }} />
+    </View>
+  );
+}
+
 export function EmptyState({ title, body, action }: { title: string; body?: string; action?: ReactNode }) {
   return (
     <View style={styles.empty}>

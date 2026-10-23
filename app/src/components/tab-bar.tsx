@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import type { BottomTabBarProps } from "expo-router/tabs";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { useCanContribute } from "../auth/session-context";
 import { colors, fonts, MAX_WIDTH, shadow } from "../theme";
 
 /** The route that gets the raised disc instead of an ordinary tab. */
@@ -15,10 +16,14 @@ const DISC = 62;
  * tab still pops to its root when its (already focused) tab is tapped again.
  */
 export function TabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
+  // Someone who can only view the family has nothing to capture into it, so
+  // the disc isn't there (the Capture screen says why if reached by a link).
+  const canContribute = useCanContribute();
   return (
     <View style={[styles.bar, { paddingBottom: Math.max(insets.bottom, 10) }]}>
       <View style={styles.row}>
         {state.routes.map((route, index) => {
+          if (route.name === RAISED_ROUTE && !canContribute) return null;
           const { options } = descriptors[route.key];
           const focused = state.index === index;
           const label = options.title ?? route.name;

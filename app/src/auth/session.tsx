@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ApiError, apiGet, apiSend, onUnauthorized, type MePayload } from "../api";
+import { ApiError, apiGet, apiSend, onUnauthorized, type AcceptedInvite, type MePayload } from "../api";
 import { auth, type AuthUser } from ".";
 import { getFamilyId, rememberedFamilyId, setFamilyId, useFamilyId } from "./family-store";
 import { SessionContext, type Session, type SessionPhase } from "./session-context";
@@ -11,6 +11,14 @@ type Account =
   | { status: "verifyEmail" }
   | { status: "emailInUse" }
   | { status: "error"; error: Error };
+
+/** `{ familyId: "…" }` from an error body, or null. */
+function familyIdIn(body: unknown): string | null {
+  if (body && typeof body === "object" && "familyId" in body && typeof body.familyId === "string") {
+    return body.familyId;
+  }
+  return null;
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const [restored, setRestored] = useState(false);
@@ -95,6 +103,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [loadAccount],
   );
 
+  const acceptInvite = useCallback(
+    async (token: string) => {
+      let joined: string;
+      try {
+        const res = await apiSend<AcceptedInvite>(`/api/invites/${encodeURIComponent(token)}/accept`, "POST");
+        joined = res.membership.familyId;
+      } catch (err) {
+        // Already in that family (this link, or another way): nothing to
+        // accept — just go there.
+        const already = err instanceof ApiError && err.code === "already_member" ? familyIdIn(err.body) : null;
+        if (!already) throw err;
+        joined = already;
+      }
+      await loadAccount({ quiet: true });
+      setFamilyId(joined);
+    },
+    [loadAccount],
+  );
+
   const confirmVerified = useCallback(async () => {
     const reloaded = await auth.reload();
     if (!reloaded?.emailVerified) return false;
@@ -132,12 +159,25 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       signOut,
       selectFamily: (id) => setFamilyId(id),
       createFamily,
+      acceptInvite,
       refreshAccount: () => loadAccount({ quiet: account.status === "loaded" }),
       resendVerification: () => auth.sendVerificationEmail(),
       confirmVerified,
       dismissVerifyNudge: () => setVerifyNudgeDismissed(true),
     };
-  }, [account, familyId, restored, user, notice, verifyNudgeDismissed, signOut, createFamily, loadAccount, confirmVerified]);
+  }, [
+    account,
+    familyId,
+    restored,
+    user,
+    notice,
+    verifyNudgeDismissed,
+    signOut,
+    createFamily,
+    acceptInvite,
+    loadAccount,
+    confirmVerified,
+  ]);
 
   return <SessionContext value={session}>{children}</SessionContext>;
 }

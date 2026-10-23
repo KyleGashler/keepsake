@@ -77,15 +77,22 @@ function messageOf(err: unknown) {
 
 type Step = "signIn" | "signUp" | "forgot";
 
-/** Everything a signed-out person can do, one screen at a time. */
-export function SignedOutFlow() {
-  const { notice } = useSession();
-  const [step, setStep] = useState<Step>("signIn");
+/**
+ * Everything a signed-out person can do, one screen at a time.
+ *
+ * `startWith` and `context` are for arriving with a purpose (an invite link):
+ * which form comes first, and a line shown above it saying why.
+ */
+export function SignedOutFlow({ startWith = "signIn", context }: { startWith?: "signIn" | "signUp"; context?: string }) {
+  const session = useSession();
+  const notice = context ?? session.notice;
+  const [step, setStep] = useState<Step>(startWith);
   // Carried between steps so "forgot password" doesn't make anyone retype it.
-  const [email, setEmail] = useState(auth.mode === "dev" ? DEV_DEFAULT_EMAIL : "");
+  // An invitee isn't the demo owner, so their form starts empty.
+  const [email, setEmail] = useState(auth.mode === "dev" && !context ? DEV_DEFAULT_EMAIL : "");
 
   if (auth.mode === "dev") return <DevSignIn email={email} setEmail={setEmail} notice={notice} />;
-  if (step === "signUp") return <SignUp email={email} setEmail={setEmail} go={setStep} />;
+  if (step === "signUp") return <SignUp email={email} setEmail={setEmail} go={setStep} notice={context ?? null} />;
   if (step === "forgot") return <ForgotPassword email={email} setEmail={setEmail} go={setStep} />;
   return <SignIn email={email} setEmail={setEmail} go={setStep} notice={notice} />;
 }
@@ -165,7 +172,7 @@ function SignIn({ email, setEmail, go, notice }: StepProps & { notice: string | 
   );
 }
 
-function SignUp({ email, setEmail, go }: StepProps) {
+function SignUp({ email, setEmail, go, notice }: StepProps & { notice: string | null }) {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const { busy, error, submit } = useSubmit(() => auth.signUp(email, password, name));
@@ -178,6 +185,7 @@ function SignUp({ email, setEmail, go }: StepProps) {
       subtitle="Start keeping the stories that make your family yours."
       footer={<TextLink lead="Already have an account?" label="Sign in" onPress={() => go("signIn")} />}
     >
+      {notice ? <Notice>{notice}</Notice> : null}
       <Field label="Your name" hint="How you'll appear in your family's archive.">
         <SheetInput
           value={name}

@@ -154,6 +154,7 @@ model Person {
   appearsIn     MemoryParticipant[]
   events        ActivityEvent[]
   membership    FamilyMembership?
+  invites       Invite[]
 
   @@index([familyId])
 }
@@ -182,11 +183,11 @@ model Collection {
   memories  MemoryCollection[]
   createdAt DateTime           @default(now())
 
-  @@index([familyId, pillar])
-  @@index([personId])
   /// One default of each kind per child, so ensureChildCollections can't
   /// double up under a race. Family collections (null person/kind) are exempt.
   @@unique([personId, kind])
+  @@index([familyId, pillar])
+  @@index([personId])
 }
 
 /// The foundational object: a single meaningful moment preserved by a family.
@@ -291,10 +292,10 @@ model Media {
 /// rows copy what they show from here. Nothing ever deletes the Mux asset:
 /// it is the only copy of the family's clip.
 model MuxAsset {
-  id              String            @id @default(cuid())
+  id              String           @id @default(cuid())
   familyId        String
-  uploadId        String            @unique
-  assetId         String?           @unique
+  uploadId        String           @unique
+  assetId         String?          @unique
   /// The signed playback id. Every URL to the clip is a JWT over it.
   playbackId      String?
   /// AUDIO or VIDEO, from the type the upload was declared as. Audio isn't
@@ -304,9 +305,9 @@ model MuxAsset {
   mimeType        String
   bytes           Int
   /// Computed: UPLOADING (no bytes yet), PROCESSING, READY (playable), FAILED.
-  status          MediaStatus       @default(UPLOADING)
+  status          MediaStatus      @default(UPLOADING)
   /// Mux's direct-upload status: waiting, asset_created, errored, cancelled, timed_out.
-  uploadStatus    String            @default("waiting")
+  uploadStatus    String           @default("waiting")
   /// Mux's asset status: preparing, ready, errored. Null until there's an asset.
   assetStatus     String?
   /// The `audio.m4a` static rendition (AUDIO only): preparing, ready, errored, skipped.
@@ -319,15 +320,15 @@ model MuxAsset {
   audioTrackId    String?
   /// The generated (`generated_vod`) text track the transcript is read from.
   captionTrackId  String?
-  captionStatus   TranscriptStatus  @default(PENDING)
+  captionStatus   TranscriptStatus @default(PENDING)
   /// Plain text of the caption track, fetched by `mux.sync`.
   transcript      String?
   /// Why it failed, in Mux's words (or ours, when polling gave up).
   error           String?
   /// Set when `mux.sync` stopped polling without the asset settling.
   syncGaveUpAt    DateTime?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   family Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
   media  Media[]
@@ -415,6 +416,7 @@ model User {
 
   memberships  FamilyMembership[]
   invitesSent  Invite[]           @relation("InviteInvitedBy")
+  invitesTaken Invite[]           @relation("InviteAcceptedBy")
   deviceTokens DeviceToken[]
   person       Person?
   favorites    MemoryFavorite[]
@@ -438,22 +440,37 @@ model FamilyMembership {
   @@index([familyId])
 }
 
-/// A pending invitation to join a family. Consumed by token.
+/// An invitation to join a family: a single-use link, optionally also emailed.
+/// Any verified account may accept it — it is not bound to `email`. Pending
+/// means not accepted, not revoked and not past `expiresAt`.
 model Invite {
-  id          String         @id @default(cuid())
-  familyId    String
-  email       String
-  role        MembershipRole
-  token       String         @unique
-  expiresAt   DateTime
-  acceptedAt  DateTime?
-  invitedById String
-  createdAt   DateTime       @default(now())
+  id           String         @id @default(cuid())
+  familyId     String
+  /// Where the link was also emailed, if anywhere. Informational only.
+  email        String?
+  role         MembershipRole
+  /// 256 random bits, base64url. Possessing it is the whole credential.
+  token        String         @unique
+  /// The existing (unlinked, non-CHILD) Person this invite is for. Accepting
+  /// links them to the new membership; null means accept creates a Person.
+  personId     String?
+  /// For "someone new": the name the owner typed, used for the Person that
+  /// accept creates. Null falls back to the account's display name.
+  name         String?
+  expiresAt    DateTime
+  acceptedAt   DateTime?
+  acceptedById String?
+  revokedAt    DateTime?
+  invitedById  String
+  createdAt    DateTime       @default(now())
 
-  family    Family @relation(fields: [familyId], references: [id], onDelete: Cascade)
-  invitedBy User   @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  family     Family  @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  invitedBy  User    @relation("InviteInvitedBy", fields: [invitedById], references: [id], onDelete: Cascade)
+  acceptedBy User?   @relation("InviteAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
+  person     Person? @relation(fields: [personId], references: [id], onDelete: SetNull)
 
   @@index([familyId])
+  @@index([personId])
 }
 
 /// Durable background work. Claimed with FOR UPDATE SKIP LOCKED; retried with

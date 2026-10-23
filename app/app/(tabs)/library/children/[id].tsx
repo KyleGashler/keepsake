@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isNotFound, useApi, type ChildPayload } from "../../../../src/api";
+import { useCanContribute } from "../../../../src/auth/session-context";
 import { BackRow, ChildHeader } from "../../../../src/components/child-header";
 import { Column, IconDisc, ListRow, SearchField } from "../../../../src/components/journey";
 import { CreateCollectionSheet, EditChildSheet } from "../../../../src/components/library-sheets";
@@ -24,6 +25,7 @@ export default function ChildCollectionsScreen() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const insets = useSafeAreaInsets();
+  const canContribute = useCanContribute();
 
   // Counts move when memories are added or filed deeper in the stack.
   useFocusEffect(
@@ -56,8 +58,8 @@ export default function ChildCollectionsScreen() {
         <BackRow
           label="Child Profiles"
           parent={routes.children}
-          onSettings={child ? () => setEditing(true) : undefined}
-          settingsLabel={child ? `Edit ${child.name}` : undefined}
+          onSettings={child && canContribute ? () => setEditing(true) : undefined}
+          settingsLabel={child && canContribute ? `Edit ${child.name}` : undefined}
         />
         {gone ? (
           <NotFoundState
@@ -103,21 +105,23 @@ export default function ChildCollectionsScreen() {
               ) : null}
             </View>
 
-            <Pressable
-              onPress={() => setCreating(true)}
-              accessibilityRole="button"
-              style={({ pressed }) => [styles.create, pressed && styles.pressed]}
-            >
-              <View style={styles.createSlot}>
-                <View style={styles.createCircle}>
-                  <Ionicons name="add" size={24} color={colors.ink} />
+            {canContribute ? (
+              <Pressable
+                onPress={() => setCreating(true)}
+                accessibilityRole="button"
+                style={({ pressed }) => [styles.create, pressed && styles.pressed]}
+              >
+                <View style={styles.createSlot}>
+                  <View style={styles.createCircle}>
+                    <Ionicons name="add" size={24} color={colors.ink} />
+                  </View>
                 </View>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.createTitle}>Create a Collection</Text>
-                <Text style={styles.createBody}>Add a new collection tailored to your child.</Text>
-              </View>
-            </Pressable>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.createTitle}>Create a Collection</Text>
+                  <Text style={styles.createBody}>Add a new collection tailored to your child.</Text>
+                </View>
+              </Pressable>
+            ) : null}
           </>
         ) : null}
       </Column>

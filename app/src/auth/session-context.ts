@@ -41,6 +41,12 @@ export type Session = {
   signOut: () => Promise<void>;
   selectFamily: (familyId: string) => void;
   createFamily: (name: string, displayName?: string) => Promise<void>;
+  /**
+   * Accept an invite link's token and switch into that family. Rejects with
+   * the API's error (`ApiError.code`: `verify_email`, `expired`, `used`,
+   * `revoked`, `person_taken`, …); already being a member just switches.
+   */
+  acceptInvite: (token: string) => Promise<void>;
   /** Re-ask `GET /me` without leaving the current screen. */
   refreshAccount: () => Promise<void>;
   resendVerification: () => Promise<void>;
@@ -59,4 +65,14 @@ export function useSession(): Session {
   const session = use(SessionContext);
   if (!session) throw new Error("useSession outside <SessionProvider>");
   return session;
+}
+
+/**
+ * Whether this person may add to and edit the family being looked at — an
+ * OWNER or CONTRIBUTOR. A VIEWER reads; the API refuses their writes
+ * (`403 forbidden_role`), so the controls that would make one are hidden.
+ */
+export function useCanContribute() {
+  const role = useSession().family?.role;
+  return role === "OWNER" || role === "CONTRIBUTOR";
 }

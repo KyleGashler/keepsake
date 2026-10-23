@@ -4,6 +4,7 @@ import { Router, type Request, type Response } from "express";
 import { fileTypeFromBuffer } from "file-type";
 import { imageSize } from "image-size";
 import { z } from "zod";
+import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
 import { originAllowed } from "../lib/cors-origins.js";
 import { logger } from "../lib/logger.js";
@@ -189,7 +190,7 @@ const AV_UNAVAILABLE = {
  * the only thing that has to survive between the two calls, and it's derived,
  * not stored — the family prefix is what proves ownership at finalize.
  */
-mediaApiRouter.post("/init", async (req, res) => {
+mediaApiRouter.post("/init", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = initBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -269,7 +270,7 @@ const finalizeBody = z.object({ key: z.string().min(1).max(512) });
  * the delete path never runs against an `original.*` key; a sweeper that knows
  * which keys no `Media` row claims is the right owner of that cleanup.
  */
-mediaApiRouter.post("/finalize", async (req, res) => {
+mediaApiRouter.post("/finalize", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = finalizeBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

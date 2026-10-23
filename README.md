@@ -39,7 +39,7 @@ media, who was there, and inline editing of the narrative.
 
 These are stubbed and labelled in the UI rather than faked:
 
-- **Roles** — sign-in, family scoping and the OWNER/CONTRIBUTOR/VIEWER memberships are real; what each role may do isn't enforced yet (A4). Locally a `dev:<email>` token is believed without proof. See [Auth](#auth).
+- **Invite email** — invites are real share links with roles enforced (see [Roles and invites](#roles-and-invites)), but an invite's email is only written to the API's log until a provider is wired up (B6). Locally a `dev:<email>` token is believed without proof. See [Auth](#auth).
 - **AI** — no narratives, tagging, or generated prompts yet. Transcripts are real: Mux's generated captions of each clip — see [Video and audio (Mux)](#video-and-audio-mux).
 - **Audio capture** — recording and playback need real files; the written form stands in, and typed transcripts land in the field transcription will eventually populate.
 - **Sharing** — web links, printable stories, and highlight reels all need permissions before anything can leave the archive.
@@ -60,7 +60,9 @@ variable, and the two sides must agree:
 
 **Dev mode.** `Bearer dev:ali@example.com` signs you in as `ali@example.com`,
 creating the `User` row on first sight. There is no password and no signature,
-and every dev identity counts as email-verified. `demo@littlebylittle.local` is the
+and every dev identity counts as email-verified — except through
+`Bearer dev-unverified:ali@example.com`, the same account with an unproven
+address, for exercising the gates that need one (accepting an invite). `demo@littlebylittle.local` is the
 seeded OWNER of the demo family; any other address starts an account with no
 family, and the app offers to create one.
 
@@ -220,13 +222,43 @@ curl -s -X POST $API/api/families -H "Authorization: $TOKEN" \
   -H 'content-type: application/json' -d '{"name":"The Reyes"}'
 ```
 
-`POST /api/families` and `GET /api/me` are the only routes reachable before you
-belong to an archive; creating one makes you its OWNER and gives you a `Person`
-row inside it.
+`POST /api/families`, `GET /api/me` and accepting an invite are the only routes
+reachable before you belong to an archive; creating one makes you its OWNER and
+gives you a `Person` row inside it.
 
 The app asks `GET /api/me` after sign-in: no membership shows "Start your
 family's archive", several show a picker (the choice is remembered, and Family
 Hub can switch), one goes straight in.
+
+### Roles and invites
+
+A membership's role decides what its holder may do in that family, enforced
+per route by `requireRole` ([server/src/auth/middleware.ts](server/src/auth/middleware.ts)):
+
+| Role | May |
+| --- | --- |
+| `VIEWER` | Read everything; keep their own favourites. Every write answers `403 forbidden_role`. |
+| `CONTRIBUTOR` | Also add and edit memories, media, people, collections and Library covers. |
+| `OWNER` | Also invite, revoke invites, change roles and remove members. A family always keeps at least one owner (`409 last_owner`). |
+
+An invite is a single-use link, good for 7 days and revocable
+(`POST/GET /api/family/invites`, `DELETE /api/family/invites/:id`). It may name
+an existing adult Person who has no account (accepting links them) or carry a
+name for someone new (accepting creates their Person); children are never
+invited. With an email address the link is also sent through the
+`EmailSender` — logged by `ConsoleEmailSender` until B6. Any account with a
+verified email may accept it; it isn't bound to the address.
+
+The link is `<APP_URL>/join/<token>`. `GET /api/invites/:token` previews it
+without a token (family, inviter, role, status — the link is the credential),
+and `POST /api/invites/:token/accept` needs a signed-in, verified caller but
+no family, so the app's `/join/[token]` page works signed out and before a
+first family.
+
+| Variable | Meaning |
+| --- | --- |
+| `APP_URL` | Where the app is, for invite links. Unset: `http://localhost:8081` locally, the request's own origin in production (the web bundle is served from the API). |
+| `EMAIL_PROVIDER` | `console` (default, and the only one so far): emails are logged, not sent. An unknown value stops the boot. |
 
 **Production needs a real verifier.** `createTokenVerifier()` throws at boot
 rather than serve dev auth under `NODE_ENV=production` (unless

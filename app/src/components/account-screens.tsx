@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { AuthError } from "../auth";
 import { useSession } from "../auth/session-context";
-import type { MembershipRole } from "../api";
+import { ROLE_LABEL } from "../roles";
 import { SUPPORT_EMAIL } from "../support";
 import { colors, fonts, radius, spacing, type } from "../theme";
 import { AuthFrame, Notice, TextLink } from "./auth-screens";
@@ -186,12 +186,6 @@ export function CreateFamilyScreen() {
   );
 }
 
-const ROLE_LABEL: Record<MembershipRole, string> = {
-  OWNER: "Owner",
-  CONTRIBUTOR: "Can add memories",
-  VIEWER: "Can view",
-};
-
 /** In several families and no remembered choice: pick one. Remembered next time. */
 export function ChooseFamilyScreen() {
   const { memberships, selectFamily } = useSession();
@@ -223,8 +217,36 @@ export function ChooseFamilyScreen() {
 }
 
 /**
+ * The join screen's verify step: accepting an invite needs a verified email
+ * (the API answers `403 verify_email` otherwise), so this stands where the
+ * Join button would.
+ */
+export function VerifyToJoin() {
+  const { user } = useSession();
+  const { busy, message, error, resend, check } = useVerifyActions();
+  return (
+    <>
+      <Notice>
+        To join, verify your email first: follow the link we sent to {user?.email ?? "your address"}, then come back
+        here.
+      </Notice>
+      {message ? <Notice>{message}</Notice> : null}
+      <SheetError message={error} />
+      <SheetButton label="I've verified" onPress={check} busy={busy === "check"} disabled={busy !== null} />
+      <SheetButton
+        label="Send the email again"
+        variant="secondary"
+        onPress={resend}
+        busy={busy === "resend"}
+        disabled={busy !== null}
+      />
+    </>
+  );
+}
+
+/**
  * Family Hub's gentle reminder: signed up, not yet verified. Never blocks
- * anything today; accepting an invite to another family will need it (A4).
+ * anything here; accepting an invite to another family needs it.
  */
 export function VerifyEmailNudge() {
   const { user, verifyNudgeDismissed, dismissVerifyNudge } = useSession();
