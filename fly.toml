@@ -34,6 +34,9 @@ primary_region = "sjc"
   # the Dockerfile). Dev tokens (`dev:<email>`) are rejected here.
   AUTH_MODE = "firebase"
   FIREBASE_PROJECT_ID = "keepsake-prod-47eda"
+  # Invite links are <APP_URL>/join/<token>. (Unset, production would use the
+  # request's own origin, which is this same host.)
+  APP_URL = "https://keepsake-demo-h4t9wq.fly.dev"
 
 [http_service]
   internal_port = 4000

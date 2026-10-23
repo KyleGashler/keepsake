@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import helmet from "helmet";
 import pinoHttp from "pino-http";
 import { createTokenVerifier } from "./auth/index.js";
+import { emailSender } from "./email/index.js";
 import { startWorker, type JobQueue } from "./jobs/index.js";
 import { requireFamily, requireUser } from "./auth/middleware.js";
 import { corsOrigins } from "./lib/cors-origins.js";
@@ -16,6 +17,7 @@ import { mediaHost } from "./media-host/index.js";
 import { accountRouter } from "./routes/account.js";
 import { familyRouter } from "./routes/family.js";
 import { homeRouter } from "./routes/home.js";
+import { inviteAcceptRouter, invitePreviewRouter } from "./routes/invites.js";
 import { libraryRouter } from "./routes/library.js";
 import { MEDIA_DIR, mediaApiRouter, mediaBytesRouter } from "./routes/media.js";
 import { memoriesRouter } from "./routes/memories.js";
@@ -36,6 +38,9 @@ const tokenVerifier = createTokenVerifier();
 // Missing Mux credentials are not fatal: photos and everything else work, and
 // video/audio uploads answer 503. Resolved here so the warning is at boot.
 mediaHost();
+
+// An unknown EMAIL_PROVIDER stops the boot rather than dropping every email.
+emailSender();
 
 // Fly terminates TLS and forwards one X-Forwarded-For hop, so the rate
 // limiters see the real client address rather than the proxy's.
@@ -140,16 +145,23 @@ app.use("/api", apiLimiter);
 
 /**
  * Everything under /api needs an identity (health is registered above and so
- * escapes this). `/me` and `/families` are the two routes a signed-in person
- * can reach before belonging to an archive; every router past them is scoped
+ * escapes this, as does an invite's preview). `/me`, `/families` and an
+ * invite's accept are the routes a signed-in person can reach before
+ * belonging to an archive; every router past them is scoped
  * to exactly one family, and reads it from `req.ctx` rather than guessing.
  *
  * The middleware is mounted once rather than repeated per router so a request
  * verifies its token and resolves its membership a single time.
  */
+// The one route an invite link's recipient can read before signing in: who
+// is inviting them, to what. See the note on it in routes/invites.ts.
+app.use("/api", invitePreviewRouter);
+
 const authenticated = requireUser(tokenVerifier);
 app.use("/api", authenticated);
 app.use("/api", accountRouter);
+// Accepting is how someone with no family gets one, so it can't need one.
+app.use("/api", inviteAcceptRouter);
 
 app.use("/api", requireFamily);
 app.use("/api", homeRouter);

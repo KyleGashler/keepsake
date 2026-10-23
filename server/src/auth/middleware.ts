@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from "express";
-import { Prisma, type User } from "@prisma/client";
+import { Prisma, type MembershipRole, type User } from "@prisma/client";
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import { AUTH_MODE } from "./index.js";
@@ -187,3 +187,31 @@ export const requireFamily: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+/**
+ * Let the request through only if the caller's role in this family is one of
+ * `roles`. Mounted per route, after `requireFamily` (which sets `req.ctx.role`).
+ *
+ * 403 `forbidden_role`, naming the roles that would have been enough, so the
+ * client can tell "you can't do that in this family" from "this isn't your
+ * family" (`forbidden`).
+ *
+ * Generic in the route's params so that, placed between a path and its
+ * handler, it doesn't stand in for the path when TypeScript infers what
+ * `req.params` holds.
+ */
+export function requireRole(...roles: MembershipRole[]) {
+  return <P>(req: Request<P>, res: Response, next: NextFunction) => {
+    if (roles.includes(req.ctx.role)) return next();
+    res.status(403).json({ error: "forbidden_role", role: req.ctx.role, required: roles });
+  };
+}
+
+/**
+ * Add to and edit the archive: memories, media, people, collections, covers.
+ * A VIEWER reads, and keeps their own favourites (per user, not the family's).
+ */
+export const requireContributor = requireRole("OWNER", "CONTRIBUTOR");
+
+/** Who's in the family: invites, roles, removing members. */
+export const requireOwner = requireRole("OWNER");

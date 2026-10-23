@@ -1,6 +1,7 @@
 import type { MuxAsset } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
@@ -118,7 +119,7 @@ const newMemory = z.object({
   media: z.array(mediaInput).default([]),
 });
 
-memoriesRouter.post("/memories", async (req, res) => {
+memoriesRouter.post("/memories", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = newMemory.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -284,7 +285,7 @@ const editMemory = z.object({
 });
 
 /** AI assists, families decide — every narrative stays editable. */
-memoriesRouter.patch("/memories/:id", async (req, res) => {
+memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = editMemory.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -324,7 +325,7 @@ memoriesRouter.patch("/memories/:id", async (req, res) => {
  * Soft delete: the memory disappears from every list, count and related list,
  * and its media and originals stay exactly where they are.
  */
-memoriesRouter.delete("/memories/:id", async (req, res) => {
+memoriesRouter.delete("/memories/:id", requireContributor, async (req, res) => {
   const result = await prisma.memory.updateMany({
     where: { id: req.params.id, familyId: req.ctx.family.id, deletedAt: null },
     data: { deletedAt: new Date() },
@@ -338,7 +339,10 @@ function findLiveMemory(familyId: string, id: string) {
   return prisma.memory.findFirst({ where: { id, familyId, deletedAt: null }, select: { id: true } });
 }
 
-/** Favourites belong to the signed-in user, not the family. */
+/**
+ * Favourites belong to the signed-in user, not the family — so a VIEWER, who
+ * can't change the archive, can still keep their own.
+ */
 memoriesRouter.put("/memories/:id/favorite", async (req, res) => {
   const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
@@ -360,7 +364,7 @@ memoriesRouter.delete("/memories/:id/favorite", async (req, res) => {
 const newLink = z.object({ linkedId: z.string().min(1) });
 
 /** Link a related memory by hand. Undirected; linking twice is a no-op. */
-memoriesRouter.post("/memories/:id/links", async (req, res) => {
+memoriesRouter.post("/memories/:id/links", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = newLink.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -380,7 +384,7 @@ memoriesRouter.post("/memories/:id/links", async (req, res) => {
   res.status(201).json({ memory: await memoryDetail(family.id, req.ctx.user.id, updated) });
 });
 
-memoriesRouter.delete("/memories/:id/links/:linkedId", async (req, res) => {
+memoriesRouter.delete("/memories/:id/links/:linkedId", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const memory = await findLiveMemory(family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
@@ -402,7 +406,7 @@ memoriesRouter.delete("/memories/:id/links/:linkedId", async (req, res) => {
  * nothing to retry: not a Mux clip, not playable, no sound, or already
  * transcribed.
  */
-memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", async (req, res) => {
+memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", requireContributor, async (req, res) => {
   const familyId = req.ctx.family.id;
   const memory = await findLiveMemory(familyId, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });

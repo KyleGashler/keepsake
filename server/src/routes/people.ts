@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
+import { requireContributor } from "../auth/middleware.js";
 import { ensureChildCollections } from "../lib/child-collections.js";
 import { childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
@@ -58,7 +59,7 @@ const newPerson = z.object({
   birthDate: z.string().datetime().optional(),
 });
 
-peopleRouter.post("/people", async (req, res) => {
+peopleRouter.post("/people", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = newPerson.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -114,7 +115,7 @@ const editPerson = z.object({
  * Absent fields are left alone; null clears a nullable one. Clearing a photo
  * only drops the pointer — the uploaded original is kept.
  */
-peopleRouter.patch("/people/:id", async (req, res) => {
+peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = editPerson.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });

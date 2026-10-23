@@ -1,6 +1,7 @@
 import type { Pillar, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
+import { requireContributor } from "../auth/middleware.js";
 import { COLLECTION_ICONS, DEFAULT_COLLECTION_COLOR, DEFAULT_COLLECTION_ICON } from "../lib/child-collections.js";
 import { childSummaries, childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
@@ -91,7 +92,7 @@ const pillarParam = z.enum(PILLAR_KEYS);
 const coverBody = z.object({ key: z.string().min(1).max(512) });
 
 /** Set a pillar card's cover to an upload the family has finalized. */
-libraryRouter.put("/library/pillars/:key/cover", async (req, res) => {
+libraryRouter.put("/library/pillars/:key/cover", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const pillar = pillarParam.safeParse(req.params.key);
   if (!pillar.success) return res.status(404).json({ error: "Unknown pillar" });
@@ -114,7 +115,7 @@ libraryRouter.put("/library/pillars/:key/cover", async (req, res) => {
 });
 
 /** Back to the generated default. The uploaded original is kept, as always. */
-libraryRouter.delete("/library/pillars/:key/cover", async (req, res) => {
+libraryRouter.delete("/library/pillars/:key/cover", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const pillar = pillarParam.safeParse(req.params.key);
   if (!pillar.success) return res.status(404).json({ error: "Unknown pillar" });
@@ -267,7 +268,7 @@ const newCollection = z.object({
 });
 
 /** "Add Collection" — families can shape the archive around their own life. */
-libraryRouter.post("/collections", async (req, res) => {
+libraryRouter.post("/collections", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = newCollection.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
