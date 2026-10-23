@@ -8,7 +8,7 @@ import { mediaUrl, useApi, type HomePayload } from "../../src/api";
 import { useCanContribute } from "../../src/auth/session-context";
 import { Twinkle } from "../../src/components/brand";
 import { Column, PageHeader } from "../../src/components/journey";
-import { FamilyEyebrow } from "../../src/components/family-switcher";
+import { FamilyPill } from "../../src/components/family-switcher";
 import {
   Avatar,
   ErrorState,
@@ -44,7 +44,8 @@ export default function HomeScreen() {
     >
       <Column>
         <PageHeader
-          eyebrow={<FamilyEyebrow />}
+          eyebrow="Little by little"
+          accessory={<FamilyPill />}
           title="Home"
           sparkle
           subtitle={data ? `${data.greeting.salutation}. ${data.greeting.message}` : undefined}

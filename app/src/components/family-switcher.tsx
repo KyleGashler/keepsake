@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSession } from "../auth/session-context";
 import { leaveFor } from "../routes";
-import { colors, spacing, type } from "../theme";
+import { colors, fonts, spacing } from "../theme";
 import { ActionSheet } from "./sheet";
 
 /** Every archive the person belongs to; picking another one switches to it. */
@@ -27,15 +27,21 @@ export function FamilySwitchSheet({ visible, onClose }: { visible: boolean; onCl
 }
 
 /**
- * The eyebrow on the tab landings: which family's archive this is. For someone
- * in more than one, it's also the way to switch — tap the name.
+ * Beside search and settings on the tab landings: which family's archive this
+ * is. For someone in more than one, it's also the way to switch — tap it.
  */
-export function FamilyEyebrow() {
+export function FamilyPill() {
   const session = useSession();
   const [switching, setSwitching] = useState(false);
-  const name = session.family?.familyName ?? "Little by little";
+  const name = session.family?.familyName;
+  if (!name) return null;
 
-  if (session.memberships.length < 2) return <Text style={[type.eyebrow, styles.eyebrow]}>{name}</Text>;
+  const label = (
+    <Text style={styles.name} numberOfLines={1}>
+      {name}
+    </Text>
+  );
+  if (session.memberships.length < 2) return <View style={styles.pill}>{label}</View>;
 
   return (
     <>
@@ -44,10 +50,10 @@ export function FamilyEyebrow() {
         hitSlop={8}
         accessibilityRole="button"
         accessibilityLabel={`${name}. Switch family`}
-        style={({ pressed }) => [styles.switcher, pressed && { opacity: 0.6 }]}
+        style={({ pressed }) => [styles.pill, pressed && { opacity: 0.6 }]}
       >
-        <Text style={type.eyebrow}>{name}</Text>
-        <Ionicons name="chevron-down" size={13} color={colors.accentDeep} />
+        {label}
+        <Ionicons name="chevron-down" size={15} color={colors.inkSoft} />
       </Pressable>
       <FamilySwitchSheet visible={switching} onClose={() => setSwitching(false)} />
     </>
@@ -55,12 +61,16 @@ export function FamilyEyebrow() {
 }
 
 const styles = StyleSheet.create({
-  eyebrow: { marginBottom: spacing.xs },
-  switcher: {
+  /** The height and fill of the round search and gear buttons beside it. */
+  pill: {
+    height: 44,
+    maxWidth: 160,
+    borderRadius: 22,
+    paddingHorizontal: spacing.md,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
-    alignSelf: "flex-start",
-    marginBottom: spacing.xs,
+    backgroundColor: colors.surfaceAlt,
   },
+  name: { flexShrink: 1, fontFamily: fonts.sansSemiBold, fontSize: 14.5, color: colors.ink },
 });

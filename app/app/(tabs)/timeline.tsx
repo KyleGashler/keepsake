@@ -1,7 +1,7 @@
 import { router } from "expo-router";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { Column, PageHeader, Sparkle } from "../../src/components/journey";
-import { FamilyEyebrow } from "../../src/components/family-switcher";
+import { FamilyPill } from "../../src/components/family-switcher";
 import { colors, fonts, radius, spacing } from "../../src/theme";
 
 /** A placeholder until the Timeline has its own milestone. */
@@ -10,7 +10,8 @@ export default function TimelineScreen() {
     <ScrollView style={styles.screen} showsVerticalScrollIndicator={false}>
       <Column>
         <PageHeader
-          eyebrow={<FamilyEyebrow />}
+          eyebrow="Little by little"
+          accessory={<FamilyPill />}
           title="Timeline"
           sparkle
           subtitle="Every memory, in the order it happened."

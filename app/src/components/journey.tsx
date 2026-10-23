@@ -8,6 +8,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
   type ColorValue,
   type StyleProp,
@@ -109,6 +110,9 @@ export function IconDisc({
  * teal-grey subtitle, and an optional gear on the right. It sits inside the
  * screen's scroll content, so it scrolls away with the page.
  */
+/** Below this window width, a header's accessory moves up to the eyebrow's line. */
+const NARROW = 520;
+
 export function PageHeader({
   title,
   eyebrow,
@@ -120,11 +124,12 @@ export function PageHeader({
   sparkleAtEnd = false,
   onSettings,
   onSearch,
+  accessory,
   children,
 }: {
   title: string;
-  /** e.g. "Little by little" — rendered in spaced capitals. Or a ready-made one, like `FamilyEyebrow`. */
-  eyebrow?: string | ReactNode;
+  /** e.g. "Little by little" — rendered in spaced capitals. */
+  eyebrow?: string;
   subtitle?: string;
   /** Shows "‹ {backLabel}" above the title. Goes back, or to `backFallback` on a cold deep link. */
   backLabel?: string;
@@ -138,15 +143,23 @@ export function PageHeader({
   onSettings?: () => void;
   /** Shows a search button beside the gear. */
   onSearch?: () => void;
+  /** Sits before the search and gear buttons, e.g. `FamilyPill`. */
+  accessory?: ReactNode;
   /** Anything that belongs between the subtitle and the page body. */
   children?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  // On a phone the title, the accessory and the buttons don't fit on one
+  // line, so the accessory moves up to the eyebrow's, above the buttons.
+  const eyebrowRow = !backLabel && !!eyebrow && !!accessory && width < NARROW;
+  const besideButtons = eyebrowRow ? null : accessory;
   const goBack =
     onBack ?? (() => (router.canGoBack() ? router.back() : router.replace(backFallback)));
   const actions =
-    onSearch || onSettings ? (
+    besideButtons || onSearch || onSettings ? (
       <View style={styles.headerActions}>
+        {besideButtons}
         {onSearch ? <HeaderButton icon="search" label="Search" onPress={onSearch} /> : null}
         {onSettings ? <GearButton onPress={onSettings} /> : null}
       </View>
@@ -169,10 +182,16 @@ export function PageHeader({
           {actions}
         </View>
       ) : null}
+      {eyebrowRow ? (
+        <View style={[styles.headerTopRow, styles.eyebrowRow]}>
+          <Text style={type.eyebrow}>{eyebrow}</Text>
+          {accessory}
+        </View>
+      ) : null}
 
       <View style={styles.headerMain}>
         <View style={styles.headerText}>
-          {typeof eyebrow === "string" ? <Text style={[type.eyebrow, styles.eyebrow]}>{eyebrow}</Text> : eyebrow}
+          {eyebrow && !eyebrowRow ? <Text style={[type.eyebrow, styles.eyebrow]}>{eyebrow}</Text> : null}
           <View style={styles.titleRow}>
             <Text style={styles.title} accessibilityRole="header">
               {title}
@@ -457,6 +476,8 @@ const styles = StyleSheet.create({
   headerMain: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md },
   headerText: { flex: 1 },
   eyebrow: { marginBottom: spacing.xs },
+  /** Close to the title, as the eyebrow is when it sits alone. */
+  eyebrowRow: { marginBottom: spacing.xs, gap: spacing.md },
   titleRow: { flexDirection: "row", alignItems: "flex-start" },
   title: {
     fontFamily: fonts.display,
