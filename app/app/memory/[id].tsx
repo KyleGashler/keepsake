@@ -199,7 +199,8 @@ export default function MemoryScreen() {
       favorite={isFavorite}
       onBack={back}
       onFavorite={toggleFavorite}
-      onMore={can.more}
+      // A VIEWER's menu holds only Download, so they get ⋯ when there's media.
+      onMore={can.more ?? (memory.media.length > 0 ? () => setSheet("options") : undefined)}
     />
   );
 
@@ -385,6 +386,7 @@ export default function MemoryScreen() {
       <MediaViewer items={visuals} index={viewerAt} onClose={() => setViewerAt(null)} />
       <MemorySheets
         memory={memory}
+        canContribute={canContribute}
         kind={sheet}
         onKind={setSheet}
         onChanged={refetch}
@@ -500,7 +502,7 @@ function TopActions({
   favorite: boolean;
   onBack: () => void;
   onFavorite: () => void;
-  /** Absent for a VIEWER: every option in that menu changes the memory. */
+  /** Absent for a VIEWER when there's nothing to download: every other option changes the memory. */
   onMore?: () => void;
 }) {
   const disc = [styles.disc, floating ? styles.discFloating : styles.discFlat];

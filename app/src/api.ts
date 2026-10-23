@@ -417,6 +417,28 @@ export function mediaStatus(item: Pick<MediaItem, "type" | "status" | "url">): M
   return item.status ?? (item.url ? "READY" : "PROCESSING");
 }
 
+/**
+ * `POST /api/memories/:id/downloads` — each file of a memory, ready to save
+ * or on its way. A video is prepared on request (Mux's master copy): it says
+ * `preparing` for a few minutes, and asking again is how to poll.
+ */
+export type DownloadFile = {
+  mediaId: string;
+  type: MediaType;
+  filename: string;
+  status: "ready" | "preparing" | "failed";
+  /** Only when ready; resolve with `mediaUrl` (a local-disk photo is relative). */
+  url?: string;
+  /** ISO-8601: when `url` stops working. */
+  expiresAt?: string;
+};
+
+export type DownloadsPayload = {
+  files: DownloadFile[];
+  /** Sample images (the demo family's) that aren't files anyone uploaded. */
+  unavailable: number;
+};
+
 export type Memory = MemoryCard & {
   story: string | null;
   transcript: string | null;

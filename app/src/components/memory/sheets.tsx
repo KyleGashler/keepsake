@@ -21,22 +21,26 @@ import { CardArt } from "./parts";
 import { DANGER } from "./helpers";
 import { FieldLabel, Sheet, SheetHeader, SheetRow } from "./sheet";
 import { DateField } from "./date-field";
+import { DownloadList } from "./download-sheet";
 
-export type SheetKind = "options" | "edit" | "media" | "collections" | "link" | "date" | "delete";
+export type SheetKind = "options" | "edit" | "media" | "collections" | "link" | "date" | "delete" | "download";
 
 /**
  * Everything behind the ⋯ button, in one sheet whose contents change: the
  * options menu, and the edit form, media arranger, collection picker, link
- * picker, date mover and delete confirmation it leads to.
+ * picker, date mover, delete confirmation and download list it leads to.
  */
 export function MemorySheets({
   memory,
+  canContribute,
   kind,
   onKind,
   onChanged,
   onDeleted,
 }: {
   memory: Memory;
+  /** False for a VIEWER: the menu offers only Download. */
+  canContribute: boolean;
   kind: SheetKind | null;
   onKind: (next: SheetKind | null) => void;
   /** Something was saved; load the memory again. */
@@ -47,7 +51,10 @@ export function MemorySheets({
   const tall = kind === "edit" || kind === "media" || kind === "collections" || kind === "link";
   return (
     <Sheet visible={kind !== null} onClose={close} tall={tall}>
-      {kind === "options" ? <OptionsMenu hasMedia={memory.media.length > 0} onPick={onKind} /> : null}
+      {kind === "options" ? (
+        <OptionsMenu hasMedia={memory.media.length > 0} canContribute={canContribute} onPick={onKind} />
+      ) : null}
+      {kind === "download" ? <DownloadList memory={memory} onClose={close} /> : null}
       {kind === "media" ? <MediaArranger memory={memory} onClose={close} onSaved={onChanged} /> : null}
       {kind === "edit" ? <EditForm memory={memory} onClose={close} onSaved={onChanged} /> : null}
       {kind === "collections" ? <CollectionPicker memory={memory} onClose={close} onSaved={onChanged} /> : null}
@@ -58,7 +65,24 @@ export function MemorySheets({
   );
 }
 
-function OptionsMenu({ hasMedia, onPick }: { hasMedia: boolean; onPick: (kind: SheetKind) => void }) {
+function OptionsMenu({
+  hasMedia,
+  canContribute,
+  onPick,
+}: {
+  hasMedia: boolean;
+  canContribute: boolean;
+  onPick: (kind: SheetKind) => void;
+}) {
+  const download = hasMedia ? (
+    <SheetRow
+      icon="download-outline"
+      label="Download"
+      divider={canContribute}
+      onPress={() => onPick("download")}
+    />
+  ) : null;
+  if (!canContribute) return <View>{download}</View>;
   return (
     <View>
       <SheetRow icon="pencil-outline" label="Edit Memory" onPress={() => onPick("edit")} />
@@ -69,6 +93,7 @@ function OptionsMenu({ hasMedia, onPick }: { hasMedia: boolean; onPick: (kind: S
       <SheetRow icon="link-outline" label="Link to Another Memory" onPress={() => onPick("link")} />
       {/* Sharing has to respect permissions before anything leaves the archive. */}
       <SheetRow icon="share-outline" label="Share" disabled note="Coming soon" />
+      {download}
       <SheetRow icon="calendar-outline" label="Move to Different Date" onPress={() => onPick("date")} />
       <SheetRow icon="trash-outline" label="Delete" danger divider={false} onPress={() => onPick("delete")} />
     </View>
