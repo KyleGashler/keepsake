@@ -79,6 +79,13 @@ export class DevAuthProvider implements AuthProvider {
     return this.email ? `dev:${this.email}` : null;
   }
 
+  /** No password to check and no identity to delete: the server's side is all of it. */
+  async deleteAccount({ deleteOnServer }: { password?: string; deleteOnServer: () => Promise<void> }) {
+    if (!this.email) throw new AuthError("Sign in first.");
+    await deleteOnServer();
+    await this.signOut();
+  }
+
   private async restore() {
     let saved: string | null = null;
     try {

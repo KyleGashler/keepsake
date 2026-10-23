@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ApiError, apiGet, apiSend, onUnauthorized, type AcceptedInvite, type MePayload } from "../api";
+import {
+  ApiError,
+  apiGet,
+  apiSend,
+  holdRequests,
+  onFamilyLost,
+  onUnauthorized,
+  type AcceptedInvite,
+  type MePayload,
+} from "../api";
+import { leaveFor } from "../routes";
 import { auth, type AuthUser } from ".";
 import { getFamilyId, rememberedFamilyId, setFamilyId, useFamilyId } from "./family-store";
 import { SessionContext, type Session, type SessionPhase } from "./session-context";
@@ -32,7 +42,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const latestLoad = useRef(0);
   const signedInAs = useRef<string | null>(null);
 
-  const loadAccount = useCallback(async ({ quiet = false } = {}) => {
+  /**
+   * `pickFirst`: with several families and no valid choice, go to the first
+   * rather than ask — after the one being looked at was deleted or lost.
+   */
+  const loadAccount = useCallback(async ({ quiet = false, pickFirst = false } = {}) => {
     const load = ++latestLoad.current;
     if (!quiet) setAccount({ status: "loading" });
     try {
@@ -44,6 +58,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       // still one of theirs. Otherwise the picker (or create screen) asks.
       if (ids.length === 1) setFamilyId(ids[0]);
       else if (remembered && ids.includes(remembered)) setFamilyId(remembered);
+      else if (pickFirst && ids.length) setFamilyId(ids[0]);
       else setFamilyId(null, { remember: false });
       setAccount({ status: "loaded", me });
     } catch (err) {
@@ -70,6 +85,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         if (email) {
           void loadAccount();
         } else {
+          // Signed out: whatever held requests during an account deletion is over.
+          holdRequests(false);
           latestLoad.current++;
           setAccount({ status: "idle" });
           setVerifyNudgeDismissed(false);
@@ -83,6 +100,49 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     onUnauthorized(() => {
       setNotice("You've been signed out. Sign in again to pick up where you left off.");
       void auth.signOut();
+    });
+  }, []);
+
+  // The account as last loaded, for familyGone's optimistic step.
+  const meRef = useRef<MePayload | null>(null);
+  useEffect(() => {
+    meRef.current = account.status === "loaded" ? account.me : null;
+  }, [account]);
+
+  /**
+   * A family is gone — deleted (by them or another owner), or they were
+   * removed. Drop it at once and move to another family (the first), or to
+   * Create Family if it was their last; then ask the API what's true.
+   */
+  const familyGone = useCallback(
+    async (goneId: string) => {
+      const me = meRef.current;
+      if (me) {
+        const rest = me.memberships.filter((m) => m.familyId !== goneId);
+        setAccount({ status: "loaded", me: { ...me, memberships: rest } });
+        if (getFamilyId() === goneId) setFamilyId(rest[0]?.familyId ?? null);
+      }
+      await loadAccount({ quiet: true, pickFirst: true });
+    },
+    [loadAccount],
+  );
+
+  useEffect(() => {
+    onFamilyLost((lostId) => void familyGone(lostId));
+  }, [familyGone]);
+
+  const deleteAccount = useCallback(async (password?: string) => {
+    setNotice(null);
+    await auth.deleteAccount({
+      password,
+      deleteOnServer: async () => {
+        await apiSend("/api/me", "DELETE");
+        // Gone on the server. Until the provider has signed out, a request
+        // would quietly make a new account for this identity: send none,
+        // and leave the screens that would.
+        holdRequests(true);
+        leaveFor(() => undefined);
+      },
     });
   }, []);
 
@@ -160,6 +220,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       selectFamily: (id) => setFamilyId(id),
       createFamily,
       acceptInvite,
+      familyGone,
+      deleteAccount,
       refreshAccount: () => loadAccount({ quiet: account.status === "loaded" }),
       resendVerification: () => auth.sendVerificationEmail(),
       confirmVerified,
@@ -175,6 +237,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     signOut,
     createFamily,
     acceptInvite,
+    familyGone,
+    deleteAccount,
     loadAccount,
     confirmVerified,
   ]);

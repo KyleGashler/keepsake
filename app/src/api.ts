@@ -96,6 +96,30 @@ export function onUnauthorized(handler: () => void) {
 }
 
 /**
+ * What a `403 forbidden` on a family-scoped request does: the family named in
+ * `x-family-id` isn't theirs any more — deleted by an owner (A16), or they
+ * were removed from it. The session replaces this to move them elsewhere.
+ */
+let familyLostHandler: (familyId: string) => void = () => undefined;
+
+export function onFamilyLost(handler: (familyId: string) => void) {
+  familyLostHandler = handler;
+}
+
+/**
+ * Set between the server deleting the account and the provider signing out
+ * (A16). Any request in that gap would carry a still-valid token, and the API
+ * would answer it by creating a fresh account for that identity — so none is
+ * sent. They wait on a promise that never settles; the screens that made
+ * them are gone a moment later, at sign-out.
+ */
+let held: Promise<never> | null = null;
+
+export function holdRequests(hold: boolean) {
+  held = hold ? new Promise<never>(() => undefined) : null;
+}
+
+/**
  * `fetch` against this API, signed: `Authorization: Bearer <token>` and, once
  * a family is chosen, `x-family-id`. A 401 means the token is no good any
  * more (expired past refresh, revoked, or minted for another project), so the
@@ -112,13 +136,26 @@ export async function apiFetch(
   init: RequestInit = {},
   familyId: string | null = getFamilyId(),
 ): Promise<Response> {
+  if (held) return held;
   const token = await auth.getToken();
   const headers = new Headers(init.headers);
   if (token) headers.set("Authorization", `Bearer ${token}`);
   if (familyId) headers.set("x-family-id", familyId);
   const res = await fetch(`${API_URL}${path}`, { ...init, headers });
   if (res.status === 401 && token) unauthorizedHandler();
+  if (res.status === 403 && familyId && (await isFamilyRefusal(res))) familyLostHandler(familyId);
   return res;
+}
+
+/** `{ "error": "forbidden" }`: not a member of the family named (as opposed to `forbidden_role`). */
+async function isFamilyRefusal(res: Response) {
+  let body: unknown = null;
+  try {
+    body = await res.clone().json();
+  } catch {
+    return false;
+  }
+  return Boolean(body && typeof body === "object" && "error" in body && body.error === "forbidden");
 }
 
 export async function apiGet<T>(path: string, familyId?: string | null): Promise<T> {
@@ -340,6 +377,19 @@ export type Membership = {
 export type MePayload = {
   user: { id: string; email: string; displayName: string; emailVerified: boolean; createdAt: string };
   memberships: Membership[];
+};
+
+/**
+ * `GET /api/me/deletion` — what deleting the account would do. Families they
+ * own are deleted for everyone; the rest they leave. `allowed` is false
+ * (`reason: "not_an_owner"`) when they own none: only an owner can delete
+ * their account.
+ */
+export type DeletionPreview = {
+  allowed: boolean;
+  reason?: "not_an_owner";
+  deletes: { familyId: string; name: string; members: number; memories: number }[];
+  leaves: { familyId: string; name: string }[];
 };
 
 export type Person = {

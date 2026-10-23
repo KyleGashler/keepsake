@@ -47,6 +47,20 @@ export type Session = {
    * `revoked`, `person_taken`, …); already being a member just switches.
    */
   acceptInvite: (token: string) => Promise<void>;
+  /**
+   * A family is no longer theirs to look at — they deleted it, another owner
+   * did, or they were removed. Switches to another family (or Create Family)
+   * and reloads `/me`. The API client calls it on its own when a request is
+   * refused `403 forbidden`.
+   */
+  familyGone: (familyId: string) => Promise<void>;
+  /**
+   * Delete the account (A16): the provider checks `password` (Firebase; dev
+   * has none), `DELETE /api/me` deletes every family they own and leaves the
+   * rest, then the identity is deleted and they're signed out. Rejects with
+   * an `AuthError` (wrong password — nothing deleted) or the API's error.
+   */
+  deleteAccount: (password?: string) => Promise<void>;
   /** Re-ask `GET /me` without leaving the current screen. */
   refreshAccount: () => Promise<void>;
   resendVerification: () => Promise<void>;

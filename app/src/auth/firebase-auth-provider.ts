@@ -5,9 +5,12 @@ import {
   confirmPasswordReset,
   connectAuthEmulator,
   createUserWithEmailAndPassword,
+  deleteUser,
+  EmailAuthProvider,
   getAuth,
   initializeAuth,
   onAuthStateChanged,
+  reauthenticateWithCredential,
   sendEmailVerification,
   sendPasswordResetEmail,
   signInWithEmailAndPassword,
@@ -149,6 +152,15 @@ function friendly(err: unknown): AuthError {
     default:
       return new AuthError("Something went wrong. Please try again.", code);
   }
+}
+
+/** For a password typed to confirm something (deleting the account): only the password can be wrong. */
+function friendlyReauth(err: unknown): AuthError {
+  const code = codeOf(err);
+  if (code === "auth/invalid-credential" || code === "auth/invalid-login-credentials" || code === "auth/wrong-password") {
+    return new AuthError("That password isn't right. Try again.", code);
+  }
+  return friendly(err);
 }
 
 /**
@@ -315,6 +327,38 @@ export class FirebaseAuthProvider implements AuthProvider {
     if (!user) return null;
     // Refreshes by itself when the cached token is near expiry.
     return user.getIdToken(forceRefresh);
+  }
+
+  /**
+   * Reauthenticate first: it proves the password before anything is deleted,
+   * and it makes the sign-in recent, so `deleteUser` can't then fail with
+   * `auth/requires-recent-login` after the server's side is already gone.
+   */
+  async deleteAccount({ password, deleteOnServer }: { password?: string; deleteOnServer: () => Promise<void> }) {
+    const user = this.auth.currentUser;
+    if (!user?.email) throw new AuthError("Sign in first.");
+    if (!password) throw new AuthError("Enter your password.", "auth/missing-password");
+    try {
+      await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, password));
+    } catch (err) {
+      throw friendlyReauth(err);
+    }
+
+    await deleteOnServer();
+
+    try {
+      await deleteUser(user);
+    } catch (err) {
+      // The archive side is gone; the sign-in identity outlived it. Signing
+      // in with it again only starts a fresh, empty account.
+      // oxlint-disable-next-line no-console -- worth seeing in the console; the person is signed out either way
+      console.warn(`[auth] Deleted the account's data, but not its Firebase identity (${codeOf(err) ?? "unknown"}).`);
+    }
+    try {
+      await signOut(this.auth);
+    } catch {
+      // deleteUser already signed out, or there's nothing left to sign out of.
+    }
   }
 
   private emit() {

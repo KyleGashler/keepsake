@@ -16,6 +16,7 @@ import {
 } from "../src/api";
 import { useSession } from "../src/auth/session-context";
 import { VerifyEmailNudge } from "../src/components/account-screens";
+import { DeleteAccountSheet, DeleteFamilySheet } from "../src/components/deletion-sheets";
 import { FamilySwitchSheet } from "../src/components/family-switcher";
 import { AddPersonSheet } from "../src/components/person-sheets";
 import { ActionSheet, Field, Sheet, SheetButton, SheetError, SheetInput, type SheetAction } from "../src/components/sheet";
@@ -67,6 +68,7 @@ export default function FamilyHubScreen() {
   const [removing, setRemoving] = useState<FamilyMember | null>(null);
   const [inviteActions, setInviteActions] = useState<Invite | null>(null);
   const [addingPerson, setAddingPerson] = useState(false);
+  const [deleting, setDeleting] = useState<"family" | "account" | null>(null);
   const [notice, setNotice] = useState<HubNotice | null>(null);
 
   if (error) return <ErrorState error={error} onRetry={refetch} />;
@@ -235,30 +237,28 @@ export default function FamilyHubScreen() {
           ))}
         </Group>
 
-        <SectionHeader label="Account" />
-        <Group>
-          <Row
-            first
-            leading={<LeadingIcon name="person-circle-outline" />}
-            title="Signed in"
-            detail={`${session.user?.email ?? ""} · ${ROLE_LABEL[data.role]}`}
-          />
-          {session.memberships.length > 1 ? (
-            <Row
-              leading={<LeadingIcon name="swap-horizontal-outline" />}
-              title="Switch family"
-              detail={`You belong to ${session.memberships.length} archives`}
-              trailing={<RowIcon name="chevron-forward" />}
-              onPress={() => setSwitching(true)}
-            />
-          ) : null}
-          <Row
-            leading={<LeadingIcon name="log-out-outline" color={colors.terracotta} />}
-            title="Sign out"
-            destructive
-            onPress={() => leaveFor(() => void session.signOut())}
-          />
-        </Group>
+        {isOwner ? (
+          <>
+            <SectionHeader label="This family" />
+            <Group>
+              <Row
+                first
+                leading={<LeadingIcon name="trash-outline" color={colors.danger} />}
+                title="Delete this family"
+                detail="For everyone in it, with every memory"
+                destructive
+                trailing={<RowIcon name="chevron-forward" />}
+                onPress={() => setDeleting("family")}
+              />
+            </Group>
+          </>
+        ) : null}
+
+        <AccountSection
+          role={data.role}
+          onSwitch={() => setSwitching(true)}
+          onDeleteAccount={() => setDeleting("account")}
+        />
 
         <PreviewNote>Billing isn't set up in this build yet.</PreviewNote>
 
@@ -336,6 +336,21 @@ export default function FamilyHubScreen() {
             }}
           />
         ) : null}
+
+        {deleting === "family" ? (
+          <DeleteFamilySheet
+            familyName={data.family.name}
+            stats={data.stats}
+            memberCount={data.members.length}
+            onClose={() => setDeleting(null)}
+            onDeleted={() => {
+              const gone = data.family.id;
+              leaveFor(() => void session.familyGone(gone));
+            }}
+          />
+        ) : null}
+
+        {deleting === "account" ? <DeleteAccountSheet onClose={() => setDeleting(null)} /> : null}
 
         {inviting ? (
           <InviteSheet
@@ -428,6 +443,67 @@ function OthersSection({
             />
           ))}
         </Group>
+      )}
+    </>
+  );
+}
+
+/**
+ * Who's signed in, and the way out: switch family, sign out, and — for an
+ * owner of any family — delete the account (A16). Anyone else is told who
+ * can, and where to write instead.
+ */
+function AccountSection({
+  role,
+  onSwitch,
+  onDeleteAccount,
+}: {
+  role: MembershipRole;
+  onSwitch: () => void;
+  onDeleteAccount: () => void;
+}) {
+  const session = useSession();
+  const ownsAFamily = session.memberships.some((m) => m.role === "OWNER");
+  return (
+    <>
+      <SectionHeader label="Account" />
+      <Group>
+        <Row
+          first
+          leading={<LeadingIcon name="person-circle-outline" />}
+          title="Signed in"
+          detail={`${session.user?.email ?? ""} · ${ROLE_LABEL[role]}`}
+        />
+        {session.memberships.length > 1 ? (
+          <Row
+            leading={<LeadingIcon name="swap-horizontal-outline" />}
+            title="Switch family"
+            detail={`You belong to ${session.memberships.length} archives`}
+            trailing={<RowIcon name="chevron-forward" />}
+            onPress={onSwitch}
+          />
+        ) : null}
+        <Row
+          leading={<LeadingIcon name="log-out-outline" color={colors.terracotta} />}
+          title="Sign out"
+          destructive
+          onPress={() => leaveFor(() => void session.signOut())}
+        />
+        {ownsAFamily ? (
+          <Row
+            leading={<LeadingIcon name="trash-outline" color={colors.danger} />}
+            title="Delete account"
+            detail="For good, with every family you own"
+            destructive
+            trailing={<RowIcon name="chevron-forward" />}
+            onPress={onDeleteAccount}
+          />
+        ) : null}
+      </Group>
+      {ownsAFamily ? null : (
+        <Text style={styles.groupHint}>
+          Only a family's owner can delete their account. To delete yours, write to {SUPPORT_EMAIL}.
+        </Text>
       )}
     </>
   );

@@ -41,6 +41,19 @@ export interface AuthProvider {
    */
   getToken: (forceRefresh?: boolean) => Promise<string | null>;
   /**
+   * Delete the signed-in account for good, then sign out (A16).
+   *
+   * Proves it's them first — Firebase reauthenticates with `password`, so a
+   * wrong one rejects with an `AuthError` and nothing is deleted (dev mode
+   * has no password and skips this). Then `deleteOnServer` deletes the app's
+   * side (`DELETE /api/me`); if it rejects, that error is passed on and the
+   * identity is kept. Then the provider's own identity is deleted — the API
+   * holds no credentials to do that itself. If that last step fails, the
+   * person is signed out anyway: the server side is already gone, and
+   * signing in again later just starts a fresh, empty account.
+   */
+  deleteAccount: (input: { password?: string; deleteOnServer: () => Promise<void> }) => Promise<void>;
+  /**
    * The codes in links the provider emails (verify, reset, recover), for the
    * page those links open (/auth/action). Absent when the provider sends no
    * such email — dev mode.

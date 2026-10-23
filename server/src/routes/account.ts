@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
+import { jobQueue } from "../jobs/index.js";
+import { deleteAccount, deletionPreview } from "../lib/account-deletion.js";
 import { prisma } from "../lib/prisma.js";
 
 /**
- * The two routes that exist *before* a family does. Everything else in the API
- * is scoped to one archive; these answer "who am I" and "make me one", so they
- * run behind `requireUser` alone.
+ * The routes that exist *before* a family does. Everything else in the API is
+ * scoped to one archive; these answer "who am I", "make me one" and "delete
+ * me", so they run behind `requireUser` alone.
  */
 export const accountRouter = Router();
 
@@ -95,4 +97,35 @@ accountRouter.post("/families", async (req, res) => {
     family: { id: family.id, name: family.name, createdAt: family.createdAt.toISOString() },
     role: "OWNER",
   });
+});
+
+/**
+ * What deleting this account would do, for the confirmation sheet: the
+ * families deleted for everyone (with how many members and memories each
+ * has) and the families they'd only leave. `allowed` is false, with
+ * `reason: "not_an_owner"`, when they own no family.
+ */
+accountRouter.get("/me/deletion", async (req, res) => {
+  res.json(await deletionPreview(req.ctx.user.id));
+});
+
+/**
+ * Delete the account (A16). Owners only (`403 not_an_owner` otherwise):
+ * every family they own is deleted for everyone, with all its content and
+ * files (purged by `media.purge`); every other family they're in, they
+ * leave; then the User row goes. 204.
+ *
+ * The sign-in identity (Firebase) isn't deleted here — the server holds no
+ * credentials for that. The client deletes it once this answers; if that
+ * fails, a later sign-in just gets a fresh, empty User (resolveUser).
+ */
+accountRouter.delete("/me", async (req, res) => {
+  const { user } = req.ctx;
+  const result = await deleteAccount(jobQueue(), user.id);
+  if (!result.ok) {
+    if (result.reason === "not_an_owner") return res.status(403).json({ error: "not_an_owner" });
+    return res.status(404).json({ error: "not_found" });
+  }
+  req.log.info({ userId: user.id, deletedFamilies: result.deleted, leftFamilies: result.left }, "account deleted");
+  res.status(204).end();
 });

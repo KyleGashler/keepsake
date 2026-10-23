@@ -16,6 +16,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   UPLOAD_URL_TTL_SECONDS,
   assertDeletable,
+  assertFamilyPrefix,
   assertSafeKey,
   assertUploadable,
   type ByteRange,
@@ -259,6 +260,46 @@ export class S3StorageProvider implements StorageProvider {
         const failed = result.Errors ?? [];
         if (failed.length) {
           throw new Error(`S3 refused to delete ${failed.length} version(s) of ${key}: ${failed[0].Code ?? ""} ${failed[0].Message ?? ""}`);
+        }
+      }
+      if (!out.IsTruncated) break;
+      keyMarker = out.NextKeyMarker;
+      versionIdMarker = out.NextVersionIdMarker;
+    }
+  }
+
+  /**
+   * Every version and delete marker of every key under `<familyId>/`, a page
+   * (up to 1,000) at a time — the most one DeleteObjects takes. Same
+   * permissions as `purgeForFamilyDelete`: `s3:ListBucketVersions` on the
+   * bucket, `s3:DeleteObject` and `s3:DeleteObjectVersion` on its objects.
+   */
+  async purgeFamilyObjects(familyId: string): Promise<void> {
+    assertFamilyPrefix(familyId);
+    const prefix = `${familyId}/`;
+    let keyMarker: string | undefined;
+    let versionIdMarker: string | undefined;
+    for (;;) {
+      const out = await this.client.send(
+        new ListObjectVersionsCommand({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          KeyMarker: keyMarker,
+          VersionIdMarker: versionIdMarker,
+        }),
+      );
+      const objects = [...(out.Versions ?? []), ...(out.DeleteMarkers ?? [])]
+        .filter((v): v is typeof v & { Key: string } => typeof v.Key === "string" && v.Key.startsWith(prefix))
+        .map((v) => ({ Key: v.Key, VersionId: v.VersionId }));
+      if (objects.length) {
+        const result = await this.client.send(
+          new DeleteObjectsCommand({ Bucket: this.bucket, Delete: { Objects: objects, Quiet: true } }),
+        );
+        const failed = result.Errors ?? [];
+        if (failed.length) {
+          throw new Error(
+            `S3 refused to delete ${failed.length} version(s) under ${prefix}: ${failed[0].Code ?? ""} ${failed[0].Message ?? ""}`,
+          );
         }
       }
       if (!out.IsTruncated) break;

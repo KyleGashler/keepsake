@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { JobPayloads, JobQueue } from "../jobs/JobQueue.js";
 import { lockAssets } from "../media-host/assets.js";
+import { UPLOAD_URL_TTL_SECONDS } from "../storage/StorageProvider.js";
 
 /**
  * Hard delete, and what it leaves to clean up (A7: no trash, no restore).
@@ -18,7 +19,8 @@ import { lockAssets } from "../media-host/assets.js";
  * once no Media links to it any more.
  *
  * This is the only path that deletes an original or a Mux asset. The app
- * never does either on its own; A16's account deletion will reuse it.
+ * never does either on its own. Deleting a whole family (A16, below) is the
+ * same job with `wholeFamily` set.
  */
 
 export type PurgePayload = JobPayloads["media.purge"];
@@ -99,6 +101,72 @@ export async function deleteAndPurge(
   const payload: PurgePayload = { familyId: input.familyId, storageKeys, muxAssets, reason: input.reason };
   await queue.enqueue("media.purge", payload, { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS });
   return payload;
+}
+
+/**
+ * How long after a family delete the second, sweeping purge runs: past the
+ * life of any upload URL handed out before the delete (plus slack for a PUT
+ * that started just before its URL expired), so bytes that land late under
+ * the family's prefix go too.
+ */
+export const LATE_UPLOAD_SWEEP_MS = (UPLOAD_URL_TTL_SECONDS + 15 * 60) * 1000;
+
+/**
+ * Delete a whole family — every row hanging off it, by cascade — and enqueue
+ * the purge of everything it stored, in the caller's transaction.
+ *
+ * `deleteAndPurge` finds files through the rows it deletes, which misses what
+ * no row points at (an upload that never finalized, a Mux upload never
+ * attached to a memory). So this purges the family's whole storage prefix
+ * instead (`wholeFamily`) and every MuxAsset row it has, linked or not. A
+ * second purge runs after `LATE_UPLOAD_SWEEP_MS` for bytes PUT through an
+ * upload URL issued before the delete.
+ *
+ * Locks, in this order: the family's MuxAsset rows (the order every other
+ * writer takes them in), then the Family row `FOR UPDATE`. Once the Family
+ * row is held, nothing can insert a row that references it (an insert takes
+ * a key-share lock on its parent), so no MuxAsset, Memory or Media can
+ * appear behind the purge's back; a concurrent insert waits, then fails its
+ * foreign key and the request answers as if the family were never theirs.
+ * MuxAssets created between the two locks are read again under the second.
+ *
+ * Returns false when the family was already gone.
+ */
+export async function deleteFamilyAndPurge(
+  tx: Prisma.TransactionClient,
+  queue: JobQueue,
+  input: { familyId: string; reason: string },
+): Promise<boolean> {
+  const { familyId } = input;
+  const before = await tx.muxAsset.findMany({ where: { familyId }, select: { id: true } });
+  await lockAssets(
+    tx,
+    before.map((a) => a.id),
+  );
+
+  const locked = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Family" WHERE id = ${familyId} FOR UPDATE`;
+  if (locked.length === 0) return false;
+
+  const known = new Set(before.map((a) => a.id));
+  const assets = await tx.muxAsset.findMany({ where: { familyId }, select: { id: true, uploadId: true, assetId: true } });
+  await lockAssets(
+    tx,
+    assets.filter((a) => !known.has(a.id)).map((a) => a.id),
+  );
+
+  // Every row of the family's goes by cascade (schema.prisma: each relation
+  // to Family is onDelete: Cascade).
+  await tx.family.delete({ where: { id: familyId } });
+
+  const muxAssets = assets.map((a) => ({ uploadId: a.uploadId, assetId: a.assetId }));
+  const payload: PurgePayload = { familyId, storageKeys: [], muxAssets, reason: input.reason, wholeFamily: true };
+  await queue.enqueue("media.purge", payload, { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS });
+  await queue.enqueue(
+    "media.purge",
+    { familyId, storageKeys: [], muxAssets: [], reason: `${input.reason} (late uploads)`, wholeFamily: true },
+    { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS, runAt: new Date(Date.now() + LATE_UPLOAD_SWEEP_MS) },
+  );
+  return true;
 }
 
 function unique(values: (string | null | undefined)[]): string[] {

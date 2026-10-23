@@ -97,6 +97,16 @@ export interface StorageProvider {
   purgeForFamilyDelete: (key: string) => Promise<void>;
 
   /**
+   * Remove for good every object under `<familyId>/` — every version and
+   * delete marker on a versioned bucket — whether or not a row points at it
+   * (uploads that never finalized included). Resolves when nothing is left.
+   *
+   * Only the `media.purge` job calls this, and only once the family itself
+   * has been deleted (A16: an owner deleting the family or their account).
+   */
+  purgeFamilyObjects: (familyId: string) => Promise<void>;
+
+  /**
    * Whether the backing store is reachable — `/api/health` asks this. May
    * throw instead of returning false; the caller counts a throw as unhealthy
    * and logs it, which keeps the reason.
@@ -174,6 +184,16 @@ export function assertSafeKey(key: string): asserts key is string {
   if (segments.length < 2 || segments.length > 6) throw new StorageKeyError("Malformed storage key");
   for (const segment of segments) {
     if (!KEY_SEGMENT.test(segment)) throw new StorageKeyError(`Illegal storage key segment: ${segment}`);
+  }
+}
+
+/**
+ * A family id as the first segment of its keys: one safe segment, nothing
+ * that could widen `<familyId>/` into a prefix of other families' keys.
+ */
+export function assertFamilyPrefix(familyId: string): asserts familyId is string {
+  if (typeof familyId !== "string" || familyId.length < 8 || familyId.length > 64 || !KEY_SEGMENT.test(familyId)) {
+    throw new StorageKeyError("Malformed family id for a prefix purge");
   }
 }
 
