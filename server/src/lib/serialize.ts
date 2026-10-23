@@ -2,6 +2,7 @@ import { RENDER_VERSION } from "./placeholder.js";
 import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
 import { mediaHost } from "../media-host/index.js";
 import type {
+  Prisma,
   Collection,
   Media,
   MediaStatus,
@@ -13,10 +14,17 @@ import type {
 } from "@prisma/client";
 
 /**
- * Load Media with this so the DTOs can sign a clip's URLs: `media: mediaInclude`.
+ * The family's order (Media.sortOrder, set by reordering on the memory page):
+ * the first photo or video is the memory's hero everywhere it's shown.
+ */
+const MEDIA_ORDER: Prisma.MediaOrderByWithRelationInput[] = [{ sortOrder: "asc" }, { createdAt: "asc" }];
+
+/**
+ * Load Media with this so the DTOs can sign a clip's URLs and get them in
+ * order: `media: mediaInclude`.
  * The types below require it, so a query that forgets won't compile.
  */
-export const mediaInclude = { include: { muxAsset: true } } as const;
+export const mediaInclude = { include: { muxAsset: true }, orderBy: MEDIA_ORDER } as const;
 
 /** A Media row with its Mux asset (null for photos, placeholders, pre-Mux rows). */
 export type MediaRow = Media & { muxAsset: MuxAsset | null };
@@ -158,22 +166,17 @@ export async function mediaDto(m: MediaRow) {
  * transcribed, else FAILED if any clip failed, else READY if any clip was
  * transcribed, else null (nothing to transcribe).
  */
-export function aggregateTranscriptStatus(
-  media: Pick<Media, "transcriptStatus" | "deletedAt">[],
-): TranscriptStatus | null {
-  const statuses = new Set(media.filter((x) => !x.deletedAt).map((x) => x.transcriptStatus));
+export function aggregateTranscriptStatus(media: Pick<Media, "transcriptStatus">[]): TranscriptStatus | null {
+  const statuses = new Set(media.map((x) => x.transcriptStatus));
   if (statuses.has("PENDING")) return "PENDING";
   if (statuses.has("FAILED")) return "FAILED";
   if (statuses.has("READY")) return "READY";
   return null;
 }
 
-/**
- * What `collectionDto` wants loaded: the owner, and a memory count that skips
- * soft-deleted memories. Use this rather than `_count: { memories: true }`.
- */
+/** What `collectionDto` wants loaded: the owner, and how many memories are filed in it. */
 export const collectionInclude = {
-  _count: { select: { memories: { where: { memory: { deletedAt: null } } } } },
+  _count: { select: { memories: true } },
   person: true,
 } as const;
 
@@ -207,7 +210,7 @@ type MemoryWithRelations = Memory & {
 const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
 
 export async function memoryCardDto(m: MemoryWithRelations) {
-  const media = m.media?.filter((x) => !x.deletedAt) ?? [];
+  const media = m.media ?? [];
   const hero = await heroStill(media);
   return {
     id: m.id,
@@ -254,7 +257,7 @@ export async function memoryDto(m: MemoryWithRelations) {
     transcriptStatus: aggregateTranscriptStatus(m.media ?? []),
     createdAt: m.createdAt.toISOString(),
     author: m.author ? personDto(m.author) : null,
-    media: await Promise.all(m.media?.filter((x) => !x.deletedAt).map(mediaDto) ?? []),
+    media: await Promise.all(m.media?.map(mediaDto) ?? []),
     collections:
       m.collections?.map((mc) => ({
         id: mc.collection.id,

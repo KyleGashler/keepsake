@@ -218,7 +218,6 @@ libraryRouter.get("/collections/:id", async (req, res) => {
   const contains = q ? { contains: q, mode: "insensitive" as const } : null;
   const where: Prisma.MemoryWhereInput = {
     familyId: family.id,
-    deletedAt: null,
     collections: { some: { collectionId: collection.id } },
     ...(contains
       ? { OR: [{ title: contains }, { story: contains }, { transcript: contains }, { location: contains }] }
@@ -307,4 +306,93 @@ libraryRouter.post("/collections", requireContributor, async (req, res) => {
   });
 
   res.status(201).json({ collection: collectionDto(collection) });
+});
+
+const editCollection = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  /** Null (or empty) clears it. */
+  description: z.string().trim().max(400).nullable().optional(),
+  icon: z.enum(COLLECTION_ICONS).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/, "color is a #RRGGBB hex")
+    .optional(),
+});
+
+/**
+ * Rename a collection, or change its description, glyph or colour. Any
+ * collection, a child's defaults included: their `kind` is what the app
+ * knows them by, so "Milestones" can become "Firsts" and still be drawn as
+ * milestones (and the boot-time backfill leaves a renamed default alone).
+ * Which pillar and child it belongs to don't change.
+ */
+libraryRouter.patch("/collections/:id", requireContributor, async (req, res) => {
+  const family = req.ctx.family;
+  const parsed = editCollection.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const { name, description, icon, color } = parsed.data;
+
+  const existing = await prisma.collection.findFirst({
+    where: { id: req.params.id, familyId: family.id },
+    select: { id: true },
+  });
+  if (!existing) return res.status(404).json({ error: "Collection not found" });
+
+  const collection = await prisma.collection.update({
+    where: { id: existing.id },
+    data: {
+      ...(name === undefined ? {} : { name }),
+      ...(description === undefined ? {} : { description: description || null }),
+      ...(icon === undefined ? {} : { icon }),
+      ...(color === undefined ? {} : { color: color.toUpperCase() }),
+    },
+    include: collectionInclude,
+  });
+  res.json({ collection: collectionDto(collection) });
+});
+
+/**
+ * Delete a collection. The memories in it stay in the archive (and in any
+ * other collection they're filed in); only this filing goes. A child's
+ * default collections (those with a `kind`) can't be deleted —
+ * `409 default_collection` — they're part of every child's Library and the
+ * backfill would only bring them back; rename them instead. Arrival Stories
+ * defaults have no kind and can be pruned.
+ */
+libraryRouter.delete("/collections/:id", requireContributor, async (req, res) => {
+  const family = req.ctx.family;
+  const collection = await prisma.collection.findFirst({
+    where: { id: req.params.id, familyId: family.id },
+    select: { id: true, kind: true },
+  });
+  if (!collection) return res.status(404).json({ error: "Collection not found" });
+  if (collection.kind) return res.status(409).json({ error: "default_collection" });
+
+  await prisma.collection.delete({ where: { id: collection.id } });
+  res.status(204).end();
+});
+
+/** Both of this family, or null — an id from elsewhere reads as absent. */
+async function findFiling(familyId: string, collectionId: string, memoryId: string) {
+  const [collection, memory] = await Promise.all([
+    prisma.collection.findFirst({ where: { id: collectionId, familyId }, select: { id: true } }),
+    prisma.memory.findFirst({ where: { id: memoryId, familyId }, select: { id: true } }),
+  ]);
+  return collection && memory ? { collectionId: collection.id, memoryId: memory.id } : null;
+}
+
+/** File a memory in this collection. Already filed is a no-op. */
+libraryRouter.put("/collections/:id/memories/:memoryId", requireContributor, async (req, res) => {
+  const filing = await findFiling(req.ctx.family.id, req.params.id, req.params.memoryId);
+  if (!filing) return res.status(404).json({ error: "Not found" });
+  await prisma.memoryCollection.createMany({ data: [filing], skipDuplicates: true });
+  res.status(204).end();
+});
+
+/** Take a memory out of this collection. The memory itself stays. Not filed is a no-op. */
+libraryRouter.delete("/collections/:id/memories/:memoryId", requireContributor, async (req, res) => {
+  const filing = await findFiling(req.ctx.family.id, req.params.id, req.params.memoryId);
+  if (!filing) return res.status(404).json({ error: "Not found" });
+  await prisma.memoryCollection.deleteMany({ where: filing });
+  res.status(204).end();
 });

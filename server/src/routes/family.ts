@@ -44,8 +44,8 @@ familyRouter.get("/family", async (req, res) => {
       include: { membership: { select: { userId: true } } },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     }),
-    prisma.memory.count({ where: { familyId: family.id, deletedAt: null } }),
-    prisma.media.count({ where: { deletedAt: null, memory: { familyId: family.id, deletedAt: null } } }),
+    prisma.memory.count({ where: { familyId: family.id } }),
+    prisma.media.count({ where: { memory: { familyId: family.id } } }),
     prisma.collection.count({ where: { familyId: family.id } }),
   ]);
 

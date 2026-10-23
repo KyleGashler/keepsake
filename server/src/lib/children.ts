@@ -10,7 +10,7 @@ import { signedImageUrl } from "./upload-keys.js";
  * - `photoUrl`: the uploaded profile photo, signed fresh; null means none, and
  *   the client falls back to `avatarUrl`.
  * - `collectionCount`: their Child Profiles collections.
- * - `memoryCount`: distinct, non-deleted memories filed in any collection of
+ * - `memoryCount`: distinct memories filed in any collection of
  *   theirs (any pillar). A memory shared with a sibling counts for both.
  */
 export async function childSummary(familyId: string, p: Person) {
@@ -22,7 +22,6 @@ export async function childSummary(familyId: string, p: Person) {
     prisma.memory.count({
       where: {
         familyId,
-        deletedAt: null,
         collections: { some: { collection: { familyId, personId: p.id } } },
       },
     }),

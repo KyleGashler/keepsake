@@ -64,7 +64,7 @@ enum MediaStatus {
   FAILED
 }
 
-/// A rendition generated from an original. Originals are never touched.
+/// A rendition generated from an original. Generating one never touches the original.
 enum DerivativeKind {
   THUMB
   DISPLAY
@@ -212,8 +212,6 @@ model Memory {
   palette        String[]       @default([])
   analysisStatus AnalysisStatus @default(PENDING)
   storySource    StorySource    @default(HUMAN)
-  /// Soft delete. Hidden everywhere; a trash view restores it.
-  deletedAt      DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -234,10 +232,12 @@ model Memory {
   searchVector Unsupported("tsvector")?
 
   @@index([familyId, occurredAt])
-  @@index([familyId, deletedAt])
 }
 
-/// Original assets attached to a Memory. Originals are never overwritten.
+/// Original assets attached to a Memory. Originals are never overwritten, and
+/// never deleted by the app on its own: only a family deleting the memory, or
+/// removing this photo or clip from it, deletes the row and purges its files
+/// (the `media.purge` job — see lib/purge.ts). There is no trash.
 model Media {
   id               String            @id @default(cuid())
   memoryId         String
@@ -272,8 +272,6 @@ model Media {
   /// The Mux upload/asset behind a VIDEO or AUDIO clip. Null for photos,
   /// placeholders and pre-Mux rows.
   muxAssetId       String?
-  /// Soft delete of the row. The original object (or Mux asset) is never deleted.
-  deletedAt        DateTime?
   createdAt        DateTime          @default(now())
 
   memory      Memory       @relation(fields: [memoryId], references: [id], onDelete: Cascade)
@@ -289,8 +287,10 @@ model Media {
 /// `mux.sync` job, in whatever order they arrive. Every field is a fact Mux
 /// reported, merged so a replayed or late event can't move it backwards, and
 /// `status` is computed from them (see media-host/assets.ts). Linked Media
-/// rows copy what they show from here. Nothing ever deletes the Mux asset:
-/// it is the only copy of the family's clip.
+/// rows copy what they show from here. The Mux asset is the only copy of the
+/// family's clip, so the app never deletes it on its own: only an explicit
+/// family delete (the memory, or the clip removed from it) drops this row,
+/// once no Media links to it, and purges the asset through `media.purge`.
 model MuxAsset {
   id              String           @id @default(cuid())
   familyId        String

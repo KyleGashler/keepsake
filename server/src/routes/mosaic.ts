@@ -12,9 +12,9 @@ export const mosaicRouter = Router();
 mosaicRouter.get("/mosaic", async (req, res) => {
   const family = req.ctx.family;
   const memories = await prisma.memory.findMany({
-    where: { familyId: family.id, deletedAt: null },
+    where: { familyId: family.id },
     orderBy: [{ paletteHue: "asc" }, { brightness: "desc" }],
-    include: { media: { where: { deletedAt: null }, ...mediaInclude } },
+    include: { media: mediaInclude },
   });
 
   const tiles = await Promise.all(memories.map(async (m, i) => {
