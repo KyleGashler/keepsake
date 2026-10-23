@@ -477,7 +477,8 @@ edits it, it's theirs.
 **Webhooks and polling.** `POST /api/webhooks/mux` takes Mux's events
 (`video.upload.asset_created`, `video.asset.ready` / `errored`,
 `video.asset.track.ready` / `errored` for the generated captions,
-`video.asset.static_rendition.ready` for audio). It reads the raw body
+`video.asset.static_rendition.ready` for audio, `video.asset.master.*` for
+[downloads](#downloading)). It reads the raw body
 (mounted before `express.json` and auth), verifies `mux-signature` with
 `MUX_WEBHOOK_SECRET`, and is idempotent: every event is merged as facts that
 can't move backwards, so a replay changes nothing. It never calls Mux back;
@@ -512,6 +513,52 @@ On Fly: `fly secrets set MUX_TOKEN_ID=… MUX_TOKEN_SECRET=… MUX_SIGNING_KEY_I
 MUX_SIGNING_KEY_PRIVATE=… MUX_WEBHOOK_SECRET=…`. Use separate Mux
 environments (Development, Production) so dev uploads never land in the
 production archive.
+
+## Downloading
+
+There is no whole-archive export; a memory's files download one memory at a
+time (memory ⋯ → Download, any member, a viewer too). Deleting is permanent
+(see [Deleting](#deleting-hard-no-trash)), so this is what people are pointed
+to first. The code is [server/src/lib/downloads.ts](server/src/lib/downloads.ts).
+
+`POST /api/memories/:id/downloads` (body optional: `{ timeZone }`, an IANA
+zone for the date in filenames) answers, in the memory's order:
+
+```json
+{ "files": [{ "mediaId": "…", "type": "VIDEO", "filename": "first-day-of-school-2024-09-03-2.mp4",
+              "status": "ready", "url": "https://…", "expiresAt": "…" }],
+  "unavailable": 0 }
+```
+
+`status` is `ready` (with `url` and `expiresAt`), `preparing` or `failed`.
+`unavailable` counts the demo family's generated placeholders, which aren't
+files anyone uploaded. Every URL answers `Content-Disposition: attachment`
+with the filename, so a browser saves it.
+
+- **Photos**: the original, through a signed storage read URL that lives
+  `READ_URL_TTL_SECONDS` (S3: `response-content-disposition` in the presigned
+  GET; local disk: the filename rides in the `/media/o` token).
+- **Recordings**: the `audio.m4a` rendition, with Mux's `download` option in
+  the signed token's claims. (Without an extension in it Mux names the file
+  `.mp4`, so the filename always has one.)
+- **Videos**: Mux's full-quality master, through *temporary master access*.
+  The first call asks Mux for it (`PUT /video/v1/assets/{id}/master-access`
+  `temporary`) and says `preparing`; the client calls again every ~10 s, and
+  once Mux has it (usually under a minute for short clips) the file is
+  `ready` with Mux's `mezzanine.mux.com` URL plus `download=<filename>`. The
+  URL works for 24 hours from the request, and Mux refuses a new request
+  until then (`400 "Download already exists"`), so the state lives on the
+  `MuxAsset` row: `masterStatus`, `masterUrl`, `masterExpiresAt`,
+  `masterCheckedAt`. Calling again is idempotent: it only asks Mux again once
+  the master has lapsed or failed (a failure is retried after a minute), and
+  looks at a preparing one at most every 8 s. The `video.asset.master.preparing`
+  / `ready` / `errored` / `deleted` webhooks fill the same fields, so in
+  production the poll usually finds it already ready. A recording whose m4a
+  never came falls back to the master too.
+
+Master access needs nothing beyond the Mux token's Video read/write. Mux
+sends every event type to the webhook URL, so there's nothing extra to
+enable. Mux's master-access guide lists no charge for it.
 
 ## Running on a phone
 

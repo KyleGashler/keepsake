@@ -264,6 +264,50 @@ screens (placeholder copy, marked); COPPA note: children are `Person` rows,
 never `User` rows, enforced in A4.
 **Accept:** deletion leaves no rows or objects for the user.
 
+#### A17. Per-memory download (2026-10-23)
+**Depends:** A5, A7, M1.
+> **Decision (2026-10-23):** download is per memory (memory ⋯ → Download),
+> not a whole-archive export — that was cut. Deletion is permanent (A7,
+> A16), so people are told to download what they care about first, and
+> this is how.
+
+**Goal:** any member, a VIEWER too, can save every file a memory holds.
+**Do:** `POST /api/memories/:id/downloads` → each file with a filename and a
+short-lived URL that saves as an attachment. Photos: the original via a
+signed storage URL with `Content-Disposition: attachment`. Audio: the
+`audio.m4a` rendition with Mux's `download` option. Video: Mux temporary
+master access, prepared on request and polled. Client sheet with per-file
+buttons; replace Family Hub's "Export the archive" placeholder.
+**Accept:** a photo, a recording and a video download from the memory page
+with sensible filenames; a video shows "Preparing" and becomes downloadable
+without reopening the sheet.
+
+**As built (2026-10-23):** `lib/downloads.ts`; migration
+`20261023180000_a17_master_access` adds `masterStatus`, `masterUrl`,
+`masterExpiresAt`, `masterCheckedAt` to `MuxAsset`.
+`StorageProvider.getReadUrl` takes `{ downloadAs }` (S3:
+`ResponseContentDisposition` in the presigned GET; local: a `d` claim in the
+read token, which `/media/o` turns into the header). `MediaHost` gained
+`audioDownloadUrl` (the filename goes in the JWT claims, as Mux wants for
+signed playback ids; the query-string form also works, tested) and
+`requestMaster` (`PUT …/master-access temporary`; Mux answers
+`400 "Download already exists"` while a master exists, which counts as
+already asked). The route asks Mux only when there's no live master, looks
+at a preparing one at most every 8 s, and waits a minute before asking again
+after an error; the `video.asset.master.*` webhooks fill the same fields.
+A master lasts 24 h from the request and can't be renewed early, so
+`masterExpiresAt` is request + 24 h (a master Mux already had is trusted for
+an hour). A recording without its m4a falls back to the master. Filenames:
+`<title-slug>-<YYYY-MM-DD>[-<n>].<ext>`, the date in the client's time zone.
+Placeholder media are counted as `unavailable`, not listed. Client:
+`memory/download-sheet.tsx` (polls every 10 s while anything is preparing;
+web saves through a link click, "Download all" on web only; native opens
+the URL with React Native's `Linking`, no new dependency). A VIEWER's ⋯ now
+appears when the memory has media, holding only Download. Family Hub's row
+reads "Downloading — per memory: open one, then ⋯ → Download". Prod needs the
+migration (applied on boot); the existing Mux token (Video read/write)
+already covers master access.
+
 ---
 
 ## Track B — external integrations
