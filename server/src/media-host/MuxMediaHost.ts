@@ -108,6 +108,20 @@ export class MuxMediaHost implements MediaHost {
     await call(() => this.mux.video.assets.deleteTrack(assetId, trackId));
   }
 
+  async deleteAsset(assetId: string): Promise<void> {
+    try {
+      await call(() => this.mux.video.assets.delete(assetId));
+    } catch (err) {
+      // Already gone is the outcome we wanted.
+      if (err instanceof MediaHostError && err.status === 404) return;
+      throw err;
+    }
+  }
+
+  async cancelUpload(uploadId: string): Promise<void> {
+    await call(() => this.mux.video.uploads.cancel(uploadId));
+  }
+
   async fetchTranscript(playbackId: string, trackId: string): Promise<string> {
     const token = await this.sign(playbackId, "video", 0);
     const url = `https://stream.mux.com/${playbackId}/text/${trackId}.txt?token=${token}`;

@@ -7,6 +7,7 @@ import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { linkPair, memoryDetail } from "../lib/memory-detail.js";
 import { mediaInclude, memoryCardDtos } from "../lib/serialize.js";
+import { deleteAndPurge } from "../lib/purge.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
 import {
   captionRetryPatch,
@@ -17,13 +18,14 @@ import {
   settleLinkedMedia,
   updateMuxAsset,
   uploadIdFromKey,
+  holdMachineTranscript,
 } from "../media-host/assets.js";
 import { MediaHostError, mediaHost } from "../media-host/index.js";
 
 export const memoriesRouter = Router();
 
 const include = {
-  media: { orderBy: { sortOrder: "asc" }, ...mediaInclude },
+  media: mediaInclude,
   author: true,
   participants: { include: { person: true } },
   collections: { include: { collection: true } },
@@ -44,7 +46,6 @@ memoriesRouter.get("/memories", async (req, res) => {
 
   const where = {
     familyId: family.id,
-    deletedAt: null,
     ...(collectionId ? { collections: { some: { collectionId } } } : {}),
     ...(personId ? { participants: { some: { personId } } } : {}),
   };
@@ -67,7 +68,7 @@ memoriesRouter.get("/memories/:id", async (req, res) => {
   // findFirst, not findUnique: an id from another family must read as absent,
   // not as forbidden — otherwise the 404/403 split confirms the id exists.
   const memory = await prisma.memory.findFirst({
-    where: { id: req.params.id, familyId: req.ctx.family.id, deletedAt: null },
+    where: { id: req.params.id, familyId: req.ctx.family.id },
     include,
   });
   if (!memory) return res.status(404).json({ error: "Memory not found" });
@@ -291,10 +292,7 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { occurredAt, collectionIds, ...rest } = parsed.data;
 
-  const existing = await prisma.memory.findFirst({
-    where: { id: req.params.id, familyId: family.id, deletedAt: null },
-    select: { id: true },
-  });
+  const existing = await findMemory(family.id, req.params.id);
   if (!existing) return res.status(404).json({ error: "Memory not found" });
 
   const wanted = collectionIds ? [...new Set(collectionIds)] : null;
@@ -322,21 +320,104 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
 });
 
 /**
- * Soft delete: the memory disappears from every list, count and related list,
- * and its media and originals stay exactly where they are.
+ * Delete a memory for good — there is no trash. Its rows go now (media,
+ * participants, collection links, favourites and links cascade); its files
+ * (photo originals and derivatives, Mux assets nothing else shows) are
+ * purged by a `media.purge` job, so this answers without waiting on S3 or Mux.
  */
 memoriesRouter.delete("/memories/:id", requireContributor, async (req, res) => {
-  const result = await prisma.memory.updateMany({
-    where: { id: req.params.id, familyId: req.ctx.family.id, deletedAt: null },
-    data: { deletedAt: new Date() },
+  const familyId = req.ctx.family.id;
+  const deleted = await prisma.$transaction(async (tx) => {
+    const memory = await tx.memory.findFirst({ where: { id: req.params.id, familyId }, select: { id: true } });
+    if (!memory) return false;
+    await deleteAndPurge(tx, jobQueue(), { familyId, reason: "memory", media: { memoryId: memory.id } }, () =>
+      tx.memory.delete({ where: { id: memory.id } }),
+    );
+    return true;
   });
-  if (result.count === 0) return res.status(404).json({ error: "Memory not found" });
+  if (!deleted) return res.status(404).json({ error: "Memory not found" });
+  req.log.info({ familyId, memoryId: req.params.id, by: req.ctx.user.id }, "memory deleted");
   res.status(204).end();
 });
 
-/** A live memory of the caller's family, or null. */
-function findLiveMemory(familyId: string, id: string) {
-  return prisma.memory.findFirst({ where: { id, familyId, deletedAt: null }, select: { id: true } });
+/**
+ * Take one photo, video or recording off a memory, for good: the row goes
+ * now and its files are purged by `media.purge`, as for a whole memory. If
+ * the memory's transcript is still the machine's copy of its clips, it's
+ * rebuilt without this one; a person's words are left alone. Answers with
+ * the memory as it now stands.
+ */
+memoriesRouter.delete("/memories/:id/media/:mediaId", requireContributor, async (req, res) => {
+  const familyId = req.ctx.family.id;
+  const memory = await findMemory(familyId, req.params.id);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+
+  const removed = await prisma.$transaction(async (tx) => {
+    const media = await tx.media.findFirst({
+      where: { id: req.params.mediaId, memoryId: memory.id },
+      select: { id: true },
+    });
+    if (!media) return false;
+    await deleteAndPurge(tx, jobQueue(), { familyId, reason: "media", media: { id: media.id } }, async () => {
+      const rewriteTranscript = await holdMachineTranscript(tx, memory.id);
+      await tx.media.delete({ where: { id: media.id } });
+      await rewriteTranscript();
+    });
+    return true;
+  });
+  if (!removed) return res.status(404).json({ error: "Media not found" });
+
+  const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId }, include });
+  res.json({ memory: await memoryDetail(familyId, req.ctx.user.id, updated) });
+});
+
+const mediaOrder = z.object({ mediaIds: z.array(z.string().min(1)).min(1).max(500) });
+
+/**
+ * Put a memory's photos, videos and recordings in a new order. `mediaIds` is
+ * every one of the memory's media ids, once each, in the order wanted; the
+ * first photo or video becomes the memory's hero. Anything else (a missing
+ * id, an extra one, a repeat) is `400 order_mismatch` — the client's list
+ * is stale, so it should reload rather than guess.
+ */
+memoriesRouter.put("/memories/:id/media/order", requireContributor, async (req, res) => {
+  const familyId = req.ctx.family.id;
+  const parsed = mediaOrder.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const memory = await findMemory(familyId, req.params.id);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+
+  const wanted = parsed.data.mediaIds;
+  const ok = await prisma.$transaction(async (tx) => {
+    const current = await tx.media.findMany({ where: { memoryId: memory.id }, select: { id: true, muxAssetId: true } });
+    // Same lock order as the Mux writers (asset rows, then the memory), which
+    // also keeps two reorders, or a reorder and a removal, from interleaving.
+    await lockAssets(tx, [...new Set(current.flatMap((m) => (m.muxAssetId ? [m.muxAssetId] : [])))]);
+    const rewriteTranscript = await holdMachineTranscript(tx, memory.id);
+    const ids = new Set(current.map((m) => m.id));
+    if (new Set(wanted).size !== wanted.length || wanted.length !== ids.size || wanted.some((id) => !ids.has(id))) {
+      return false;
+    }
+    for (const [sortOrder, id] of wanted.entries()) {
+      await tx.media.update({ where: { id }, data: { sortOrder } });
+    }
+    // The machine transcript follows the clips' order.
+    await rewriteTranscript();
+    return true;
+  });
+  if (!ok) {
+    return res
+      .status(400)
+      .json({ error: "order_mismatch", message: "mediaIds must list every media item of this memory once" });
+  }
+
+  const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId }, include });
+  res.json({ memory: await memoryDetail(familyId, req.ctx.user.id, updated) });
+});
+
+/** A memory of the caller's family, or null. */
+function findMemory(familyId: string, id: string) {
+  return prisma.memory.findFirst({ where: { id, familyId }, select: { id: true } });
 }
 
 /**
@@ -344,7 +425,7 @@ function findLiveMemory(familyId: string, id: string) {
  * can't change the archive, can still keep their own.
  */
 memoriesRouter.put("/memories/:id/favorite", async (req, res) => {
-  const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
+  const memory = await findMemory(req.ctx.family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
   await prisma.memoryFavorite.upsert({
     where: { userId_memoryId: { userId: req.ctx.user.id, memoryId: memory.id } },
@@ -355,7 +436,7 @@ memoriesRouter.put("/memories/:id/favorite", async (req, res) => {
 });
 
 memoriesRouter.delete("/memories/:id/favorite", async (req, res) => {
-  const memory = await findLiveMemory(req.ctx.family.id, req.params.id);
+  const memory = await findMemory(req.ctx.family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
   await prisma.memoryFavorite.deleteMany({ where: { userId: req.ctx.user.id, memoryId: memory.id } });
   res.json({ isFavorite: false });
@@ -373,8 +454,8 @@ memoriesRouter.post("/memories/:id/links", requireContributor, async (req, res) 
   }
 
   const [memory, other] = await Promise.all([
-    findLiveMemory(family.id, req.params.id),
-    findLiveMemory(family.id, parsed.data.linkedId),
+    findMemory(family.id, req.params.id),
+    findMemory(family.id, parsed.data.linkedId),
   ]);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
   if (!other) return res.status(400).json({ error: "unknown_reference" });
@@ -386,7 +467,7 @@ memoriesRouter.post("/memories/:id/links", requireContributor, async (req, res) 
 
 memoriesRouter.delete("/memories/:id/links/:linkedId", requireContributor, async (req, res) => {
   const family = req.ctx.family;
-  const memory = await findLiveMemory(family.id, req.params.id);
+  const memory = await findMemory(family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
 
   // Both ends are this family's: `memory` was checked above, and a link is
@@ -408,11 +489,11 @@ memoriesRouter.delete("/memories/:id/links/:linkedId", requireContributor, async
  */
 memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", requireContributor, async (req, res) => {
   const familyId = req.ctx.family.id;
-  const memory = await findLiveMemory(familyId, req.params.id);
+  const memory = await findMemory(familyId, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
 
   const media = await prisma.media.findFirst({
-    where: { id: req.params.mediaId, memoryId: memory.id, deletedAt: null },
+    where: { id: req.params.mediaId, memoryId: memory.id },
     include: { muxAsset: true },
   });
   if (!media) return res.status(404).json({ error: "Media not found" });

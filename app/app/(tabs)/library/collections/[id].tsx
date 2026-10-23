@@ -68,6 +68,7 @@ export default function CollectionScreen() {
       data={data}
       filters={filters}
       onFiltersChange={setFilters}
+      onChanged={() => void refetch()}
       loading={shownPath !== path}
     />
   );

@@ -8,6 +8,8 @@ import { useCanContribute } from "../../../../src/auth/session-context";
 import { BackRow, ChildHeader } from "../../../../src/components/child-header";
 import { Column, IconDisc, ListRow, SearchField } from "../../../../src/components/journey";
 import { CreateCollectionSheet, EditChildSheet } from "../../../../src/components/library-sheets";
+import { afterSheetCloses, deletePersonAction, deletePersonMessage } from "../../../../src/people";
+import { ActionSheet } from "../../../../src/components/sheet";
 import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { possessive } from "../../../../src/format";
 import { backTo, routes } from "../../../../src/routes";
@@ -24,6 +26,8 @@ export default function ChildCollectionsScreen() {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const insets = useSafeAreaInsets();
   const canContribute = useCanContribute();
 
@@ -73,6 +77,7 @@ export default function ChildCollectionsScreen() {
         {child ? (
           <>
             <ChildHeader child={child} />
+            {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
             <Text style={styles.sectionTitle} accessibilityRole="header">
               Collections
@@ -137,7 +142,30 @@ export default function ChildCollectionsScreen() {
         />
       ) : null}
       {editing && child ? (
-        <EditChildSheet child={child} onClose={() => setEditing(false)} onSaved={() => void refetch()} />
+        <EditChildSheet
+          child={child}
+          onClose={() => setEditing(false)}
+          onSaved={() => void refetch()}
+          onDelete={() => {
+            setEditing(false);
+            afterSheetCloses(() => setConfirmingDelete(true));
+          }}
+        />
+      ) : null}
+      {child ? (
+        <ActionSheet
+          visible={confirmingDelete}
+          onClose={() => setConfirmingDelete(false)}
+          title={`Delete ${child.name}?`}
+          subtitle={deletePersonMessage(child)}
+          actions={[
+            deletePersonAction(
+              child,
+              () => backTo(routes.children),
+              (message) => setNotice(message),
+            ),
+          ]}
+        />
       ) : null}
     </ScrollView>
   );
@@ -157,6 +185,7 @@ const styles = StyleSheet.create({
   sectionSubtitle: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 22, color: colors.inkSoft, marginTop: spacing.xs },
   search: { marginTop: spacing.lg, marginBottom: spacing.sm, height: 44 },
   noMatch: { fontFamily: fonts.sans, fontSize: 15, color: colors.muted, paddingVertical: spacing.lg },
+  notice: { fontFamily: fonts.sans, fontSize: 14, color: colors.terracotta, marginTop: spacing.md },
 
   create: {
     flexDirection: "row",

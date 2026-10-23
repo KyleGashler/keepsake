@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { apiSend, type ChildSummary, type Collection, type Person, type PersonPatch } from "../api";
+import { apiSend, type ChildSummary, type Collection, type CollectionPatch, type Person, type PersonPatch } from "../api";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
-import { DISC_COLORS, glyphColorFor, ICON_KEYS, type IconKey } from "../icons";
+import { DISC_COLORS, glyphColorFor, ICON_KEYS, isIconKey, type IconKey } from "../icons";
 import { pickAndUploadImage } from "../pick-image";
 import { brand, colors, fonts, spacing } from "../theme";
 import { ChildPortrait } from "./child-header";
@@ -122,10 +122,13 @@ export function EditChildSheet({
   child,
   onClose,
   onSaved,
+  onDelete,
 }: {
   child: ChildSummary;
   onClose: () => void;
   onSaved: (child: ChildSummary) => void;
+  /** Offer "Delete from the archive": the screen closes this sheet and asks to confirm. */
+  onDelete?: () => void;
 }) {
   const [name, setName] = useState(child.name);
   const [birthday, setBirthday] = useState(birthdayInput(child.birthDate));
@@ -243,16 +246,29 @@ export function EditChildSheet({
         />
       </Field>
       <SheetError message={error} />
+      {onDelete ? (
+        <Pressable
+          onPress={onDelete}
+          disabled={saving}
+          accessibilityRole="button"
+          style={({ pressed }) => [styles.removePhoto, styles.deleteRow, pressed && styles.pressed]}
+        >
+          <Ionicons name="trash-outline" size={16} color={colors.terracotta} />
+          <Text style={styles.removePhotoLabel}>Delete {child.name} from the archive</Text>
+        </Pressable>
+      ) : null}
     </Sheet>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Create a collection
+// Create and edit a collection
 // ---------------------------------------------------------------------------
 
 /** The seven default discs' colours, then the rest of the brand palette. */
 const COLLECTION_SWATCHES = [...DISC_COLORS, brand.tealGrey] as const;
+
+type CollectionFields = { name: string; description: string; icon: IconKey; color: string };
 
 /** A child's own collection: a name, a line about it, and a disc to know it by. */
 export function CreateCollectionSheet({
@@ -264,30 +280,109 @@ export function CreateCollectionSheet({
   onClose: () => void;
   onCreated: (collection: Collection) => void;
 }) {
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
-  const [icon, setIcon] = useState<IconKey>("star");
-  const [color, setColor] = useState<string>(COLLECTION_SWATCHES[0]);
+  return (
+    <CollectionFormSheet
+      title="Create a Collection"
+      subtitle={`A new place for part of ${child.name}'s story.`}
+      submitLabel="Create collection"
+      initial={{ name: "", description: "", icon: "star", color: COLLECTION_SWATCHES[0] }}
+      failure="Couldn't create it just now. Please try again."
+      onClose={onClose}
+      onSubmit={async ({ name, description, icon, color }) => {
+        const res = await apiSend<{ collection: Collection }>("/api/collections", "POST", {
+          pillar: "CHILD_PROFILES",
+          personId: child.id,
+          name,
+          ...(description ? { description } : {}),
+          icon,
+          color,
+        });
+        onCreated(res.collection);
+      }}
+    />
+  );
+}
+
+/**
+ * Rename a collection, or change its line, glyph or colour. A child's default
+ * collections can be renamed too: the app still knows "Milestones" by its
+ * kind whatever the family calls it.
+ */
+export function EditCollectionSheet({
+  collection,
+  onClose,
+  onSaved,
+}: {
+  collection: Pick<Collection, "id" | "name" | "description" | "icon" | "color">;
+  onClose: () => void;
+  onSaved: (collection: Collection) => void;
+}) {
+  return (
+    <CollectionFormSheet
+      title="Edit Collection"
+      submitLabel="Save"
+      initial={{
+        name: collection.name,
+        description: collection.description ?? "",
+        icon: isIconKey(collection.icon) ? collection.icon : "star",
+        color: collection.color,
+      }}
+      failure="Couldn't save just now. Please try again."
+      onClose={onClose}
+      onSubmit={async (fields) => {
+        const patch: CollectionPatch = {};
+        if (fields.name !== collection.name) patch.name = fields.name;
+        if (fields.description !== (collection.description ?? "")) patch.description = fields.description || null;
+        if (fields.icon !== collection.icon) patch.icon = fields.icon;
+        if (fields.color.toUpperCase() !== collection.color.toUpperCase()) patch.color = fields.color;
+        if (Object.keys(patch).length === 0) return;
+        const res = await apiSend<{ collection: Collection }>(`/api/collections/${collection.id}`, "PATCH", patch);
+        onSaved(res.collection);
+      }}
+    />
+  );
+}
+
+/** The form both sheets share: a live preview, name, description, glyph and colour. */
+function CollectionFormSheet({
+  title,
+  subtitle,
+  submitLabel,
+  initial,
+  failure,
+  onClose,
+  onSubmit,
+}: {
+  title: string;
+  subtitle?: string;
+  submitLabel: string;
+  initial: CollectionFields;
+  /** What to say when the save fails for no reason the API names. */
+  failure: string;
+  onClose: () => void;
+  /** Trimmed fields. Resolves once saved; a throw keeps the sheet open with the error. */
+  onSubmit: (fields: CollectionFields) => Promise<void>;
+}) {
+  const [name, setName] = useState(initial.name);
+  const [description, setDescription] = useState(initial.description);
+  const [icon, setIcon] = useState<IconKey>(initial.icon);
+  const [color, setColor] = useState<string>(initial.color);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A colour chosen before (or set elsewhere) stays on offer.
+  const swatches: string[] = COLLECTION_SWATCHES.some((c) => c.toUpperCase() === initial.color.toUpperCase())
+    ? [...COLLECTION_SWATCHES]
+    : [initial.color, ...COLLECTION_SWATCHES];
 
   async function save() {
     if (!name.trim()) return setError("Give the collection a name.");
     setSaving(true);
     setError(null);
     try {
-      const res = await apiSend<{ collection: Collection }>("/api/collections", "POST", {
-        pillar: "CHILD_PROFILES",
-        personId: child.id,
-        name: name.trim(),
-        ...(description.trim() ? { description: description.trim() } : {}),
-        icon,
-        color,
-      });
-      onCreated(res.collection);
+      await onSubmit({ name: name.trim(), description: description.trim(), icon, color });
       onClose();
     } catch (err) {
-      setError(friendlyError(err, "Couldn't create it just now. Please try again."));
+      setError(friendlyError(err, failure));
       setSaving(false);
     }
   }
@@ -296,9 +391,9 @@ export function CreateCollectionSheet({
     <Sheet
       visible
       onClose={onClose}
-      title="Create a Collection"
-      subtitle={`A new place for part of ${child.name}'s story.`}
-      footer={<SheetButton label="Create collection" onPress={save} busy={saving} disabled={!name.trim()} />}
+      title={title}
+      subtitle={subtitle}
+      footer={<SheetButton label={submitLabel} onPress={save} busy={saving} disabled={!name.trim()} />}
     >
       <View style={styles.preview}>
         <IconDisc icon={icon} color={color} size={56} />
@@ -319,7 +414,7 @@ export function CreateCollectionSheet({
           value={name}
           onChangeText={setName}
           placeholder="e.g. Adventures with Grandpa"
-          autoFocus
+          autoFocus={!initial.name}
           autoCapitalize="words"
           maxLength={80}
           accessibilityLabel="Collection name"
@@ -362,8 +457,8 @@ export function CreateCollectionSheet({
 
       <Field label="Colour">
         <View style={styles.grid} accessibilityRole="radiogroup">
-          {COLLECTION_SWATCHES.map((swatch) => {
-            const selected = swatch === color;
+          {swatches.map((swatch) => {
+            const selected = swatch.toUpperCase() === color.toUpperCase();
             return (
               <Pressable
                 key={swatch}
@@ -393,6 +488,7 @@ const styles = StyleSheet.create({
   photoButtons: { flex: 1, gap: spacing.sm, alignItems: "flex-start" },
   removePhoto: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 4 },
   removePhotoLabel: { fontFamily: fonts.sansSemiBold, fontSize: 15, color: colors.terracotta },
+  deleteRow: { alignSelf: "flex-start", marginTop: spacing.sm },
 
   preview: {
     flexDirection: "row",

@@ -87,7 +87,6 @@ async function searchMemories(familyId: string, q: string) {
       ) AS snippet
     FROM "Memory" m, parsed
     WHERE m."familyId" = ${familyId}
-      AND m."deletedAt" IS NULL
       AND parsed.query::text <> ''
       AND m."searchVector" @@ parsed.query
     ORDER BY rank DESC, m."occurredAt" DESC
@@ -106,7 +105,7 @@ async function searchMemories(familyId: string, q: string) {
 
   const snippetById = new Map(hits.map((h) => [h.id, h.snippet]));
   const records = await prisma.memory.findMany({
-    where: { id: { in: hits.map((h) => h.id) }, familyId, deletedAt: null },
+    where: { id: { in: hits.map((h) => h.id) }, familyId },
     include: { media: mediaInclude, participants: { include: { person: true } } },
   });
   const byId = new Map(records.map((m) => [m.id, m]));
@@ -134,7 +133,6 @@ function searchMemoriesByIlike(familyId: string, q: string) {
     .findMany({
       where: {
         familyId,
-        deletedAt: null,
         OR: [
           { title: contains },
           { story: contains },

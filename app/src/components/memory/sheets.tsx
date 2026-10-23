@@ -5,26 +5,29 @@ import {
   apiSend,
   useApi,
   type Collection,
+  type MediaItem,
   type Memory,
   type MemoryCard,
   type MemoryPatch,
   type PillarKey,
 } from "../../api";
-import { errorMessage, isoDay, longDate, shortDate, withDay } from "../../format";
+import { confirmAction } from "../../confirm";
+import { duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
 import { colors, fonts, radius, spacing, type } from "../../theme";
 import { IconDisc, SearchField } from "../journey";
 import { fieldStyles } from "./field-styles";
+import { Thumb } from "./gallery";
 import { CardArt } from "./parts";
 import { DANGER } from "./helpers";
 import { FieldLabel, Sheet, SheetHeader, SheetRow } from "./sheet";
 import { DateField } from "./date-field";
 
-export type SheetKind = "options" | "edit" | "collections" | "link" | "date" | "delete";
+export type SheetKind = "options" | "edit" | "media" | "collections" | "link" | "date" | "delete";
 
 /**
  * Everything behind the ⋯ button, in one sheet whose contents change: the
- * options menu, and the edit form, collection picker, link picker, date mover
- * and delete confirmation it leads to.
+ * options menu, and the edit form, media arranger, collection picker, link
+ * picker, date mover and delete confirmation it leads to.
  */
 export function MemorySheets({
   memory,
@@ -41,10 +44,11 @@ export function MemorySheets({
   onDeleted: () => void;
 }) {
   const close = () => onKind(null);
-  const tall = kind === "edit" || kind === "collections" || kind === "link";
+  const tall = kind === "edit" || kind === "media" || kind === "collections" || kind === "link";
   return (
     <Sheet visible={kind !== null} onClose={close} tall={tall}>
-      {kind === "options" ? <OptionsMenu onPick={onKind} /> : null}
+      {kind === "options" ? <OptionsMenu hasMedia={memory.media.length > 0} onPick={onKind} /> : null}
+      {kind === "media" ? <MediaArranger memory={memory} onClose={close} onSaved={onChanged} /> : null}
       {kind === "edit" ? <EditForm memory={memory} onClose={close} onSaved={onChanged} /> : null}
       {kind === "collections" ? <CollectionPicker memory={memory} onClose={close} onSaved={onChanged} /> : null}
       {kind === "link" ? <LinkPicker memory={memory} onClose={close} onSaved={onChanged} /> : null}
@@ -54,10 +58,13 @@ export function MemorySheets({
   );
 }
 
-function OptionsMenu({ onPick }: { onPick: (kind: SheetKind) => void }) {
+function OptionsMenu({ hasMedia, onPick }: { hasMedia: boolean; onPick: (kind: SheetKind) => void }) {
   return (
     <View>
       <SheetRow icon="pencil-outline" label="Edit Memory" onPress={() => onPick("edit")} />
+      {hasMedia ? (
+        <SheetRow icon="images-outline" label="Arrange Photos & Recordings" onPress={() => onPick("media")} />
+      ) : null}
       <SheetRow icon="albums-outline" label="Add to Another Collection" onPress={() => onPick("collections")} />
       <SheetRow icon="link-outline" label="Link to Another Memory" onPress={() => onPick("link")} />
       {/* Sharing has to respect permissions before anything leaves the archive. */}
@@ -176,6 +183,146 @@ function EditForm({
         {error ? <Text style={styles.error}>{error}</Text> : null}
       </ScrollView>
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Arrange media
+// ---------------------------------------------------------------------------
+
+const MEDIA_NOUN: Record<MediaItem["type"], string> = { PHOTO: "photo", VIDEO: "video", AUDIO: "recording" };
+
+/**
+ * Every photo, video and recording on the memory, in order: move one up or
+ * down (the first photo or video is the hero everywhere the memory shows),
+ * or remove it for good. Arrows rather than dragging, so it works the same
+ * with a finger, a mouse and a screen reader. Each change saves at once.
+ */
+function MediaArranger({
+  memory,
+  onClose,
+  onSaved,
+}: {
+  memory: Memory;
+  onClose: () => void;
+  onSaved: () => Promise<void> | void;
+}) {
+  const items = memory.media;
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run(id: string, request: () => Promise<unknown>) {
+    setBusy(id);
+    setError(null);
+    try {
+      await request();
+      await onSaved();
+    } catch (err) {
+      setError(refusalMessage(err, "That didn't save. Try again."));
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  function move(index: number, by: -1 | 1) {
+    const ids = items.map((m) => m.id);
+    const [moved] = ids.splice(index, 1);
+    ids.splice(index + by, 0, moved);
+    void run(moved, () => apiSend(`/api/memories/${memory.id}/media/order`, "PUT", { mediaIds: ids }));
+  }
+
+  async function remove(item: MediaItem) {
+    const noun = MEDIA_NOUN[item.type];
+    const ok = await confirmAction({
+      title: `Remove this ${noun}?`,
+      message: `It's deleted from “${memory.title}” for everyone in the family, along with the original file. This can't be undone.`,
+      confirmLabel: "Remove",
+    });
+    if (!ok) return;
+    await run(item.id, () => apiSend(`/api/memories/${memory.id}/media/${item.id}`, "DELETE"));
+  }
+
+  return (
+    <>
+      <SheetHeader title="Arrange" action={{ label: "Done", onPress: onClose }} />
+      <Text style={styles.hint}>The first photo or video leads the memory everywhere it appears.</Text>
+      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.lg, marginTop: spacing.sm }}>
+        {items.map((item, i) => {
+          const noun = MEDIA_NOUN[item.type];
+          const label = `${noun[0].toUpperCase()}${noun.slice(1)} ${i + 1}`;
+          const working = busy === item.id;
+          return (
+            <View key={item.id} style={[styles.pickRow, (busy !== null && !working) && { opacity: 0.6 }]}>
+              <View style={styles.pickThumb}>
+                {item.type === "AUDIO" ? (
+                  <View style={styles.audioThumb}>
+                    <Ionicons name="mic-outline" size={20} color={colors.inkSoft} />
+                  </View>
+                ) : (
+                  <Thumb item={item} />
+                )}
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.pickName} numberOfLines={1}>
+                  {item.caption ?? label}
+                </Text>
+                {subtitle(item, i) ? <Text style={type.caption}>{subtitle(item, i)}</Text> : null}
+              </View>
+              {working ? (
+                <ActivityIndicator color={colors.primary} />
+              ) : (
+                <View style={styles.arrangeButtons}>
+                  <ArrangeButton icon="chevron-up" label={`Move ${label} up`} disabled={busy !== null || i === 0} onPress={() => move(i, -1)} />
+                  <ArrangeButton
+                    icon="chevron-down"
+                    label={`Move ${label} down`}
+                    disabled={busy !== null || i === items.length - 1}
+                    onPress={() => move(i, 1)}
+                  />
+                  <ArrangeButton icon="trash-outline" label={`Remove ${label}`} danger disabled={busy !== null} onPress={() => void remove(item)} />
+                </View>
+              )}
+            </View>
+          );
+        })}
+        {items.length === 0 ? <Text style={styles.empty}>No photos or recordings left on this memory.</Text> : null}
+      </ScrollView>
+    </>
+  );
+}
+
+/** Under an item's name: that it leads the memory, or a clip's length. */
+function subtitle(item: MediaItem, index: number) {
+  if (index === 0 && item.type !== "AUDIO") return "Leads the memory";
+  return duration(item.durationS) || null;
+}
+
+function ArrangeButton({
+  icon,
+  label,
+  onPress,
+  disabled,
+  danger = false,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+  disabled: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      style={({ pressed }) => [styles.arrangeButton, disabled && { opacity: 0.3 }, pressed && { opacity: 0.6 }]}
+    >
+      <Ionicons name={icon} size={18} color={danger ? DANGER : colors.ink} />
+    </Pressable>
   );
 }
 
@@ -525,7 +672,8 @@ function ConfirmDelete({ memory, onClose, onDeleted }: { memory: Memory; onClose
     <View style={{ paddingBottom: spacing.sm }}>
       <Text style={styles.confirmTitle}>Delete “{memory.title}”?</Text>
       <Text style={[styles.hint, { textAlign: "center" }]}>
-        It will leave every collection it's filed in. The original photos and recordings are kept safe.
+        It's deleted for everyone in the family, along with its photos, videos and recordings — the original files
+        too. There's no trash, so this can't be undone.
       </Text>
       {error ? <Text style={[styles.error, { textAlign: "center" }]}>{error}</Text> : null}
       <Pressable
@@ -558,6 +706,17 @@ const styles = StyleSheet.create({
   },
   pickName: { flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink },
   pickThumb: { width: 44, height: 44, borderRadius: 8, overflow: "hidden", backgroundColor: colors.surfaceAlt },
+  audioThumb: { flex: 1, alignItems: "center", justifyContent: "center" },
+  arrangeButtons: { flexDirection: "row", gap: 6 },
+  arrangeButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   confirmTitle: {
     fontFamily: fonts.display,
     fontSize: 24,

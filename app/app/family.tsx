@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState, type ReactNode } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   ApiError,
@@ -17,6 +17,7 @@ import {
 import { useSession } from "../src/auth/session-context";
 import { VerifyEmailNudge } from "../src/components/account-screens";
 import { FamilySwitchSheet } from "../src/components/family-switcher";
+import { AddPersonSheet } from "../src/components/person-sheets";
 import { ActionSheet, Field, Sheet, SheetButton, SheetError, SheetInput, type SheetAction } from "../src/components/sheet";
 import { AppHeader, Avatar, ErrorState, Loading, PreviewNote, Screen, SectionHeader } from "../src/components/ui";
 import { friendlyError, monthDay } from "../src/format";
@@ -44,6 +45,19 @@ const SETTINGS = [
  */
 export default function FamilyHubScreen() {
   const { data, error, loading, refetch } = useApi<FamilyPayload>("/api/family");
+  // Back from a person's page (edited, deleted, just added): show what's true
+  // now. Only on a return — the first focus is the mount, already fetched.
+  const refetchRef = useRef(refetch);
+  useEffect(() => {
+    refetchRef.current = refetch;
+  }, [refetch]);
+  const focusedBefore = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (focusedBefore.current) void refetchRef.current();
+      focusedBefore.current = true;
+    }, []),
+  );
   const isOwner = data?.role === "OWNER";
   const pending = useApi<{ invites: Invite[] }>(isOwner ? "/api/family/invites" : null);
   const session = useSession();
@@ -52,6 +66,7 @@ export default function FamilyHubScreen() {
   const [managing, setManaging] = useState<FamilyMember | null>(null);
   const [removing, setRemoving] = useState<FamilyMember | null>(null);
   const [inviteActions, setInviteActions] = useState<Invite | null>(null);
+  const [addingPerson, setAddingPerson] = useState(false);
   const [notice, setNotice] = useState<HubNotice | null>(null);
 
   if (error) return <ErrorState error={error} onRetry={refetch} />;
@@ -59,6 +74,8 @@ export default function FamilyHubScreen() {
   if (!data) return null;
 
   const invitable = data.people.filter((p) => p.invitable);
+  // Adding (and, on their page, editing or deleting) people is contributors' work.
+  const canContribute = data.role !== "VIEWER";
   const refreshAll = async () => {
     await Promise.all([refetch(), isOwner ? pending.refetch() : Promise.resolve()]);
   };
@@ -197,34 +214,13 @@ export default function FamilyHubScreen() {
           </>
         ) : null}
 
-        {data.people.length ? (
-          <>
-            <SectionHeader label="Also in the archive" />
-            <Group>
-              {data.people.map((person, i) => (
-                <Row
-                  key={person.id}
-                  first={i === 0}
-                  leading={<Avatar person={person} size={LEADING} />}
-                  title={`${person.name}${person.relation ? ` · ${person.relation}` : ""}`}
-                  detail={person.role === "CHILD" ? "Child" : "No account yet"}
-                  trailing={
-                    isOwner && person.invitable ? (
-                      <SmallButton
-                        label="Invite"
-                        accessibilityLabel={`Invite ${person.name}`}
-                        onPress={() => setInviting({ personId: person.id })}
-                      />
-                    ) : (
-                      <RowIcon name="chevron-forward" />
-                    )
-                  }
-                  onPress={() => router.push(`/person/${person.id}`)}
-                />
-              ))}
-            </Group>
-          </>
-        ) : null}
+        <OthersSection
+          people={data.people}
+          isOwner={isOwner}
+          canContribute={canContribute}
+          onAdd={() => setAddingPerson(true)}
+          onInvite={(personId) => setInviting({ personId })}
+        />
 
         <SectionHeader label="Settings" />
         <Group>
@@ -331,6 +327,16 @@ export default function FamilyHubScreen() {
           }
         />
 
+        {addingPerson ? (
+          <AddPersonSheet
+            onClose={() => setAddingPerson(false)}
+            onAdded={(person) => {
+              void refetch();
+              router.push(`/person/${person.id}`);
+            }}
+          />
+        ) : null}
+
         {inviting ? (
           <InviteSheet
             familyName={data.family.name}
@@ -367,6 +373,64 @@ function hubError(err: unknown, fallback: string) {
 
 function inviteMessage(familyName: string) {
   return `Join ${familyName} on little by little:`;
+}
+
+/**
+ * "Also in the archive": children, and adults without an account. Each opens
+ * their page (where a contributor edits or deletes them); an owner can invite
+ * an adult from here, and a contributor can add someone new.
+ */
+function OthersSection({
+  people,
+  isOwner,
+  canContribute,
+  onAdd,
+  onInvite,
+}: {
+  people: FamilyPerson[];
+  isOwner: boolean;
+  canContribute: boolean;
+  onAdd: () => void;
+  onInvite: (personId: string) => void;
+}) {
+  if (people.length === 0 && !canContribute) return null;
+  return (
+    <>
+      <SectionHeader
+        label="Also in the archive"
+        action={canContribute ? <SmallButton label="Add" icon="add" onPress={onAdd} /> : null}
+      />
+      {people.length === 0 ? (
+        <Text style={styles.groupHint}>
+          Add someone who belongs in the family's story but won't sign in — a great-grandparent, an aunt abroad.
+        </Text>
+      ) : (
+        <Group>
+          {people.map((person, i) => (
+            <Row
+              key={person.id}
+              first={i === 0}
+              leading={<Avatar person={person} size={LEADING} />}
+              title={`${person.name}${person.relation ? ` · ${person.relation}` : ""}`}
+              detail={person.role === "CHILD" ? "Child" : "No account yet"}
+              trailing={
+                isOwner && person.invitable ? (
+                  <SmallButton
+                    label="Invite"
+                    accessibilityLabel={`Invite ${person.name}`}
+                    onPress={() => onInvite(person.id)}
+                  />
+                ) : (
+                  <RowIcon name="chevron-forward" />
+                )
+              }
+              onPress={() => router.push(`/person/${person.id}`)}
+            />
+          ))}
+        </Group>
+      )}
+    </>
+  );
 }
 
 /** Every row's leading disc, so text lines up down the whole screen. */

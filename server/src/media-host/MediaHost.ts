@@ -8,7 +8,9 @@ import { z } from "zod";
  * uses Mux's Development environment, and without credentials the server
  * refuses AV uploads (see `mediaHost()` in ./index.ts).
  *
- * Nothing here deletes an asset. A family's clip exists only on the host.
+ * A family's clip exists only on the host, so the app never deletes an asset
+ * on its own. `deleteAsset` and `cancelUpload` exist for one caller: the
+ * `media.purge` job, after a family explicitly deleted the memory or clip.
  */
 export interface MediaHost {
   /**
@@ -27,6 +29,17 @@ export interface MediaHost {
    * on a failed text track: never on an asset, never on audio or video.
    */
   deleteFailedCaptionTrack: (assetId: string, trackId: string) => Promise<void>;
+  /**
+   * Delete an asset and everything Mux holds for it (master, renditions,
+   * captions, playback ids). Resolves when the asset is gone, including when
+   * it already was (404). Only the `media.purge` job calls this.
+   */
+  deleteAsset: (assetId: string) => Promise<void>;
+  /**
+   * Cancel a direct upload that is still `waiting` for its bytes, so it can
+   * never become an asset. Only the `media.purge` job calls this.
+   */
+  cancelUpload: (uploadId: string) => Promise<void>;
   /** Plain text of a caption track. */
   fetchTranscript: (playbackId: string, trackId: string) => Promise<string>;
   /** Signed HLS (`.m3u8`) for video, or the signed `audio.m4a` rendition for audio. */

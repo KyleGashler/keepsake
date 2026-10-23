@@ -316,12 +316,12 @@ function mediaStatusFor(asset: MuxAsset): MediaStatus {
 }
 
 /**
- * Copy what an asset knows onto every live Media row linked to it, and offer
+ * Copy what an asset knows onto every Media row linked to it, and offer
  * a newly arrived transcript to each row's memory. Idempotent: a row already
  * up to date is left alone. Call with the MuxAsset row locked.
  */
 export async function settleLinkedMedia(tx: Prisma.TransactionClient, asset: MuxAsset) {
-  const media = await tx.media.findMany({ where: { muxAssetId: asset.id, deletedAt: null } });
+  const media = await tx.media.findMany({ where: { muxAssetId: asset.id } });
   for (const m of media) {
     const data: Prisma.MediaUpdateInput = {};
     const status = mediaStatusFor(asset);
@@ -378,7 +378,6 @@ export async function offerToMemory(
   const clips = await tx.media.findMany({
     where: {
       memoryId,
-      deletedAt: null,
       type: { in: [...TRANSCRIBABLE_TYPES] },
       transcriptStatus: "READY",
     },
@@ -403,6 +402,45 @@ export async function offerToMemory(
   if (next && next !== current) {
     await tx.memory.update({ where: { id: memoryId }, data: { transcript: next } });
   }
+}
+
+/**
+ * Before a change to a memory's clips (one removed, or the order changed):
+ * lock the memory and note whether its transcript is still exactly the
+ * machine's copy of the clips. Returns what to call once the change is
+ * written: it rebuilds the machine copy from the clips as they now are, or
+ * does nothing when a person has written the transcript (their words are
+ * never touched) or it's empty.
+ */
+export async function holdMachineTranscript(
+  tx: Prisma.TransactionClient,
+  memoryId: string,
+): Promise<() => Promise<void>> {
+  const [memory] = await tx.$queryRaw<{ transcript: string | null }[]>`
+    SELECT transcript FROM "Memory" WHERE id = ${memoryId} FOR UPDATE`;
+  const current = memory?.transcript?.trim() ?? "";
+  if (!memory || current === "" || current !== joinClipTranscripts(await readyClips(tx, memoryId))) {
+    return async () => undefined;
+  }
+  return async () => {
+    const next = joinClipTranscripts(await readyClips(tx, memoryId));
+    if (next !== current) await tx.memory.update({ where: { id: memoryId }, data: { transcript: next || null } });
+  };
+}
+
+function readyClips(tx: Prisma.TransactionClient, memoryId: string) {
+  return tx.media.findMany({
+    where: { memoryId, type: { in: [...TRANSCRIBABLE_TYPES] }, transcriptStatus: "READY" },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    select: { transcript: true },
+  });
+}
+
+function joinClipTranscripts(clips: { transcript: string | null }[]) {
+  return clips
+    .map((c) => c.transcript?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // ---------------------------------------------------------------------------

@@ -54,11 +54,14 @@ export function AppHeader({
   globalActions = true,
   wordmark = false,
   mark = false,
+  action,
 }: {
   title?: string;
   subtitle?: string;
   back?: boolean;
   globalActions?: boolean;
+  /** A screen's own control on the right (a ⋯ menu), before the global ones. */
+  action?: ReactNode;
   /** Primary logo, in place of the label/title pair. Home only. */
   wordmark?: boolean;
   /** The K mark, alongside the label/title pair. */
@@ -92,18 +95,40 @@ export function AppHeader({
             </View>
           )}
         </View>
-        {globalActions ? (
+        {action || globalActions ? (
           <View style={styles.headerActions}>
-            <Pressable onPress={() => router.push("/search")} hitSlop={10} style={styles.iconButton}>
-              <Ionicons name="search" size={19} color={colors.ink} />
-            </Pressable>
-            <Pressable onPress={() => router.push("/family")} hitSlop={10} style={styles.iconButton}>
-              <Ionicons name="people-outline" size={19} color={colors.ink} />
-            </Pressable>
+            {action}
+            {globalActions ? (
+              <>
+                <Pressable onPress={() => router.push("/search")} hitSlop={10} style={styles.iconButton}>
+                  <Ionicons name="search" size={19} color={colors.ink} />
+                </Pressable>
+                <Pressable onPress={() => router.push("/family")} hitSlop={10} style={styles.iconButton}>
+                  <Ionicons name="people-outline" size={19} color={colors.ink} />
+                </Pressable>
+              </>
+            ) : null}
           </View>
         ) : null}
       </View>
     </View>
+  );
+}
+
+/** A round icon button for AppHeader's `action`, the same as its search and Family Hub buttons. */
+export function HeaderButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable onPress={onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={label} style={styles.iconButton}>
+      <Ionicons name={icon} size={19} color={colors.ink} />
+    </Pressable>
   );
 }
 

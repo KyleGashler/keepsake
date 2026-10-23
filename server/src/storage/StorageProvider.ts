@@ -79,10 +79,22 @@ export interface StorageProvider {
   stream: (key: string, range?: ByteRange) => Promise<Readable>;
 
   /**
-   * Derivatives only. Original media is sacred: nothing in this codebase may
-   * call this with an original's key, and implementations refuse if asked.
+   * Derivatives only. Original media is sacred: the normal paths of this
+   * codebase never delete one, and implementations refuse if asked. The one
+   * way an original goes is `purgeForFamilyDelete`.
    */
   delete: (key: string) => Promise<void>;
+
+  /**
+   * Remove an object for good, originals included — and on a versioned
+   * bucket every version of it, so nothing recoverable is left behind.
+   * Resolves when nothing is stored at `key`, including when nothing was.
+   *
+   * Only the `media.purge` job calls this, for the files of something a
+   * family explicitly deleted (a memory, or a photo removed from one). The
+   * app never deletes an original on its own.
+   */
+  purgeForFamilyDelete: (key: string) => Promise<void>;
 
   /**
    * Whether the backing store is reachable — `/api/health` asks this. May
@@ -133,7 +145,8 @@ export function assertUploadable(input: { key: string; bytes: number }) {
 
 /**
  * The guard behind every `delete()`: derivatives may go, originals may not.
- * Shared so no provider can forget it.
+ * Shared so no provider can forget it. (`purgeForFamilyDelete` is the
+ * explicit, separately named way past it.)
  */
 export function assertDeletable(key: string) {
   assertSafeKey(key);

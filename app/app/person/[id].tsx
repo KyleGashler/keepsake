@@ -1,49 +1,68 @@
 import { useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { useApi, type MemoryCard, type Person } from "../../src/api";
+import { isNotFound, useApi, type PersonDetail } from "../../src/api";
+import { useCanContribute } from "../../src/auth/session-context";
 import { DreamCloud } from "../../src/components/brand";
+import { EditPersonSheet } from "../../src/components/person-sheets";
+import { ActionSheet } from "../../src/components/sheet";
 import {
   AppHeader,
   Avatar,
   EmptyState,
   ErrorState,
+  HeaderButton,
   Loading,
   MemoryRow,
+  NotFoundState,
   Screen,
   SectionHeader,
 } from "../../src/components/ui";
 import { ageFrom } from "../../src/format";
-import { openInLibrary, routes } from "../../src/routes";
+import { deletePersonAction, deletePersonMessage } from "../../src/people";
+import { goBackOr, openInLibrary, routes } from "../../src/routes";
 import { colors, radius, spacing, type } from "../../src/theme";
 
-type Payload = {
-  person: Person;
-  memoryCount: number;
-  memories: MemoryCard[];
-  collections: { id: string; name: string; pillar: string }[];
-};
-
-/** Tapping a person filters the archive around their story. */
+/**
+ * Tapping a person filters the archive around their story. Someone who can
+ * contribute also gets ⋯: edit their details, or delete them from the
+ * archive — unless they have an account here, which only an owner can take
+ * away (Family Hub), after which they can be deleted too.
+ */
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, error, loading, refetch } = useApi<Payload>(`/api/people/${id}`);
+  const { data, error, loading, refetch } = useApi<PersonDetail>(`/api/people/${id}`);
+  const canContribute = useCanContribute();
+  const [menu, setMenu] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
 
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
+  if (isNotFound(error)) {
+    return <NotFoundState title="This person isn't in the archive anymore" backLabel="Go back" onBack={() => goBackOr("/")} />;
+  }
+  if (error && !data) return <ErrorState error={error} onRetry={refetch} />;
   if (loading && !data) return <Loading />;
   if (!data) return null;
 
-  const age = ageFrom(data.person.birthDate);
+  const person = data.person;
+  const age = ageFrom(person.birthDate);
 
   return (
     <>
-      <AppHeader back subtitle={data.person.relation ?? "Family"} title={data.person.name} />
+      <AppHeader
+        back
+        subtitle={person.relation ?? "Family"}
+        title={person.name}
+        action={canContribute ? <HeaderButton icon="ellipsis-horizontal" label={`Options for ${person.name}`} onPress={() => setMenu(true)} /> : null}
+      />
       <Screen>
         <View style={styles.header}>
-          <Avatar person={data.person} size={72} />
+          <Avatar person={person} size={72} />
           <View style={{ flex: 1 }}>
-            <Text style={type.title}>{data.person.name}</Text>
+            <Text style={type.title}>{person.name}</Text>
             <Text style={type.caption}>
-              {[data.person.relation, age].filter(Boolean).join(" · ")}
+              {[person.relation, age].filter(Boolean).join(" · ")}
             </Text>
             <Text style={[type.caption, { marginTop: 4 }]}>
               {data.memoryCount} {data.memoryCount === 1 ? "memory" : "memories"} so far
@@ -52,6 +71,7 @@ export default function PersonScreen() {
           {/* Whimsical shape 6/6 — dream cloud, over the person the story is about. */}
           <DreamCloud size={44} opacity={0.8} />
         </View>
+        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
 
         {data.collections.length ? (
           <>
@@ -72,17 +92,57 @@ export default function PersonScreen() {
 
         <SectionHeader label="Memories" />
         {data.memories.length === 0 ? (
-          <EmptyState title="No memories yet" body={`Nothing has been filed with ${data.person.name} in it.`} />
+          <EmptyState title="No memories yet" body={`Nothing has been filed with ${person.name} in it.`} />
         ) : (
           data.memories.map((memory) => <MemoryRow key={memory.id} memory={memory} />)
         )}
       </Screen>
+
+      <ActionSheet
+        visible={menu}
+        onClose={() => setMenu(false)}
+        title={person.name}
+        subtitle={
+          data.isMember
+            ? "Has an account in this family. To delete them from the archive, an owner removes them in Family Hub first."
+            : undefined
+        }
+        actions={[
+          { label: "Edit details", icon: "create-outline", onPress: () => setEditing(true) },
+          ...(data.isMember
+            ? []
+            : [
+                {
+                  label: "Delete from the archive",
+                  icon: "trash-outline" as const,
+                  destructive: true,
+                  // ActionSheet lets itself close before running this.
+                  onPress: () => setConfirming(true),
+                },
+              ]),
+        ]}
+      />
+      <ActionSheet
+        visible={confirming}
+        onClose={() => setConfirming(false)}
+        title={`Delete ${person.name}?`}
+        subtitle={deletePersonMessage(person, data.collections.length)}
+        actions={[
+          deletePersonAction(
+            person,
+            () => goBackOr("/family"),
+            (message) => setNotice(message),
+          ),
+        ]}
+      />
+      {editing ? <EditPersonSheet person={person} onClose={() => setEditing(false)} onSaved={() => void refetch()} /> : null}
     </>
   );
 }
 
 const styles = StyleSheet.create({
   header: { flexDirection: "row", gap: spacing.lg, alignItems: "center" },
+  notice: { ...type.caption, color: colors.terracotta, marginTop: spacing.md },
   chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
   chip: {
     paddingVertical: 7,

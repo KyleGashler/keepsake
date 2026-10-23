@@ -22,8 +22,8 @@ export function linkPair(a: string, b: string) {
 /**
  * "Related Memories": the ones a person linked by hand first (oldest link
  * first), then suggestions that share a collection or a person, nearest in
- * date either side. Never the memory itself, never another family's, never a
- * deleted one. At most MAX_RELATED. `linkedIds` says which memories were
+ * date either side. Never the memory itself, never another family's. At most
+ * MAX_RELATED. `linkedIds` says which memories were
  * linked by hand (all of them, even past MAX_RELATED), so a page can offer to
  * unlink those and not the suggestions.
  */
@@ -36,14 +36,15 @@ export async function relatedMemories(familyId: string, memory: DetailMemory) {
 
   const linkedRows = linkedIds.length
     ? await prisma.memory.findMany({
-        where: { id: { in: linkedIds }, familyId, deletedAt: null },
+        where: { id: { in: linkedIds }, familyId },
         include: cardInclude,
       })
     : [];
   const byId = new Map(linkedRows.map((m) => [m.id, m]));
   const linked = linkedIds.map((id) => byId.get(id)).filter((m) => m !== undefined).slice(0, MAX_RELATED);
 
-  // The live ones only: a link to a deleted memory isn't one a person can see or remove.
+  // Only links this family can see (a link row can't outlive its memories:
+  // both ends cascade).
   const live = linkedIds.filter((id) => byId.has(id));
 
   const room = MAX_RELATED - linked.length;
@@ -55,7 +56,6 @@ export async function relatedMemories(familyId: string, memory: DetailMemory) {
 
   const shares = {
     familyId,
-    deletedAt: null,
     id: { notIn: [memory.id, ...linkedIds] },
     OR: [
       ...(collectionIds.length ? [{ collections: { some: { collectionId: { in: collectionIds } } } }] : []),

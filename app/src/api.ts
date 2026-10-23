@@ -129,7 +129,7 @@ export async function apiGet<T>(path: string, familyId?: string | null): Promise
 
 /**
  * A write. `body` is optional for the contract's bodiless PUT/DELETE routes
- * (favourite, unlink, soft delete); a 204 or empty reply resolves to null.
+ * (favourite, unlink, delete); a 204 or empty reply resolves to null.
  */
 export async function apiSend<T>(
   path: string,
@@ -512,7 +512,7 @@ export type LibraryPayload = { pillars: LibraryPillar[] };
 /**
  * A child, with what the Child Profiles and Collections headers show.
  * `collectionCount` is their CHILD_PROFILES collections; `memoryCount` is
- * distinct, non-deleted memories in any collection of theirs.
+ * distinct memories in any collection of theirs.
  */
 export type ChildSummary = Person & {
   photoUrl: string | null;
@@ -538,7 +538,28 @@ export type CollectionArchivePayload = {
 };
 
 /** `PATCH /api/people/:id` — `photoKey` is a finalized upload key; null removes the photo. */
-export type PersonPatch = { name?: string; birthDate?: string | null; photoKey?: string | null };
+export type PersonPatch = {
+  name?: string;
+  relation?: string | null;
+  birthDate?: string | null;
+  photoKey?: string | null;
+};
+
+/** `POST /api/people` — a child also gets their default collections. */
+export type PersonCreate = { name: string; role: Person["role"]; relation?: string; birthDate?: string };
+
+/** `GET /api/people/:id` */
+export type PersonDetail = {
+  person: Person;
+  /**
+   * Signs in as a member of this family. `DELETE /api/people/:id` refuses a
+   * member (`409 person_is_member`): an owner removes them in Family Hub first.
+   */
+  isMember: boolean;
+  memoryCount: number;
+  memories: MemoryCard[];
+  collections: { id: string; name: string; pillar: PillarKey }[];
+};
 
 /** `POST /api/collections` */
 export type CollectionCreate = {
@@ -549,6 +570,13 @@ export type CollectionCreate = {
   icon: string;
   color: string;
 };
+
+/**
+ * `PATCH /api/collections/:id` — any collection, a child's defaults included
+ * (they keep their `kind`). Only collections without a `kind` can be deleted
+ * (`DELETE /api/collections/:id`; `409 default_collection` otherwise).
+ */
+export type CollectionPatch = { name?: string; description?: string | null; icon?: string; color?: string };
 
 /**
  * `PATCH /api/memories/:id` — `collectionIds` replaces the whole set, which
