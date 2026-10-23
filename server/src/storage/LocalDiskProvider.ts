@@ -9,6 +9,7 @@ import {
   StorageKeyError,
   UPLOAD_URL_TTL_SECONDS,
   assertDeletable,
+  assertFamilyPrefix,
   assertSafeKey,
   assertUploadable,
   type ByteRange,
@@ -159,6 +160,12 @@ export class LocalDiskProvider implements StorageProvider {
     // Tidy the now-empty `<familyId>/<uploadId>/` directory; a sibling
     // (another rendition) keeps it, and that's fine.
     await fsp.rmdir(path.dirname(target)).catch(() => undefined);
+  }
+
+  /** The family is gone: its whole `<familyId>/` directory goes with it. */
+  async purgeFamilyObjects(familyId: string): Promise<void> {
+    assertFamilyPrefix(familyId);
+    await fsp.rm(this.pathFor(familyId), { recursive: true, force: true });
   }
 
   async healthCheck(): Promise<boolean> {

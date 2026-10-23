@@ -3,6 +3,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireOwner } from "../auth/middleware.js";
 import { emailSender } from "../email/index.js";
+import { jobQueue } from "../jobs/index.js";
+import { deleteFamily } from "../lib/account-deletion.js";
 import { errorMessage } from "../lib/errors.js";
 import {
   INVITE_TTL_MS,
@@ -268,5 +270,18 @@ familyRouter.delete("/family/members/:userId", requireOwner, async (req, res) =>
     throw err;
   }
   req.log.info({ familyId: family.id, removed: req.params.userId, by: req.ctx.user.id }, "member removed");
+  res.status(204).end();
+});
+
+/**
+ * Delete this family, for everyone (A16). Owners only. Every member loses it;
+ * every memory, person, collection and file goes — rows at once, files and
+ * Mux assets through `media.purge`. There is no trash and no restore. 204.
+ */
+familyRouter.delete("/family", requireOwner, async (req, res) => {
+  const { family, user } = req.ctx;
+  const deleted = await deleteFamily(jobQueue(), family.id);
+  if (!deleted) return res.status(404).json({ error: "not_found" });
+  req.log.info({ familyId: family.id, by: user.id }, "family deleted");
   res.status(204).end();
 });

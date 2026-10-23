@@ -30,8 +30,14 @@ export interface JobPayloads {
     familyId: string;
     storageKeys: string[];
     muxAssets: { uploadId: string; assetId: string | null }[];
-    /** What was deleted, for the log: "memory", "media", "person". */
+    /** What was deleted, for the log: "memory", "media", "person", "family". */
     reason: string;
+    /**
+     * The family itself was deleted (A16): purge every object under
+     * `<familyId>/` too, referenced or not — uploads that never finalized
+     * included. `storageKeys` is then empty, since the prefix covers them.
+     */
+    wholeFamily?: boolean;
   };
 }
 
@@ -50,6 +56,7 @@ export const jobPayloadSchemas: { [T in JobType]: z.ZodType<JobPayloads[T]> } = 
     storageKeys: z.array(z.string()),
     muxAssets: z.array(purgedClip),
     reason: z.string(),
+    wholeFamily: z.boolean().optional(),
   }),
 };
 

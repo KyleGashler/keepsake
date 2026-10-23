@@ -7,6 +7,7 @@ import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
 import { originAllowed } from "../lib/cors-origins.js";
+import { isForeignKeyViolation } from "../lib/errors.js";
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
 import { isMuxKey, kickSync, muxKey, snapshotPatch, updateMuxAsset, uploadIdFromKey, uploadPatch } from "../media-host/assets.js";
@@ -232,9 +233,20 @@ mediaApiRouter.post("/init", requireContributor, async (req, res) => {
       return res.status(502).json({ error: "Couldn't reach the video service; try again", code: "media_host_error" });
     }
     if (!upload.url) throw new Error("Mux returned a direct upload without a URL");
-    await prisma.muxAsset.create({
-      data: { familyId: family.id, uploadId: upload.id, type, mimeType, bytes },
-    });
+    try {
+      await prisma.muxAsset.create({
+        data: { familyId: family.id, uploadId: upload.id, type, mimeType, bytes },
+      });
+    } catch (err) {
+      if (!isForeignKeyViolation(err)) throw err;
+      // The family was deleted while Mux was being asked (A16). Nothing of
+      // ours points at the upload, so cancel it: bytes sent to it later
+      // never become an asset. Best effort — the URL lapses on its own.
+      await host.cancelUpload(upload.id).catch((cancelErr: unknown) => {
+        req.log.warn({ err: cancelErr, uploadId: upload.id }, "couldn't cancel a Mux upload for a deleted family");
+      });
+      return res.status(403).json({ error: "forbidden" });
+    }
     const expiresAt = new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000).toISOString();
     // No headers to send: Mux's URL is a plain signed PUT that takes the
     // file as the body. The client PUTs exactly as it does to storage.

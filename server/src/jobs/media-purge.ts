@@ -17,10 +17,26 @@ import type { JobHandler } from "./JobQueue.js";
  * lost. Two things are skipped rather than retried, with a log line: a key
  * outside the family's prefix (never ours to delete) and a key some row
  * still points at (another memory, a profile photo, a cover).
+ *
+ * A `wholeFamily` purge (the family itself was deleted) also clears the
+ * family's whole storage prefix. Neither check above stands in its way once
+ * the Family row is gone: the prefix test is on the key's text, and no row
+ * can still point at a key of a family whose rows all cascaded away.
  */
 export function mediaPurgeHandler(): JobHandler<"media.purge"> {
   return {
-    async run({ familyId, storageKeys, muxAssets, reason }, ctx) {
+    async run({ familyId, storageKeys, muxAssets, reason, wholeFamily }, ctx) {
+      if (wholeFamily) {
+        // Belt and braces: a prefix purge of a family that still exists
+        // would take every photo it has. Family ids are never reused, so a
+        // row here means a bug upstream, not a race worth retrying.
+        if (await prisma.family.count({ where: { id: familyId } })) {
+          ctx.log.error({ familyId, reason }, "media.purge: wholeFamily purge of a family that still exists; storage skipped");
+        } else {
+          await storage().purgeFamilyObjects(familyId);
+        }
+      }
+
       let purged = 0;
       for (const key of storageKeys) {
         if (!keyBelongsTo(key, familyId)) {
@@ -51,7 +67,7 @@ export function mediaPurgeHandler(): JobHandler<"media.purge"> {
       }
 
       ctx.log.info(
-        { reason, familyId, objects: purged, ofKeys: storageKeys.length, muxAssets: muxAssets.length },
+        { reason, familyId, objects: purged, ofKeys: storageKeys.length, muxAssets: muxAssets.length, wholeFamily },
         "media purged",
       );
     },

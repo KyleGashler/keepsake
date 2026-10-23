@@ -11,6 +11,7 @@ import { emailSender } from "./email/index.js";
 import { startWorker, type JobQueue } from "./jobs/index.js";
 import { requireFamily, requireUser } from "./auth/middleware.js";
 import { corsOrigins } from "./lib/cors-origins.js";
+import { isForeignKeyViolation } from "./lib/errors.js";
 import { logger } from "./lib/logger.js";
 import { prisma } from "./lib/prisma.js";
 import { mediaHost } from "./media-host/index.js";
@@ -203,13 +204,32 @@ if (WEB_DIR && fs.existsSync(WEB_DIR)) {
 
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
-app.use((err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use(async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   // `genReqId` above only ever mints strings.
   const requestId = typeof req.id === "string" ? req.id : undefined;
+  // The family was deleted while this request was writing to it (A16): answer
+  // as `requireFamily` would have a moment later — it isn't theirs any more.
+  // `req.ctx` is declared, not guaranteed: it's unset before requireUser runs.
+  const ctx: Partial<express.Request["ctx"]> | undefined = req.ctx;
+  const familyId = ctx?.family?.id;
+  if (isForeignKeyViolation(err) && familyId && !(await familyExists(familyId))) {
+    (req.log ?? logger).info({ familyId, requestId }, "request raced its family's deletion");
+    if (!res.headersSent) res.status(403).json({ error: "forbidden" });
+    return;
+  }
   (req.log ?? logger).error({ err, requestId }, "unhandled error");
   // A stack trace is a map of the server; developers get it, the internet doesn't.
   res.status(500).json({ error: isProduction ? "Internal server error" : err.message, requestId });
 });
+
+/** For the error handler: true when unsure, so a failed lookup still reads as a 500. */
+async function familyExists(id: string) {
+  try {
+    return (await prisma.family.count({ where: { id } })) > 0;
+  } catch {
+    return true;
+  }
+}
 
 const server = app.listen(PORT, "0.0.0.0", () => {
   logger.info({ port: PORT }, `little by little API listening on http://localhost:${PORT}`);
