@@ -31,7 +31,7 @@ primary_region = "sjc"
   # project the web bundle was built for (EXPO_PUBLIC_FIREBASE_PROJECT_ID in
   # the Dockerfile). Dev tokens (`dev:<email>`) are rejected here.
   AUTH_MODE = "firebase"
-  FIREBASE_PROJECT_ID = "REPLACE_ME_PROD_PROJECT_ID"
+  FIREBASE_PROJECT_ID = "keepsake-prod-47eda"
 
 [http_service]
   internal_port = 4000
