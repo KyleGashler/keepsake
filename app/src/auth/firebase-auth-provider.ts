@@ -1,5 +1,9 @@
 import { getApp, getApps, initializeApp, type FirebaseOptions } from "firebase/app";
 import {
+  applyActionCode,
+  checkActionCode,
+  confirmPasswordReset,
+  connectAuthEmulator,
   createUserWithEmailAndPassword,
   getAuth,
   initializeAuth,
@@ -9,13 +13,18 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
+  verifyPasswordResetCode,
+  type ActionCodeSettings,
   type Auth,
   type User,
 } from "firebase/auth";
+import { Platform } from "react-native";
 import {
   AuthError,
+  LINK_UNUSABLE,
   looksLikeEmail,
   normalizeEmail,
+  type ActionCodes,
   type AuthProvider,
   type AuthUser,
 } from "./auth-provider";
@@ -50,17 +59,60 @@ function firebaseConfig(): FirebaseOptions {
 /** Fast Refresh re-runs this module; Firebase allows one app and one Auth per process. */
 function firebaseAuth(): Auth {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig());
+  let auth: Auth;
   try {
-    return initializeAuth(app, { persistence });
+    auth = initializeAuth(app, { persistence });
   } catch {
-    // auth/already-initialized — the earlier instance is the one to use.
+    // auth/already-initialized — the earlier instance is the one to use (and
+    // is already pointed at the emulator, if it should be).
     return getAuth(app);
   }
+  // Development aid only: the local Firebase Auth emulator, which accepts any
+  // password and hands out emailed links' codes over HTTP (see README).
+  const emulator = process.env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR;
+  if (emulator) connectAuthEmulator(auth, emulator, { disableWarnings: true });
+  return auth;
+}
+
+/**
+ * Where the "continue" in an emailed link should lead: the web app's own
+ * origin. Natively there's no web origin the app can honestly claim (the
+ * hosted demo is one deployment among several), so no continue URL is sent.
+ */
+function continueSettings(): ActionCodeSettings | undefined {
+  if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+  return { url: window.location.origin };
+}
+
+/**
+ * Sends an email with a continue URL when there is one, and without when
+ * Firebase refuses it — a domain missing from Authentication → Settings →
+ * Authorized domains shouldn't stop anyone from getting their link.
+ */
+async function sendWithContinueUrl(send: (settings?: ActionCodeSettings) => Promise<void>) {
+  const settings = continueSettings();
+  if (!settings) return send();
+  try {
+    await send(settings);
+  } catch (err) {
+    const code = codeOf(err);
+    if (code !== "auth/unauthorized-continue-uri" && code !== "auth/invalid-continue-uri") throw err;
+    // oxlint-disable-next-line no-console -- a deployment problem worth seeing in the console; the person still gets their email
+    console.warn(
+      `[auth] Firebase refused ${settings.url} as a continue URL (${code}); sent the email without one. ` +
+        "Add the domain under Authentication → Settings → Authorized domains.",
+    );
+    await send();
+  }
+}
+
+function codeOf(err: unknown) {
+  return typeof err === "object" && err && "code" in err ? String(err.code) : undefined;
 }
 
 /** Firebase's error codes, said the way a family would want to hear them. */
 function friendly(err: unknown): AuthError {
-  const code = typeof err === "object" && err && "code" in err ? String(err.code) : undefined;
+  const code = codeOf(err);
   switch (code) {
     case "auth/invalid-credential":
     case "auth/invalid-login-credentials":
@@ -90,8 +142,60 @@ function friendly(err: unknown): AuthError {
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
       // A build with the wrong (or placeholder) EXPO_PUBLIC_FIREBASE_* values.
       return new AuthError("Sign-in isn't set up correctly in this build. Please let us know.", code);
+    case "auth/expired-action-code":
+    case "auth/invalid-action-code":
+      return new AuthError("This link has expired or has already been used.", LINK_UNUSABLE);
     default:
       return new AuthError("Something went wrong. Please try again.", code);
+  }
+}
+
+/**
+ * The same, for codes from emailed links: there, "user not found" means the
+ * account behind the link is gone, not a mistyped password.
+ */
+function friendlyLink(err: unknown): AuthError {
+  if (codeOf(err) === "auth/user-not-found") {
+    return new AuthError("The account this link was for no longer exists.", "auth/user-not-found");
+  }
+  return friendly(err);
+}
+
+/** Firebase's out-of-band codes, behind the provider-neutral `ActionCodes`. */
+class FirebaseActionCodes implements ActionCodes {
+  constructor(private readonly auth: Auth) {}
+
+  async check(code: string) {
+    try {
+      const { data } = await checkActionCode(this.auth, code);
+      return { email: data.email ?? null, previousEmail: data.previousEmail ?? null };
+    } catch (err) {
+      throw friendlyLink(err);
+    }
+  }
+
+  async apply(code: string) {
+    try {
+      await applyActionCode(this.auth, code);
+    } catch (err) {
+      throw friendlyLink(err);
+    }
+  }
+
+  async verifyPasswordReset(code: string) {
+    try {
+      return await verifyPasswordResetCode(this.auth, code);
+    } catch (err) {
+      throw friendlyLink(err);
+    }
+  }
+
+  async confirmPasswordReset(code: string, newPassword: string) {
+    try {
+      await confirmPasswordReset(this.auth, code, newPassword);
+    } catch (err) {
+      throw friendlyLink(err);
+    }
   }
 }
 
@@ -103,6 +207,7 @@ function toAuthUser(user: User | null): AuthUser | null {
 export class FirebaseAuthProvider implements AuthProvider {
   readonly mode = "firebase" as const;
   private readonly auth: Auth;
+  readonly actionCodes: ActionCodes;
   private readonly listeners = new Set<(user: AuthUser | null) => void>();
   private restored = false;
   /**
@@ -114,6 +219,7 @@ export class FirebaseAuthProvider implements AuthProvider {
 
   constructor() {
     this.auth = firebaseAuth();
+    this.actionCodes = new FirebaseActionCodes(this.auth);
     onAuthStateChanged(this.auth, () => {
       this.restored = true;
       if (!this.holdChanges) this.emit();
@@ -154,7 +260,7 @@ export class FirebaseAuthProvider implements AuthProvider {
       }
       // Not awaited into failure: the account exists either way, and the
       // verify-email nudge has a resend button.
-      await sendEmailVerification(user).catch(() => undefined);
+      await sendWithContinueUrl((settings) => sendEmailVerification(user, settings)).catch(() => undefined);
     } catch (err) {
       throw friendly(err);
     } finally {
@@ -171,7 +277,7 @@ export class FirebaseAuthProvider implements AuthProvider {
     const normalized = normalizeEmail(email);
     if (!looksLikeEmail(normalized)) throw new AuthError("That doesn't look like an email address.");
     try {
-      await sendPasswordResetEmail(this.auth, normalized);
+      await sendWithContinueUrl((settings) => sendPasswordResetEmail(this.auth, normalized, settings));
     } catch (err) {
       // With email enumeration protection on (Firebase's default), an unknown
       // address succeeds silently — so a failure here is a real one.
@@ -183,7 +289,7 @@ export class FirebaseAuthProvider implements AuthProvider {
     const user = this.auth.currentUser;
     if (!user) throw new AuthError("Sign in first.");
     try {
-      await sendEmailVerification(user);
+      await sendWithContinueUrl((settings) => sendEmailVerification(user, settings));
     } catch (err) {
       throw friendly(err);
     }

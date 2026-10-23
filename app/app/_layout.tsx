@@ -3,7 +3,7 @@ import { NunitoSans_400Regular } from "@expo-google-fonts/nunito-sans/400Regular
 import { NunitoSans_600SemiBold } from "@expo-google-fonts/nunito-sans/600SemiBold";
 import { NunitoSans_700Bold } from "@expo-google-fonts/nunito-sans/700Bold";
 import { useFonts } from "expo-font";
-import { SplashScreen, Stack } from "expo-router";
+import { SplashScreen, Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -18,6 +18,8 @@ import {
   Splash,
   VerifyEmailScreen,
 } from "../src/components/account-screens";
+import { AUTH_ACTION_PATH } from "../src/auth";
+import { AuthActionScreen } from "../src/components/auth-action-screen";
 import { SignedOutFlow } from "../src/components/auth-screens";
 import { colors } from "../src/theme";
 
@@ -70,10 +72,23 @@ export default function RootLayout() {
  */
 function Gate() {
   const { phase } = useSession();
+  const pathname = usePathname();
+  const [actionLinkDone, setActionLinkDone] = useState(false);
+  // The one exception to "one screen per phase": the page that emailed links
+  // (verify, reset password) open. Whoever follows one may be signed out,
+  // mid-restore, stuck on verify-email, or in the archive — and the link has
+  // to work in all of them — so this path alone skips the phase switch until
+  // the person is done with it. It renders outside the navigator, like the
+  // screens below; once dismissed, the usual phase screen takes over at the
+  // same URL, and app/auth/action.tsx sends anyone who reaches the archive
+  // that way to its start.
+  const onActionLink = pathname === AUTH_ACTION_PATH && !actionLinkDone;
 
   useEffect(() => {
-    if (phase !== "restoring") SplashScreen.hide();
-  }, [phase]);
+    if (phase !== "restoring" || onActionLink) SplashScreen.hide();
+  }, [phase, onActionLink]);
+
+  if (onActionLink) return <AuthActionScreen onDone={() => setActionLinkDone(true)} />;
 
   switch (phase) {
     case "restoring":

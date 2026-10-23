@@ -97,10 +97,103 @@ production values into the hosted web build):
 | --- | --- |
 | `EXPO_PUBLIC_AUTH_MODE` | `dev` (default) or `firebase`. |
 | `EXPO_PUBLIC_FIREBASE_API_KEY`, `_AUTH_DOMAIN`, `_PROJECT_ID`, `_APP_ID` | The Firebase web app's config (Project settings → Your apps). Public identifiers, not secrets. Required with `firebase`. |
+| `EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR` | Development aid only: e.g. `http://127.0.0.1:9099` points the app at a local Firebase Auth emulator (see [Emailed links](#emailed-links-authaction)). Unset everywhere real. |
 
 There are two Firebase projects, dev and prod: point a local Firebase build at
 dev, and keep `FIREBASE_PROJECT_ID` on Fly equal to the project the hosted
 bundle was built for.
+
+### Emailed links: `/auth/action`
+
+Firebase's verification, password-reset and email-recovery emails link to
+our own page, `/auth/action`, instead of Firebase's unbranded hosted one
+(`<project>.firebaseapp.com/__/auth/action`). Firebase appends `mode`,
+`oobCode`, `apiKey`, `continueUrl` and `lang`; the page
+([app/src/components/auth-action-screen.tsx](app/src/components/auth-action-screen.tsx))
+handles each `mode` with the Firebase JS SDK, behind the `AuthProvider`'s
+optional `actionCodes`:
+
+- `verifyEmail` — applies the code. If the same person is signed in in this
+  browser it reloads them and mints a fresh ID token, so the API sees
+  `email_verified` at once (this also completes a dev-account takeover stuck on
+  `403 verify_email`). Continue goes into the app, or to sign-in.
+- `resetPassword` — shows whose password it is, takes a new one (sign-up's
+  rules and messages), sets it, signs them in and goes into the app.
+- `recoverEmail` — restores the old address and offers a password reset.
+- An expired or used link says so and offers the way back: a new
+  verification email if signed in, or a new reset link. A link without a code
+  or with an unknown mode is "This link doesn't work". In dev mode the page
+  only says it isn't used.
+
+It renders in every session phase — signed out, restoring, no family, in the
+archive — because the root layout's `Gate` lets this one path skip the phase
+switch until the person is done with it (see the comment there).
+
+When the app sends these emails from the web it passes the web app's origin
+as the continue URL. If Firebase refuses it (`auth/unauthorized-continue-uri`
+— the domain isn't under Authentication → Settings → Authorized domains), the
+app logs a warning and sends the email without one. Natively no continue URL
+is sent.
+
+**Human step — point the emails at the page** (once per Firebase project; the
+page must be deployed before the prod project is switched, or every emailed
+link breaks):
+
+1. Firebase console → the project → Authentication (under *Security* in the
+   newer navigation) → **Templates**.
+2. Open any template (e.g. *Email address verification*) and click the
+   **pencil** (edit).
+3. Click **Customize action URL** at the bottom of the form and enter:
+   - prod (`keepsake-prod-47eda`): `https://keepsake-demo-h4t9wq.fly.dev/auth/action`
+   - dev: `http://localhost:8081/auth/action`
+4. Save. The action URL is one setting for the whole project — it applies to
+   every template (verification, password reset, email change), not just the
+   one you opened.
+5. While there, add `keepsake-demo-h4t9wq.fly.dev` under Authentication →
+   **Settings → Authorized domains** (prod), so the continue URL is accepted
+   (`localhost` is authorized by default).
+
+What else the console lets you change in the emails (per template, same
+pencil): the **sender name**, the sender address (the part before the `@`,
+until a custom domain is set up), the
+**reply-to** address and the **subject**; the **message body** only for the
+password-reset template (verification and email-change bodies are fixed).
+Subject and body take `%DISPLAY_NAME%`, `%APP_NAME%` (the project's public-facing
+name, Project settings), `%LINK%`, `%EMAIL%` and `%NEW_EMAIL%`. Sending from
+our own domain is **Customize domain** on the same form, then TXT and CNAME
+records at the DNS registrar (verification can take up to 24 hours), then
+**Apply custom domain** — it changes both the From address and the action
+links' domain. ([Firebase help: email templates](https://support.google.com/firebase/answer/7000714),
+[custom domain](https://firebase.google.com/docs/auth/email-custom-domain).)
+
+**Trying it locally with the Auth emulator** (a development aid; no real
+Firebase project or email involved). Java is required.
+
+```bash
+# 1. The emulator (any directory; the demo- prefix means no real project)
+npx firebase-tools emulators:start --only auth --project demo-keepsake
+
+# 2. The API in firebase mode against the emulator, on a scratch database
+AUTH_MODE=firebase FIREBASE_PROJECT_ID=demo-keepsake \
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+DATABASE_URL=postgresql://keepsake:keepsake@localhost:55432/<scratch db> \
+PORT=4100 npx tsx src/index.ts          # in server/
+
+# 3. The app, pointed at both (in app/; any non-empty Firebase values work)
+EXPO_PUBLIC_API_URL=http://localhost:4100 EXPO_PUBLIC_AUTH_MODE=firebase \
+EXPO_PUBLIC_FIREBASE_API_KEY=demo-api-key EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=localhost \
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=demo-keepsake EXPO_PUBLIC_FIREBASE_APP_ID=1:0:web:0 \
+EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR=http://127.0.0.1:9099 npx expo start --web
+
+# 4. The "emails": every code the emulator would have sent
+curl -s http://127.0.0.1:9099/emulator/v1/projects/demo-keepsake/oobCodes
+```
+
+Open `http://localhost:8081/auth/action?mode=<requestType's mode>&oobCode=<oobCode>`
+for any code listed (each entry's `oobLink` carries the right query string).
+`firebase-admin` switches to the emulator by itself when
+`FIREBASE_AUTH_EMULATOR_HOST` is set; never set it, or
+`EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR`, anywhere real.
 
 The app puts `Authorization: Bearer <token>` and `x-family-id` on every API
 call (`apiFetch` in [app/src/api.ts](app/src/api.ts)), and a `401` signs it

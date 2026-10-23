@@ -2,9 +2,15 @@ import type { AuthMode, AuthProvider } from "./auth-provider";
 import { DevAuthProvider } from "./dev-auth-provider";
 import { FirebaseAuthProvider } from "./firebase-auth-provider";
 
-export type { AuthMode, AuthProvider, AuthUser } from "./auth-provider";
-export { AuthError } from "./auth-provider";
+export type { ActionCodeInfo, ActionCodes, AuthMode, AuthProvider, AuthUser } from "./auth-provider";
+export { AuthError, LINK_UNUSABLE } from "./auth-provider";
 export { DEV_DEFAULT_EMAIL } from "./dev-auth-provider";
+
+/**
+ * The page the links in sign-in emails open — Firebase's "custom action URL"
+ * points here (README → Auth). Drawn by src/components/auth-action-screen.tsx.
+ */
+export const AUTH_ACTION_PATH = "/auth/action";
 
 /**
  * `EXPO_PUBLIC_AUTH_MODE` is baked in at bundle time: `dev` (the default —

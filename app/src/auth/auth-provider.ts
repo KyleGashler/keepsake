@@ -40,7 +40,39 @@ export interface AuthProvider {
    * reach the server.
    */
   getToken: (forceRefresh?: boolean) => Promise<string | null>;
+  /**
+   * The codes in links the provider emails (verify, reset, recover), for the
+   * page those links open (/auth/action). Absent when the provider sends no
+   * such email — dev mode.
+   */
+  readonly actionCodes?: ActionCodes;
 }
+
+/** What an emailed link's code says, read without spending it. */
+export type ActionCodeInfo = {
+  /** The address the email went to; for an email recovery, the address being restored. */
+  email: string | null;
+  /** Email recovery only: the address the account is being changed back from. */
+  previousEmail: string | null;
+};
+
+/**
+ * One-time codes from emailed links. Each method rejects with an `AuthError`;
+ * an expired, already-used or mangled code is `code === LINK_UNUSABLE`.
+ */
+export interface ActionCodes {
+  /** Reads the code without using it up. */
+  check: (code: string) => Promise<ActionCodeInfo>;
+  /** Uses up a verify-email or recover-email code. */
+  apply: (code: string) => Promise<void>;
+  /** Checks a password-reset code; resolves to the account's email. */
+  verifyPasswordReset: (code: string) => Promise<string>;
+  /** Uses up a password-reset code, setting the new password. Does not sign in. */
+  confirmPasswordReset: (code: string, newPassword: string) => Promise<void>;
+}
+
+/** `AuthError.code` for an emailed link that has expired, been used, or was cut short — whatever the provider. */
+export const LINK_UNUSABLE = "link-unusable";
 
 /** A sign-in problem, already phrased for the person in front of the screen. */
 export class AuthError extends Error {

@@ -819,6 +819,15 @@ B1 and the auth half of A8 landed together. What was decided:
   family: set the prod demo user's email to the real address, sign up with
   Firebase, verify. (`seed.ts` no longer re-attaches a dev owner to a family
   that already has one.)
+- **Emailed links open our own page (B1b, 2026-10-22).** `/auth/action` is
+  Firebase's custom action URL for every template (verify, reset, recover),
+  replacing the unbranded hosted page. It renders in any session phase (the
+  layout's Gate exempts that one path), spends codes through the
+  `AuthProvider`'s optional `actionCodes`, and a verify link signed in here
+  force-refreshes the token so the API sees `email_verified` at once. The app
+  sends the web origin as the continue URL, falling back to none if Firebase
+  refuses it. The console switch is a human step (README → Auth), after the
+  page is deployed.
 - **TanStack Query is out of scope** — split off as A8b. `useApi` / `apiGet` /
   `apiSend` stay, behind one `apiFetch` that adds the bearer and
   `x-family-id` and signs out on 401.
