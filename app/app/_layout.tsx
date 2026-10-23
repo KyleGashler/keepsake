@@ -8,6 +8,17 @@ import { StatusBar } from "expo-status-bar";
 import { useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { SessionProvider } from "../src/auth/session";
+import { useSession } from "../src/auth/session-context";
+import {
+  AccountErrorScreen,
+  ChooseFamilyScreen,
+  CreateFamilyScreen,
+  EmailInUseScreen,
+  Splash,
+  VerifyEmailScreen,
+} from "../src/components/account-screens";
+import { SignedOutFlow } from "../src/components/auth-screens";
 import { colors } from "../src/theme";
 
 // oxlint-disable-next-line react/only-export-components -- expo-router reads unstable_settings from the layout module
@@ -16,7 +27,8 @@ export const unstable_settings = {
   anchor: "(tabs)",
 };
 
-// Hold the native splash until the fonts are in, so type never reflows.
+// Hold the native splash until the fonts are in and the saved session has
+// been read, so neither type nor the sign-in screen flashes.
 void SplashScreen.preventAutoHideAsync();
 
 /** If fonts haven't settled by now, show the app in fallback type rather than wait. */
@@ -32,23 +44,56 @@ export default function RootLayout() {
   });
   const [timedOut, setTimedOut] = useState(false);
   // A font error isn't fatal: the web falls back through the CSS stack in theme.ts.
-  const ready = fontsLoaded || !!fontError || timedOut;
+  const fontsReady = fontsLoaded || !!fontError || timedOut;
 
   useEffect(() => {
-    if (ready) {
-      SplashScreen.hide();
-      return;
-    }
+    if (fontsReady) return;
     const timer = setTimeout(() => setTimedOut(true), FONT_TIMEOUT_MS);
     return () => clearTimeout(timer);
-  }, [ready]);
-
-  if (!ready) return null;
+  }, [fontsReady]);
 
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
+        <SessionProvider>{fontsReady ? <Gate /> : null}</SessionProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+/**
+ * One screen per session phase; the app itself only once there's a family to
+ * look at. The auth and account screens render *instead of* the navigator
+ * rather than as routes, so whatever URL someone opened (a memory, later an
+ * invite) is still the URL when they come through.
+ */
+function Gate() {
+  const { phase } = useSession();
+
+  useEffect(() => {
+    if (phase !== "restoring") SplashScreen.hide();
+  }, [phase]);
+
+  switch (phase) {
+    case "restoring":
+    case "loadingAccount":
+      return <Splash />;
+    case "signedOut":
+      return <SignedOutFlow />;
+    case "verifyEmail":
+      return <VerifyEmailScreen />;
+    case "emailInUse":
+      return <EmailInUseScreen />;
+    case "accountError":
+      return <AccountErrorScreen />;
+    case "createFamily":
+      return <CreateFamilyScreen />;
+    case "chooseFamily":
+      return <ChooseFamilyScreen />;
+    default:
+      // "ready"
+      return (
         <Stack
           screenOptions={{
             headerShown: false,
@@ -60,7 +105,6 @@ export default function RootLayout() {
           <Stack.Screen name="search" options={{ presentation: "modal" }} />
           <Stack.Screen name="family" options={{ presentation: "modal" }} />
         </Stack>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
-  );
+      );
+  }
 }

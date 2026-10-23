@@ -3,6 +3,9 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { apiSend, useApi, type Person } from "../src/api";
+import { useSession } from "../src/auth/session-context";
+import { VerifyEmailNudge } from "../src/components/account-screens";
+import { ActionSheet } from "../src/components/sheet";
 import {
   AppHeader,
   Avatar,
@@ -30,6 +33,16 @@ const SETTINGS = [
 ];
 
 /**
+ * Switching family or signing out: back to Home first, so nothing left on
+ * screen belongs to the family (or the person) being left.
+ */
+function leaveFor(change: () => void) {
+  if (router.canDismiss()) router.dismissAll();
+  router.replace("/");
+  change();
+}
+
+/**
  * Family Hub is administrative rather than emotional, which is why it's a modal
  * instead of a permanent destination.
  */
@@ -37,6 +50,8 @@ export default function FamilyHubScreen() {
   const { data, error, loading, refetch } = useApi<Payload>("/api/family");
   const [inviteName, setInviteName] = useState("");
   const [invited, setInvited] = useState<string | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const session = useSession();
 
   async function invite() {
     if (!inviteName.trim()) return;
@@ -56,6 +71,8 @@ export default function FamilyHubScreen() {
     <>
       <AppHeader back mark subtitle="Family Hub" title={data.family.name} globalActions={false} />
       <Screen>
+        <VerifyEmailNudge />
+
         <View style={styles.stats}>
           <Stat value={data.stats.memoryCount} label="Memories" />
           <Stat value={data.stats.mediaCount} label="Media" />
@@ -110,10 +127,53 @@ export default function FamilyHubScreen() {
           ))}
         </View>
 
+        <SectionHeader label="Account" />
+        <View style={styles.settings}>
+          <View style={styles.setting}>
+            <Ionicons name="person-circle-outline" size={18} color={colors.inkSoft} />
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontSize: 15, color: colors.ink }}>Signed in</Text>
+              <Text style={type.caption}>{session.user?.email}</Text>
+            </View>
+          </View>
+          {session.memberships.length > 1 ? (
+            <Pressable onPress={() => setSwitching(true)} style={styles.setting} accessibilityRole="button">
+              <Ionicons name="swap-horizontal-outline" size={18} color={colors.inkSoft} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontSize: 15, color: colors.ink }}>Switch family</Text>
+                <Text style={type.caption}>You belong to {session.memberships.length} archives</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={17} color={colors.muted} />
+            </Pressable>
+          ) : null}
+          <Pressable
+            onPress={() => leaveFor(() => void session.signOut())}
+            style={styles.setting}
+            accessibilityRole="button"
+          >
+            <Ionicons name="log-out-outline" size={18} color={colors.terracotta} />
+            <Text style={{ fontSize: 15, color: colors.terracotta }}>Sign out</Text>
+          </Pressable>
+        </View>
+
         <PreviewNote>
-          No accounts, permissions, or billing in this build — the whole archive is open to anyone who can
-          reach the API. That's the first thing to change.
+          Permissions and billing aren't enforced in this build yet — everyone in a family can see and add
+          everything.
         </PreviewNote>
+
+        <ActionSheet
+          visible={switching}
+          onClose={() => setSwitching(false)}
+          title="Switch family"
+          subtitle="Which archive would you like to look at?"
+          actions={session.memberships.map((m) => ({
+            label: m.familyId === session.family?.familyId ? `${m.familyName} (current)` : m.familyName,
+            icon: "people-outline" as const,
+            onPress: () => {
+              if (m.familyId !== session.family?.familyId) leaveFor(() => session.selectFamily(m.familyId));
+            },
+          }))}
+        />
       </Screen>
     </>
   );

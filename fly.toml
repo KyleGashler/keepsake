@@ -1,6 +1,5 @@
-# Pick an unguessable app name — until a real token verifier lands (B1) this
-# deployment still runs dev auth, so the URL is most of what stands between
-# the archive and the world.
+# The name predates real sign-in (B1), when the URL was the only lock on the
+# demo. Every API call now needs a Firebase ID token.
 app = "keepsake-demo-h4t9wq"
 primary_region = "sjc"
 
@@ -26,14 +25,13 @@ primary_region = "sjc"
   STORAGE_PROVIDER = "s3"
   S3_BUCKET = "memories-and-more-memories"
   S3_REGION = "us-east-2"
-  # Dev auth: a bearer token of `dev:<email>` is taken at face value, and a
-  # request with no token at all is treated as DEV_DEFAULT_USER. That is not
-  # authentication — ALLOW_DEV_AUTH_IN_PROD is the explicit opt-in the server
-  # demands before it will boot this way, and it exists only so the demo keeps
-  # working until the Firebase verifier lands (B1). Delete all three then.
-  AUTH_MODE = "dev"
-  ALLOW_DEV_AUTH_IN_PROD = "1"
-  DEV_DEFAULT_USER = "demo@keepsake.local"
+  # Sign-in is Firebase Auth (email + password). The API verifies each
+  # request's ID token against this project with no credentials beyond its id;
+  # the server refuses to boot in firebase mode without it. It must be the same
+  # project the web bundle was built for (EXPO_PUBLIC_FIREBASE_PROJECT_ID in
+  # the Dockerfile). Dev tokens (`dev:<email>`) are rejected here.
+  AUTH_MODE = "firebase"
+  FIREBASE_PROJECT_ID = "keepsake-prod-47eda"
 
 [http_service]
   internal_port = 4000

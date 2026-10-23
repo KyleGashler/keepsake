@@ -127,6 +127,13 @@ async function ensureDemoUser(familyId: string) {
   });
   if (!owner) return;
 
+  // Already owned — by the demo user, or by the real account that took the
+  // demo user over (a verified Firebase sign-in with the same email rebinds
+  // it; see resolveUser in src/auth/middleware.ts). Re-creating a dev owner
+  // beside a real one would leave a second OWNER nobody can sign in as.
+  const owned = await prisma.familyMembership.findFirst({ where: { familyId, role: "OWNER" } });
+  if (owned) return;
+
   const demoUser = await prisma.user.upsert({
     where: { authProviderId: "dev:demo@keepsake.local" },
     update: {},

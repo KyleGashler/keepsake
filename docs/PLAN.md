@@ -135,6 +135,9 @@ member, delete; CONTRIBUTOR: create/edit; VIEWER: read. Invite flow:
 (interface + `ConsoleEmailSender`); `GET /invites/:token` preview;
 `POST /invites/:token/accept` creates membership. `DELETE /family/members/:id`.
 Family Hub screen shows real permissions and pending invites.
+**Accept must require a verified email:** refuse unless `req.ctx.emailVerified`
+(set from the token by `requireUser`, B1); the client already has a
+verify-email nudge with resend in Family Hub to point people at.
 **Accept:** each role boundary verified by hand; accept flow end-to-end in dev mode.
 
 #### A6. Job queue + derivatives worker (gives Mosaic a real palette)
@@ -163,6 +166,13 @@ add/remove memory; reorder media. Client screens for each.
 **Accept:** every mutation has a UI path.
 
 #### A8. Client auth + data layer
+> **Auth half done (2026-10-22, with B1)** — see "Decision: auth". The
+> TanStack Query migration and the error/empty-states pass moved to A8b.
+> Differences from the brief below: tokens persist in AsyncStorage
+> (localStorage on web) rather than `expo-secure-store`, because Firebase's
+> React Native persistence is AsyncStorage-based and the dev token is not a
+> secret; `useApi` stays.
+
 **Depends:** A3.
 **Do:** `app/src/auth/AuthProvider.ts` interface
 (`signIn`, `signOut`, `getToken`, `onChange`); `DevAuthProvider` (email field
@@ -171,6 +181,16 @@ add/remove memory; reorder media. Client screens for each.
 Replace `useApi` with TanStack Query; inject bearer + `x-family-id`; global
 401 → sign-out. Error and empty states on every screen.
 **Accept:** cold start → sign-in → browse → capture works on web and device.
+
+#### A8b. Data layer: TanStack Query, error and empty states
+**Depends:** A8 (auth half).
+**Do:** replace `useApi` / `apiGet` / `apiSend` callers with TanStack Query
+(query keys include the family id, so a family switch is a cache miss, not a
+refetch-everything effect; mutations invalidate what they touch). Keep
+`apiFetch` as the one place headers and the 401 → sign-out live. Then an
+error and empty state on every screen.
+**Accept:** no screen fetches outside TanStack Query; switching family shows
+no stale data; every screen has a designed empty and error state.
 
 ### Wave 4 — feature work on the new foundations
 
@@ -213,7 +233,7 @@ Track A; the row says which.
 
 | ID | Service | Provision (human) | Adapter (agent) | Implements | After |
 | --- | --- | --- | --- | --- | --- |
-| B1 | **Firebase Auth** | Create project; enable Email, Apple, Google; download service-account JSON; add iOS/Android apps + web config | `FirebaseTokenVerifier` (`firebase-admin`); client `FirebaseAuthProvider` (Firebase JS SDK on web, `@react-native-firebase/auth` native) | A3 `TokenVerifier`, A8 `AuthProvider` | A3, A8 |
+| B1 ✅ | **Firebase Auth** | Two projects (dev, prod); enable Email/Password; register a web app in each and copy its config. (Apple/Google, service account and native apps later — see "Decision: auth".) | Done 2026-10-22: `FirebaseTokenVerifier` (`firebase-admin`, project id only); client `FirebaseAuthProvider` (Firebase JS SDK on web *and* native) | A3 `TokenVerifier`, A8 `AuthProvider` | A3, A8 |
 | B2 | **AWS S3** | Bucket with versioning on, no lifecycle deletes; IAM user scoped to that bucket (get/put/head, no delete on `*/original.*`); CORS for PUT from app origins | `S3StorageProvider` with presigned PUT/GET (`@aws-sdk/client-s3`, `s3-request-presigner`); local S3 emulator in compose; one-off copy of Fly-volume objects into the bucket | A5 `StorageProvider` | A5 |
 | B3 | **Managed Postgres + backups** | Fly Postgres / Neon / RDS with PITR; set `DATABASE_URL` secret | Point `migrate deploy` at it; document restore drill | A1 | A1 |
 | B4 | **Worker process** | Fly `[processes] worker` + scale | `fly.toml` process groups; `WORKER_INLINE=0` | A6 | A6 |
@@ -768,6 +788,43 @@ Order: **M0** (human) ∥ **M1 ∥ M2** against the contract, then M3.
 
 ---
 
+## Decision: auth (2026-10-22)
+
+B1 and the auth half of A8 landed together. What was decided:
+
+- **Firebase JS SDK on every platform** (`firebase` package), not
+  `@react-native-firebase`: one code path on the web and in Expo Go, no dev
+  build. Native persistence is `getReactNativePersistence(AsyncStorage)`, web
+  is `browserLocalPersistence`. Revisit when EAS builds arrive with Apple and
+  Google sign-in.
+- **Email + password only at launch.** No email link, Google or Apple yet.
+- **Email verification gates invite acceptance, not the app.** Sign-up sends
+  Firebase's verification email and lets the person straight in; Family Hub
+  shows a dismissible nudge (resend, "I've verified" → reload the user and
+  force-refresh the token). `VerifiedIdentity.emailVerified` reaches
+  `req.ctx.emailVerified` and `GET /me`; **A4's invite accept must require it.**
+- **Two Firebase projects, dev and prod**, configured entirely from env:
+  `AUTH_MODE` + `FIREBASE_PROJECT_ID` on the API, `EXPO_PUBLIC_AUTH_MODE` +
+  `EXPO_PUBLIC_FIREBASE_*` in the app. Local development stays on
+  `AUTH_MODE=dev` (compose unchanged), so seed data and
+  `Bearer dev:demo@keepsake.local` keep working.
+- **The API verifies with `firebase-admin` `verifyIdToken()` initialised with
+  the project id only.** Confirmed: it fetches Google's public securetoken
+  certificates over HTTPS and needs no credentials. A service account comes
+  with account deletion (A16). Key-fetch failures answer 503, not 401.
+- **One email, one account.** A new provider identity whose email belongs to a
+  `dev:` user takes that user over if its email is verified (the rebind is
+  logged); unverified is `403 verify_email`, another real provider is
+  `409 email_in_use`. This is how the owner's real account inherits the demo
+  family: set the prod demo user's email to the real address, sign up with
+  Firebase, verify. (`seed.ts` no longer re-attaches a dev owner to a family
+  that already has one.)
+- **TanStack Query is out of scope** — split off as A8b. `useApi` / `apiGet` /
+  `apiSend` stay, behind one `apiFetch` that adds the bearer and
+  `x-family-id` and signs out on 401.
+
+---
+
 ## Dependency graph
 
 ```
@@ -789,6 +846,7 @@ A12 ── B8, B11
 2. **Next:** A3, A5, A10. ✅ Done.
    B2 adapter runs alongside Wave 3 (built against a local S3 emulator; AWS account only needed for the cutover).
 3. **Then:** A4, A6, A7, A8 in parallel. B1 adapter after A3 + A8.
+   A8 (auth half) + B1 ✅ Done 2026-10-22; A8b (TanStack Query, error/empty states) remains.
 4. **Then:** A9, A13, A16; B4–B11 as their A-side lands.
 
 ## Handoff template for a sub-agent
