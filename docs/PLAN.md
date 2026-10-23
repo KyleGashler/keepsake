@@ -138,6 +138,20 @@ Family Hub screen shows real permissions and pending invites.
 **Accept must require a verified email:** refuse unless `req.ctx.emailVerified`
 (set from the token by `requireUser`, B1); the client already has a
 verify-email nudge with resend in Family Hub to point people at.
+**Decided 2026-10-22:**
+- **Share link first, email optional.** The owner copies or shares a
+  single-use link (7-day expiry, revocable). `Invite.email` becomes nullable;
+  when an email is given, `EmailSender` also sends it (console until B6). Any
+  verified account may accept — the invite is not bound to the address.
+- **An invite may name an existing Person.** `Invite.personId?` — the invite
+  form offers the family's unlinked, non-CHILD People or "someone new". Accept
+  links that Person to the membership; with none, accept creates one.
+- `/join/[token]` in the app works signed out and with no family, the way
+  `/auth/action` does: preview → sign up / sign in → verify → accept, without
+  passing through Create Family.
+- Family Hub permission labels come from `FamilyMembership.role`, not
+  `PersonRole`.
+
 **Accept:** each role boundary verified by hand; accept flow end-to-end in dev mode.
 
 #### A6. Job queue + derivatives worker (gives Mosaic a real palette)
