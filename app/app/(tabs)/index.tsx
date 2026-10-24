@@ -86,6 +86,8 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
   const prompt = canContribute ? data.prompt : null;
   const addPerson = () => setAdding("person");
   const cream = useColor("cream");
+  // A small family gets an empty place in the rail to add to; a bigger one, the header button.
+  const addInRail = canContribute && data.people.length < SMALL_FAMILY;
 
   return (
     <>
@@ -103,7 +105,7 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
         label="Your People"
         first={!canContribute}
         action={
-          canContribute ? (
+          canContribute && !addInRail ? (
             <SmallButton label="Add" icon="add" accessibilityLabel="Add someone" onPress={addPerson} />
           ) : null
         }
@@ -122,8 +124,8 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
             onPress={() => router.push(`/person/${person.id}`)}
           />
         ))}
-        {canContribute && data.people.length < SMALL_FAMILY ? (
-          <PlaceholderChip icon="add" label="Add someone" onPress={addPerson} />
+        {addInRail ? (
+          <PlaceholderChip icon="add" label="Add" onPress={addPerson} />
         ) : null}
         {isOwner && data.people.length < SMALL_FAMILY && !data.gettingStarted.invitedSomeone ? (
           <PlaceholderChip icon="mail-outline" label="Invite" onPress={openInvite} />
