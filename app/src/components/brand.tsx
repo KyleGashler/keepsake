@@ -1,6 +1,6 @@
-import { StyleSheet, Text, View, type ColorValue, type StyleProp, type ViewStyle } from "react-native";
+import { Text, View, type ColorValue, type StyleProp, type ViewStyle } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
-import { colors, fonts } from "../theme";
+import { useColor } from "../theme";
 
 /**
  * The little by little brand kit.
@@ -15,18 +15,13 @@ import { colors, fonts } from "../theme";
  * same way by design/make_icons.py — change both together.
  */
 
-/**
- * The logotype is drawn in a neutral near-black, not in the app's ink — the
- * logo keeps its own colour wherever it appears.
- */
-const LOGO_INK = "#141716";
-
 type ShapeProps = {
   /** Width in points; height follows each shape's own aspect ratio. */
   size?: number;
   color?: string;
   opacity?: number;
   style?: StyleProp<ViewStyle>;
+  className?: string;
 };
 
 /** The signature four-point star. Every other sparkle in the kit reuses it. */
@@ -41,8 +36,8 @@ const TWINKLE =
 /** Primary logo: the name with its twinkle. */
 export function Wordmark({
   width = 150,
-  color = LOGO_INK,
-  accent = colors.accent,
+  color,
+  accent,
   style,
 }: {
   /** Rendered width in points; the type is sized to fill it. */
@@ -51,23 +46,29 @@ export function Wordmark({
   accent?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  // The logotype is drawn in a neutral near-black (logo-ink), not in the
+  // app's ink — the logo keeps its own colour wherever it appears.
+  const logoInk = useColor("logo-ink");
+  const honey = useColor("accent");
   // DM Serif Display sets "little by little" about 6.6 ems wide; the twinkle
   // takes the rest.
   const fontSize = width / 7.4;
   return (
     <View
-      style={[styles.wordmark, { width }, style]}
+      className="flex-row items-start"
+      style={[{ width }, style]}
       accessibilityRole="header"
       accessibilityLabel="little by little"
     >
       <Text
-        style={{ fontFamily: fonts.display, fontSize, lineHeight: fontSize * 1.2, color }}
+        className="font-display"
+        style={{ fontSize, lineHeight: fontSize * 1.2, color: color ?? logoInk }}
         numberOfLines={1}
         importantForAccessibility="no"
       >
         little by little
       </Text>
-      <Twinkle size={fontSize * 0.55} color={accent} style={{ marginTop: fontSize * 0.1 }} />
+      <Twinkle size={fontSize * 0.55} color={accent ?? honey} style={{ marginTop: fontSize * 0.1 }} />
     </View>
   );
 }
@@ -78,8 +79,8 @@ export function Wordmark({
  */
 export function BrandMark({
   size = 40,
-  color = LOGO_INK,
-  accent = colors.accent,
+  color,
+  accent,
   style,
 }: {
   size?: number;
@@ -87,24 +88,28 @@ export function BrandMark({
   accent?: string;
   style?: StyleProp<ViewStyle>;
 }) {
+  const logoInk = useColor("logo-ink");
+  const honey = useColor("accent");
+  const ring = accent ?? honey;
   const fontSize = size * 0.36;
   return (
     <View
+      className="flex-row items-center justify-center"
       style={[
-        styles.mark,
-        { width: size, height: size, borderRadius: size / 2, borderColor: accent, borderWidth: Math.max(1, size * 0.03) },
+        { width: size, height: size, borderRadius: size / 2, borderColor: ring, borderWidth: Math.max(1, size * 0.03) },
         style,
       ]}
       accessibilityRole="image"
       accessibilityLabel="little by little"
     >
       <Text
-        style={{ fontFamily: fonts.display, fontSize, lineHeight: fontSize * 1.15, color }}
+        className="font-display"
+        style={{ fontSize, lineHeight: fontSize * 1.15, color: color ?? logoInk }}
         importantForAccessibility="no"
       >
         lbl
       </Text>
-      <Twinkle size={size * 0.16} color={accent} style={{ marginBottom: fontSize * 0.5 }} />
+      <Twinkle size={size * 0.16} color={ring} style={{ marginBottom: fontSize * 0.5 }} />
     </View>
   );
 }
@@ -119,19 +124,22 @@ export function BrandMark({
  */
 export function Twinkle({
   size = 14,
-  color = colors.accent,
+  color,
   opacity = 1,
   style,
+  className = "",
   strokeWidth,
 }: Omit<ShapeProps, "color"> & { color?: ColorValue; strokeWidth?: number }) {
+  const honey = useColor("accent");
+  const tint = color ?? honey;
   const outlined = strokeWidth !== undefined;
   return (
-    <View style={[styles.shape, { width: size, height: size }, style]}>
+    <View className={`pointer-events-none ${className}`} style={[{ width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path
           d={TWINKLE}
-          fill={outlined ? "none" : color}
-          stroke={outlined ? color : undefined}
+          fill={outlined ? "none" : tint}
+          stroke={outlined ? tint : undefined}
           strokeWidth={strokeWidth}
           strokeLinejoin="round"
           opacity={opacity}
@@ -142,12 +150,14 @@ export function Twinkle({
 }
 
 /** Stardust cluster — a scatter of dots with one small star among them. */
-export function StardustCluster({ size = 44, color = colors.accent, opacity = 1, style }: ShapeProps) {
+export function StardustCluster({ size = 44, color, opacity = 1, style, className = "" }: ShapeProps) {
+  const honey = useColor("accent");
+  const tint = color ?? honey;
   const height = size * (28 / 44);
   return (
-    <View style={[styles.shape, { width: size, height }, style]}>
+    <View className={`pointer-events-none ${className}`} style={[{ width: size, height }, style]}>
       <Svg width={size} height={height} viewBox="0 0 44 28">
-        <G fill={color} opacity={opacity}>
+        <G fill={tint} opacity={opacity}>
           <Path d={TWINKLE} transform="translate(28 2) scale(0.5)" />
           <Circle cx={6} cy={9} r={1.5} />
           <Circle cx={13} cy={4.5} r={1} />
@@ -166,20 +176,22 @@ export function StardustCluster({ size = 44, color = colors.accent, opacity = 1,
 }
 
 /** Shooting star — a twinkle with its trail. */
-export function ShootingStar({ size = 44, color = colors.accent, opacity = 1, style }: ShapeProps) {
+export function ShootingStar({ size = 44, color, opacity = 1, style, className = "" }: ShapeProps) {
+  const honey = useColor("accent");
+  const tint = color ?? honey;
   const height = size * (30 / 44);
   return (
-    <View style={[styles.shape, { width: size, height }, style]}>
+    <View className={`pointer-events-none ${className}`} style={[{ width: size, height }, style]}>
       <Svg width={size} height={height} viewBox="0 0 44 30">
         <G opacity={opacity}>
-          <Path d={TWINKLE} transform="translate(28 1) scale(0.62)" fill={color} />
-          <G stroke={color} strokeWidth={1.4} strokeLinecap="round" fill="none">
+          <Path d={TWINKLE} transform="translate(28 1) scale(0.62)" fill={tint} />
+          <G stroke={tint} strokeWidth={1.4} strokeLinecap="round" fill="none">
             <Path d="M26.5 12.5 C21 15.8 13.5 20.5 4 27" />
             <Path d="M31.5 17.5 C27 20 21.5 23.5 15.5 27.5" />
             <Path d="M21 8 C17.5 10 13 12.8 8 16" />
           </G>
-          <Circle cx={5.5} cy={20} r={1.1} fill={color} />
-          <Circle cx={12} cy={24.5} r={0.9} fill={color} />
+          <Circle cx={5.5} cy={20} r={1.1} fill={tint} />
+          <Circle cx={12} cy={24.5} r={0.9} fill={tint} />
         </G>
       </Svg>
     </View>
@@ -187,14 +199,16 @@ export function ShootingStar({ size = 44, color = colors.accent, opacity = 1, st
 }
 
 /** Story arc — the dome a story travels over. */
-export function StoryArc({ size = 60, color = colors.accent, opacity = 1, style }: ShapeProps) {
+export function StoryArc({ size = 60, color, opacity = 1, style, className = "" }: ShapeProps) {
+  const honey = useColor("accent");
+  const tint = color ?? honey;
   const height = size * (24 / 60);
   return (
-    <View style={[styles.shape, { width: size, height }, style]}>
+    <View className={`pointer-events-none ${className}`} style={[{ width: size, height }, style]}>
       <Svg width={size} height={height} viewBox="0 0 60 24">
         <Path
           d="M2 22 A 30 30 0 0 1 58 22"
-          stroke={color}
+          stroke={tint}
           strokeWidth={1.5}
           strokeLinecap="round"
           fill="none"
@@ -206,10 +220,12 @@ export function StoryArc({ size = 60, color = colors.accent, opacity = 1, style 
 }
 
 /** Dream cloud — flat-bottomed, soft on top. */
-export function DreamCloud({ size = 48, color = colors.accent, opacity = 1, style }: ShapeProps) {
+export function DreamCloud({ size = 48, color, opacity = 1, style, className = "" }: ShapeProps) {
+  const honey = useColor("accent");
+  const tint = color ?? honey;
   const height = size * (30 / 48);
   return (
-    <View style={[styles.shape, { width: size, height }, style]}>
+    <View className={`pointer-events-none ${className}`} style={[{ width: size, height }, style]}>
       <Svg width={size} height={height} viewBox="0 0 48 30">
         <Path
           d={
@@ -218,7 +234,7 @@ export function DreamCloud({ size = 48, color = colors.accent, opacity = 1, styl
             "C29.8 7.9 31.2 7.5 32.6 7.5 C36.7 7.5 40 10.8 40 14.9 " +
             "C43.5 15.5 46 18.5 46 22 C46 23.1 45.8 23.6 45.4 24 Z"
           }
-          stroke={color}
+          stroke={tint}
           strokeWidth={1.5}
           strokeLinejoin="round"
           strokeLinecap="round"
@@ -231,25 +247,21 @@ export function DreamCloud({ size = 48, color = colors.accent, opacity = 1, styl
 }
 
 /** Little moon — a thin crescent. */
-export function LittleMoon({ size = 24, color = colors.accent, opacity = 1, style }: ShapeProps) {
+export function LittleMoon({ size = 24, color, opacity = 1, style, className = "" }: ShapeProps) {
+  const honey = useColor("accent");
+  const tint = color ?? honey;
   return (
-    <View style={[styles.shape, { width: size, height: size }, style]}>
+    <View className={`pointer-events-none ${className}`} style={[{ width: size, height: size }, style]}>
       <Svg width={size} height={size} viewBox="0 0 24 24">
         <Path
           d={
             "M14 2.2 a 10 10 0 1 0 0 19.6 " +
             "C 9.4 18.6 8.6 15.4 8.6 12 C 8.6 8.6 9.4 5.4 14 2.2 Z"
           }
-          fill={color}
+          fill={tint}
           opacity={opacity}
         />
       </Svg>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  wordmark: { flexDirection: "row", alignItems: "flex-start" },
-  mark: { flexDirection: "row", alignItems: "center", justifyContent: "center" },
-  shape: { pointerEvents: "none" },
-});

@@ -1,8 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useCallback, useState, type ComponentProps } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, useApi, type HomePayload } from "../../src/api";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
@@ -22,7 +20,8 @@ import {
   SmallButton,
 } from "../../src/components/ui";
 import { count, relativeTime } from "../../src/format";
-import { colors, fonts, layout, radius, spacing, type } from "../../src/theme";
+import { Image, Ionicons } from "../../src/styled";
+import { layout, useColor } from "../../src/theme";
 
 /**
  * Home is the front porch of the family's story — a welcome, the people in it,
@@ -42,7 +41,7 @@ export default function HomeScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -86,6 +85,7 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
   // Today's prompt is an invitation to capture, which a VIEWER can't take up.
   const prompt = canContribute ? data.prompt : null;
   const addPerson = () => setAdding("person");
+  const cream = useColor("cream");
 
   return (
     <>
@@ -108,11 +108,12 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
           ) : null
         }
       />
+      {/* Rails scroll edge to edge, past the column's gutter, and rest aligned with it. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        style={styles.rail}
-        contentContainerStyle={[styles.railContent, { gap: spacing.lg }]}
+        className="-mx-gutter"
+        contentContainerClassName="px-gutter gap-4"
       >
         {data.people.map((person) => (
           <PersonChip
@@ -139,23 +140,25 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
                 params: { prompt: prompt.text },
               })
             }
-            style={({ pressed }) => [styles.hero, pressed && { opacity: 0.85 }]}
+            className="h-[300px] rounded-lg overflow-hidden bg-surface-alt justify-end active:opacity-85"
           >
             <Image
               source={{ uri: mediaUrl(prompt.imageUrl) }}
-              style={StyleSheet.absoluteFill}
+              className="absolute inset-0"
               contentFit="cover"
               transition={300}
             />
-            <View style={styles.heroScrim} />
+            <View className="absolute inset-0 bg-scrim/36" />
             {/* Whimsical shape 1/6 — twinkle, on the one moment worth capturing today. */}
-            <Twinkle size={22} color="#FFF7EF" opacity={0.9} style={styles.heroTwinkle} />
-            <View style={styles.heroBody}>
-              <Text style={styles.heroText}>{prompt.text}</Text>
-              {prompt.subtitle ? <Text style={styles.heroSub}>{prompt.subtitle}</Text> : null}
-              <View style={styles.heroCta}>
-                <Ionicons name="add" size={16} color={colors.ink} />
-                <Text style={styles.heroCtaText}>Preserve this</Text>
+            <Twinkle size={22} color={cream} opacity={0.9} className="absolute top-4 right-4" />
+            <View className="p-6 gap-2">
+              <Text className="font-display text-[26px] leading-[33px] text-cream">{prompt.text}</Text>
+              {prompt.subtitle ? (
+                <Text className="text-[14px] leading-[20px] text-cream/85">{prompt.subtitle}</Text>
+              ) : null}
+              <View className="flex-row items-center gap-1.5 self-start bg-cream/94 py-[9px] px-4 rounded-full mt-2">
+                <Ionicons name="add" size={16} colorClassName="accent-ink" />
+                <Text className="text-[14px] font-semibold text-ink">Preserve this</Text>
               </View>
             </View>
           </Pressable>
@@ -167,8 +170,8 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
-          style={styles.rail}
-          contentContainerStyle={[styles.railContent, { gap: spacing.md }]}
+          className="-mx-gutter"
+          contentContainerClassName="px-gutter gap-3"
         >
           {data.storySoFar.map((memory) => (
             <MemoryTile key={memory.id} memory={memory} />
@@ -181,17 +184,17 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
       {data.updates.length ? (
         <>
           <SectionHeader label="Family Updates" />
-          <View style={styles.updates}>
+          <View className="gap-4">
             {data.updates.map((update) => (
-              <View key={update.id} style={styles.update}>
+              <View key={update.id} className="flex-row gap-3 items-center">
                 {update.actor ? (
                   <Avatar person={update.actor} size={34} />
                 ) : (
-                  <View style={styles.updateDot} />
+                  <View className="w-2 h-2 rounded-full bg-accent mx-[13px]" />
                 )}
-                <View style={{ flex: 1 }}>
-                  <Text style={[type.body, { fontSize: 14.5 }]}>{update.message}</Text>
-                  <Text style={type.caption}>{relativeTime(update.createdAt)}</Text>
+                <View className="flex-1">
+                  <Text className="type-body text-[14.5px]">{update.message}</Text>
+                  <Text className="type-caption">{relativeTime(update.createdAt)}</Text>
                 </View>
               </View>
             ))}
@@ -200,7 +203,7 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
       ) : null}
 
       {data.stats.memoryCount ? (
-        <Text style={styles.footer}>
+        <Text className="type-caption text-center mt-section">
           {count(data.stats.memoryCount, "memory", "memories")} preserved ·{" "}
           {count(data.stats.personCount, "person", "people")} in {data.family.name}
         </Text>
@@ -248,9 +251,9 @@ function GettingStarted({
       <SectionHeader
         label="Getting Started"
         first
-        action={<Text style={type.caption}>{`${doneCount} of ${steps.length}`}</Text>}
+        action={<Text className="type-caption">{`${doneCount} of ${steps.length}`}</Text>}
       />
-      <View style={styles.checklist}>
+      <View className="rounded-lg bg-surface border border-line px-4">
         {steps.map((step, i) => (
           <Pressable
             key={step.label}
@@ -258,15 +261,21 @@ function GettingStarted({
             disabled={step.done}
             accessibilityRole="button"
             accessibilityState={{ disabled: step.done, checked: step.done }}
-            style={({ pressed }) => [styles.step, i > 0 && styles.stepDivider, pressed && { opacity: 0.7 }]}
+            className={`flex-row items-center gap-3 py-3 active:opacity-70 ${i > 0 ? "border-t border-line" : ""}`}
           >
             <Ionicons
               name={step.done ? "checkmark-circle" : "ellipse-outline"}
               size={22}
-              color={step.done ? colors.primary : colors.muted}
+              colorClassName={step.done ? "accent-primary" : "accent-muted"}
             />
-            <Text style={[styles.stepLabel, step.done && styles.stepLabelDone]}>{step.label}</Text>
-            {step.done ? null : <Ionicons name="chevron-forward" size={16} color={colors.muted} />}
+            <Text
+              className={`flex-1 text-[15px] ${
+                step.done ? "font-sans text-muted line-through" : "font-sans-bold text-ink"
+              }`}
+            >
+              {step.label}
+            </Text>
+            {step.done ? null : <Ionicons name="chevron-forward" size={16} colorClassName="accent-muted" />}
           </Pressable>
         ))}
       </View>
@@ -280,21 +289,22 @@ function PlaceholderChip({
   label,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: ComponentProps<typeof Ionicons>["name"];
   label: string;
   onPress: () => void;
 }) {
+  // Sized like a PersonChip, so the rail's rhythm carries on into the gaps.
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={label}
-      style={({ pressed }) => [styles.placeholder, pressed && { opacity: 0.7 }]}
+      className="w-[74px] items-center gap-1.5 active:opacity-70"
     >
-      <View style={styles.placeholderCircle}>
-        <Ionicons name={icon} size={22} color={colors.muted} />
+      <View className="w-[58px] h-[58px] rounded-full border-[1.5px] border-dashed border-muted items-center justify-center">
+        <Ionicons name={icon} size={22} colorClassName="accent-muted" />
       </View>
-      <Text style={styles.placeholderLabel} numberOfLines={1}>
+      <Text className="text-[13px] font-semibold text-muted" numberOfLines={1}>
         {label}
       </Text>
     </Pressable>
@@ -305,122 +315,30 @@ function PlaceholderChip({
 function FirstMemory({ canContribute }: { canContribute: boolean }) {
   if (!canContribute) {
     return (
-      <Text style={type.caption}>Nothing here yet. When your family preserves a memory, it will appear here.</Text>
+      <Text className="type-caption">Nothing here yet. When your family preserves a memory, it will appear here.</Text>
     );
   }
   return (
-    <View style={styles.first}>
+    <View className="items-center py-9 px-4 rounded-lg bg-surface-alt gap-3">
       <Sparkle size={30} variant="filled" />
-      <Text style={styles.firstTitle}>Your story starts with one memory</Text>
-      <Text style={styles.firstBody}>A photo, a voice note, a few lines. It doesn't need to be perfect, only true.</Text>
+      <Text className="type-title text-center">Your story starts with one memory</Text>
+      <Text className="type-body text-center max-w-[340px]">
+        A photo, a voice note, a few lines. It doesn't need to be perfect, only true.
+      </Text>
       <Button label="Preserve your first memory" icon="add" onPress={() => router.push("/capture")} />
-      <Text style={[type.label, { marginTop: spacing.sm }]}>Or start with</Text>
-      <View style={styles.ideas}>
+      <Text className="type-label mt-2">Or start with</Text>
+      <View className="flex-row flex-wrap justify-center gap-2">
         {STARTER_IDEAS.map((idea) => (
           <Pressable
             key={idea}
             onPress={() => router.push({ pathname: "/capture/compose", params: { prompt: idea } })}
             accessibilityRole="button"
-            style={({ pressed }) => [styles.idea, pressed && { opacity: 0.7 }]}
+            className="py-2 px-3 rounded-full border border-line bg-surface active:opacity-70"
           >
-            <Text style={styles.ideaLabel}>{idea}</Text>
+            <Text className="font-sans text-[14px] text-ink">{idea}</Text>
           </Pressable>
         ))}
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  // Rails scroll edge to edge, past the column's gutter, and rest aligned with it.
-  rail: { marginHorizontal: -layout.gutter },
-  railContent: { paddingHorizontal: layout.gutter },
-  hero: {
-    height: 300,
-    borderRadius: radius.lg,
-    overflow: "hidden",
-    backgroundColor: colors.surfaceAlt,
-    justifyContent: "flex-end",
-  },
-  heroScrim: {
-    position: "absolute",
-    inset: 0,
-    backgroundColor: "rgba(47,54,46,0.36)",
-  },
-  heroTwinkle: { position: "absolute", top: spacing.lg, right: spacing.lg },
-  heroBody: { padding: spacing.xl, gap: spacing.sm },
-  heroText: {
-    fontFamily: type.display.fontFamily,
-    fontSize: 26,
-    lineHeight: 33,
-    color: "#FFF7EF",
-  },
-  heroSub: { fontSize: 14, lineHeight: 20, color: "rgba(255,247,239,0.85)" },
-  heroCta: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    alignSelf: "flex-start",
-    backgroundColor: "rgba(255,247,239,0.94)",
-    paddingVertical: 9,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    marginTop: spacing.sm,
-  },
-  heroCtaText: { fontSize: 14, fontWeight: "600", color: colors.ink },
-  updates: { gap: spacing.lg },
-  update: { flexDirection: "row", gap: spacing.md, alignItems: "center" },
-  updateDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.accent,
-    marginHorizontal: 13,
-  },
-  footer: { ...type.caption, textAlign: "center", marginTop: layout.section },
-  checklist: {
-    borderRadius: radius.lg,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    paddingHorizontal: spacing.lg,
-  },
-  step: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md },
-  stepDivider: { borderTopWidth: 1, borderTopColor: colors.line },
-  stepLabel: { flex: 1, fontFamily: fonts.sansBold, fontSize: 15, color: colors.ink },
-  stepLabelDone: { color: colors.muted, textDecorationLine: "line-through", fontFamily: fonts.sans },
-  // Sized like a PersonChip, so the rail's rhythm carries on into the gaps.
-  placeholder: { width: 74, alignItems: "center", gap: 6 },
-  placeholderCircle: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    borderWidth: 1.5,
-    borderStyle: "dashed",
-    borderColor: colors.muted,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  placeholderLabel: { fontSize: 13, fontWeight: "600", color: colors.muted },
-  first: {
-    alignItems: "center",
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceAlt,
-    gap: spacing.md,
-  },
-  firstTitle: { ...type.title, textAlign: "center" },
-  firstBody: { ...type.body, textAlign: "center", maxWidth: 340 },
-  ideas: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: spacing.sm },
-  idea: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  ideaLabel: { fontFamily: fonts.sans, fontSize: 14, color: colors.ink },
-});
