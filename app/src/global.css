@@ -1,0 +1,182 @@
+@import "tailwindcss";
+@import "uniwind";
+
+/* Classes are only scanned under src/; routes live beside it in app/. */
+@source "../app";
+
+/*
+ * little by little should feel like a warm room, not a dashboard: paper, a
+ * deep-teal ink, one golden-honey accent, and a display serif for the names
+ * of things.
+ *
+ * This file is the one place a colour, font, radius or spacing step is
+ * defined. Components use the classes these generate (`bg-paper`,
+ * `text-ink`, `rounded-md`, `px-gutter`, `type-title`); JS that needs a raw
+ * value (an icon's colour, an SVG fill) reads it with `useColor` from
+ * src/theme.ts or an `accent-*` class on a `colorClassName` prop.
+ *
+ * `static` keeps every variable available to JS even when no class uses it.
+ */
+@theme static {
+  /* Tailwind's own palette is cleared so nothing invents a hue. */
+  --color-*: initial;
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-transparent: transparent;
+
+  /*
+   * The brand palette — the Library journey redesign (design/mockups/,
+   * 2026-10-21). Values were sampled from the mockups. Change a hue here and
+   * every role below that uses it follows.
+   */
+  --color-deep-teal: #123f45;
+  /* Subtitles and descriptions — a teal-grey that holds 5.2:1 on paper. */
+  --color-teal-grey: #4e6e73;
+  --color-golden-honey: #d4994a;
+  --color-sage: #8e9a74;
+  --color-terracotta: #d56947;
+  --color-forest: #1d543d;
+  --color-dusk-blue: #7da2b3;
+  --color-peach: #f0dcc8;
+  /* Warm off-white for words laid over photos. */
+  --color-cream: #fff7ef;
+  /* The dark green-grey behind words laid over photos. */
+  --color-scrim: #2f362e;
+  /* The near-black the logo lockups were traced with. */
+  --color-logo-ink: #141716;
+
+  /* Roles. Components use these, not the palette above. */
+  --color-paper: #fbf8f2;
+  --color-surface: #ffffff;
+  /* Warm fill for image placeholders, chips and quiet panels. */
+  --color-surface-alt: #f3eee5;
+  --color-ink: var(--color-deep-teal);
+  --color-ink-soft: var(--color-teal-grey);
+  /* Captions and meta — 4.6:1 on paper. */
+  --color-muted: #56757a;
+  /* Hairlines between rows and around outlined controls. */
+  --color-line: #e6e2d9;
+  /* Golden honey: the eyebrow, the sparkle, small moments of delight. */
+  --color-accent: #c8893b;
+  /*
+   * Honey is too light to carry small text (2.8:1 on paper), so the eyebrow
+   * and any honey-coloured words use this deeper shade of it — 4.6:1, AA.
+   */
+  --color-accent-deep: #9e6526;
+  --color-accent-soft: #f6ead6;
+  /* Filled controls — the Capture disc, primary buttons, selected toggles. */
+  --color-primary: var(--color-deep-teal);
+  --color-on-primary: #ffffff;
+  /* Delete, and anything else that can't be undone — terracotta deepened until small text holds AA on white. */
+  --color-danger: #b0452c;
+  /* The quiet wash behind a warning about what can't be undone. */
+  --color-danger-soft: #fbede7;
+  /* Inline error messages. */
+  --color-error: #9c4a38;
+  /* The glyph on a collection disc too pale for white. */
+  --color-pale-disc-glyph: #b5853f;
+
+  /*
+   * Family names as expo-font registers them (app/_layout.tsx loads them).
+   * Custom fonts ignore font-weight on Android, so each weight is its own
+   * family — use `font-sans-bold`, not `font-bold`.
+   */
+  --font-*: initial;
+  /* DM Serif Display — titles, names of children, collections and memories. */
+  --font-display: DMSerifDisplay_400Regular;
+  /* Nunito Sans — everything else. */
+  --font-sans: NunitoSans_400Regular;
+  --font-sans-semibold: NunitoSans_600SemiBold;
+  --font-sans-bold: NunitoSans_700Bold;
+
+  --radius-*: initial;
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 22px;
+  --radius-full: 9999px;
+
+  /*
+   * One page rhythm for every screen, so moving between them never shifts the
+   * margins under your thumb. The numeric scale stays Tailwind's 4px steps.
+   */
+  /* Left and right of every page, sheet and header. */
+  --spacing-gutter: 24px;
+  /* Below the safe area, above a page's first row. */
+  --spacing-top: 16px;
+  /* Between a page's header and the first thing under it. */
+  --spacing-after-header: 24px;
+  /* Between one labelled section and the next. */
+  --spacing-section: 36px;
+  /* Above the safe area, after the last row of a scroll. */
+  --spacing-bottom: 36px;
+
+  /* Content is capped so the phone layout stays intact on a wide browser. */
+  --container-page: 720px;
+
+  --shadow-*: initial;
+  --shadow-card: 0 6px 20px rgb(18 63 69 / 0.09);
+}
+
+/* The type scale. Each sets face, size, leading and colour; override colour with a text-* class after it. */
+@utility type-display {
+  font-family: var(--font-display);
+  font-size: 36px;
+  line-height: 42px;
+  color: var(--color-ink);
+}
+@utility type-title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 32px;
+  color: var(--color-ink);
+}
+@utility type-heading {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 26px;
+  color: var(--color-ink);
+}
+@utility type-body {
+  font-family: var(--font-sans);
+  font-size: 15.5px;
+  line-height: 23px;
+  color: var(--color-ink-soft);
+}
+/* A family's own words. The display face is for short names, so stories read in the sans. */
+@utility type-story {
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 27px;
+  color: var(--color-ink);
+}
+@utility type-label {
+  font-family: var(--font-sans-bold);
+  font-size: 11.5px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--color-muted);
+}
+/* "LITTLE BY LITTLE" — spaced honey capitals over a page title. */
+@utility type-eyebrow {
+  font-family: var(--font-sans-bold);
+  font-size: 12px;
+  letter-spacing: 3px;
+  text-transform: uppercase;
+  color: var(--color-accent-deep);
+}
+@utility type-caption {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--color-muted);
+}
+
+/* On the web a family name is a CSS stack, so text still reads if a font fails to load. */
+@variant web {
+  :root {
+    --font-display: DMSerifDisplay_400Regular, Georgia, "Times New Roman", serif;
+    --font-sans: NunitoSans_400Regular, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-sans-semibold: NunitoSans_600SemiBold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-sans-bold: NunitoSans_700Bold, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+}

@@ -1,4 +1,5 @@
 import { Platform } from "react-native";
+import { useCSSVariable } from "uniwind";
 
 /**
  * little by little should feel like a warm room, not a dashboard: paper, a deep-teal
@@ -156,3 +157,48 @@ export const shadow = Platform.select({
   android: { elevation: 3 },
   default: { boxShadow: "0 6px 20px rgba(18,63,69,0.09)" },
 });
+
+/**
+ * Every colour role and palette entry in src/global.css, by the name after
+ * `--color-`. Keep in step with that file's `@theme`.
+ */
+export type ColorName =
+  | "white"
+  | "black"
+  | "transparent"
+  | "deep-teal"
+  | "teal-grey"
+  | "golden-honey"
+  | "sage"
+  | "terracotta"
+  | "forest"
+  | "dusk-blue"
+  | "peach"
+  | "cream"
+  | "scrim"
+  | "logo-ink"
+  | "paper"
+  | "surface"
+  | "surface-alt"
+  | "ink"
+  | "ink-soft"
+  | "muted"
+  | "line"
+  | "accent"
+  | "accent-deep"
+  | "accent-soft"
+  | "primary"
+  | "on-primary"
+  | "danger"
+  | "danger-soft"
+  | "error"
+  | "pale-disc-glyph";
+
+/**
+ * A theme colour as a raw value, for props that take a colour rather than a
+ * class — an icon, an SVG fill, a navigator's options. Prefer a class
+ * (`text-ink`, or `colorClassName="accent-ink"`) wherever one fits.
+ */
+export function useColor(name: ColorName): string {
+  return String(useCSSVariable(`--color-${name}`));
+}

@@ -1,14 +1,13 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useMemo } from "react";
-import { Pressable, ScrollView, StyleSheet, View, useWindowDimensions } from "react-native";
+import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
 import { Column, PageHeader } from "../../src/components/journey";
 import { FamilyPill } from "../../src/components/family-switcher";
 import { ErrorState, Loading } from "../../src/components/ui";
-import { colors, layout, MAX_WIDTH, radius, spacing } from "../../src/theme";
+import { Image, Ionicons } from "../../src/styled";
+import { layout, MAX_WIDTH } from "../../src/theme";
 
 const GAP = 10;
 const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
@@ -44,7 +43,7 @@ export default function MosaicScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -60,7 +59,7 @@ export default function MosaicScreen() {
         />
         {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
         {loading && !data ? <Loading label="Arranging the mosaic…" /> : null}
-        <View style={{ flexDirection: "row", gap: GAP }}>
+        <View className="flex-row" style={{ gap: GAP }}>
           {columns.map((column, i) => (
             // oxlint-disable-next-line react/no-array-index-key -- columns are positions; tiles move between them
             <View key={i} style={{ width: columnWidth, gap: GAP }}>
@@ -68,21 +67,18 @@ export default function MosaicScreen() {
                 <Pressable
                   key={tile.id}
                   onPress={() => router.push(`/memory/${tile.id}`)}
-                  style={({ pressed }) => [
-                    styles.tile,
-                    { height: tile.height },
-                    pressed && { opacity: 0.8 },
-                  ]}
+                  className="overflow-hidden rounded-md bg-surface-alt active:opacity-80"
+                  style={{ height: tile.height }}
                 >
                   <Image
                     source={{ uri: mediaUrl(tile.url) }}
-                    style={StyleSheet.absoluteFill}
+                    className="absolute inset-0"
                     contentFit="cover"
                     transition={260}
                   />
                   {tile.hasAudio ? (
-                    <View style={styles.badge}>
-                      <Ionicons name="mic" size={11} color={colors.surface} />
+                    <View className="absolute top-2 right-2 rounded-full bg-scrim/62 p-[5px]">
+                      <Ionicons name="mic" size={11} colorClassName="accent-surface" />
                     </View>
                   ) : null}
                 </Pressable>
@@ -94,16 +90,3 @@ export default function MosaicScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  tile: { borderRadius: radius.md, overflow: "hidden", backgroundColor: colors.surfaceAlt },
-  badge: {
-    position: "absolute",
-    top: spacing.sm,
-    right: spacing.sm,
-    backgroundColor: "rgba(47,54,46,0.62)",
-    borderRadius: radius.pill,
-    padding: 5,
-  },
-});

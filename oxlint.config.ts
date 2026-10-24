@@ -15,7 +15,8 @@ export default defineConfig({
   env: {
     builtin: true,
   },
-  ignorePatterns: ["**/dist/**", "design/**"],
+  // metro.config.js is CommonJS because Metro loads it; uniwind-types.d.ts is generated.
+  ignorePatterns: ["**/dist/**", "design/**", "app/metro.config.js", "app/src/uniwind-types.d.ts"],
   overrides: [
     {
       files: ["**/*.ts", "**/*.tsx"],

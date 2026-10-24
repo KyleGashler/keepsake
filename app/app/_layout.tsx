@@ -1,3 +1,6 @@
+/// <reference types="expo/types" />
+// oxlint-disable-next-line import/no-unassigned-import -- the Tailwind theme; Uniwind compiles it on import
+import "../src/global.css";
 import { DMSerifDisplay_400Regular } from "@expo-google-fonts/dm-serif-display/400Regular";
 import { NunitoSans_400Regular } from "@expo-google-fonts/nunito-sans/400Regular";
 import { NunitoSans_600SemiBold } from "@expo-google-fonts/nunito-sans/600SemiBold";
@@ -23,7 +26,7 @@ import { AuthActionScreen } from "../src/components/auth-action-screen";
 import { SignedOutFlow } from "../src/components/auth-screens";
 import { JoinScreen } from "../src/components/join-screen";
 import { JOIN_PATH_PREFIX } from "../src/roles";
-import { colors } from "../src/theme";
+import { useColor } from "../src/theme";
 
 // oxlint-disable-next-line react/only-export-components -- expo-router reads unstable_settings from the layout module
 export const unstable_settings = {
@@ -39,7 +42,7 @@ void SplashScreen.preventAutoHideAsync();
 const FONT_TIMEOUT_MS = 4000;
 
 export default function RootLayout() {
-  // Names must match `fonts` in src/theme.ts.
+  // Names must match the `--font-*` families in src/global.css.
   const [fontsLoaded, fontError] = useFonts({
     DMSerifDisplay_400Regular,
     NunitoSans_400Regular,
@@ -47,7 +50,8 @@ export default function RootLayout() {
     NunitoSans_700Bold,
   });
   const [timedOut, setTimedOut] = useState(false);
-  // A font error isn't fatal: the web falls back through the CSS stack in theme.ts.
+  const paper = useColor("paper");
+  // A font error isn't fatal: text falls back to the platform's default face.
   const fontsReady = fontsLoaded || !!fontError || timedOut;
 
   useEffect(() => {
@@ -57,7 +61,7 @@ export default function RootLayout() {
   }, [fontsReady]);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.bg }}>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: paper }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
         <SessionProvider>{fontsReady ? <Gate /> : null}</SessionProvider>
@@ -75,6 +79,7 @@ export default function RootLayout() {
 function Gate() {
   const { phase } = useSession();
   const pathname = usePathname();
+  const paper = useColor("paper");
   const [actionLinkDone, setActionLinkDone] = useState(false);
   const [joinDoneFor, setJoinDoneFor] = useState<string | null>(null);
   // The one exception to "one screen per phase": the page that emailed links
@@ -124,7 +129,7 @@ function Gate() {
         <Stack
           screenOptions={{
             headerShown: false,
-            contentStyle: { backgroundColor: colors.bg },
+            contentStyle: { backgroundColor: paper },
           }}
         >
           <Stack.Screen name="(tabs)" />
