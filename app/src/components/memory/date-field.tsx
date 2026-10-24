@@ -1,7 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
-import { StyleSheet, TextInput, View } from "react-native";
-import { colors } from "../../theme";
-import { fieldStyles } from "./field-styles";
+import { TextInput, View } from "react-native";
+import { Ionicons } from "../../styled";
+import { fieldBox, fieldText } from "./field-styles";
 
 export type DateFieldProps = {
   /** "YYYY-MM-DD", local calendar day. */
@@ -17,22 +16,18 @@ export type DateFieldProps = {
  */
 export function DateField({ value, onChange, accessibilityLabel = "Date" }: DateFieldProps) {
   return (
-    <View style={[fieldStyles.input, styles.row]}>
+    <View className={`${fieldBox} flex-row items-center`}>
       <TextInput
         value={value}
         onChangeText={onChange}
         placeholder="YYYY-MM-DD"
-        placeholderTextColor={colors.muted}
+        placeholderTextColorClassName="accent-muted"
         keyboardType="numbers-and-punctuation"
         maxLength={10}
         accessibilityLabel={accessibilityLabel}
-        style={[fieldStyles.text, { flex: 1 }]}
+        className={`${fieldText} flex-1`}
       />
-      <Ionicons name="calendar-outline" size={18} color={colors.inkSoft} />
+      <Ionicons name="calendar-outline" size={18} colorClassName="accent-ink-soft" />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", alignItems: "center" },
-});

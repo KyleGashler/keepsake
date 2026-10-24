@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
@@ -13,15 +13,28 @@ import {
 } from "../../api";
 import { confirmAction } from "../../confirm";
 import { duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
-import { colors, fonts, radius, spacing, type } from "../../theme";
+import { Ionicons } from "../../styled";
 import { IconDisc, SearchField } from "../journey";
-import { fieldStyles } from "./field-styles";
+import { fieldBox, fieldMultiline, fieldText } from "./field-styles";
 import { Thumb } from "./gallery";
 import { CardArt } from "./parts";
-import { DANGER } from "./helpers";
 import { FieldLabel, Sheet, SheetHeader, SheetRow } from "./sheet";
 import { DateField } from "./date-field";
 import { DownloadList } from "./download-sheet";
+
+/** A sheet's quiet explanation under its header. */
+const HINT = "font-sans text-[14.5px] leading-[21px] text-ink-soft";
+/** A sentence that went wrong, in red under what it's about. */
+const ERROR = "mt-2 font-sans text-[13.5px] text-danger";
+/** Nothing to list. */
+const EMPTY = "mt-3 type-caption";
+/** A row in a picker list; give it `style={HAIRLINE_BELOW}` for the line under it. */
+const PICK_ROW = "flex-row items-center gap-3 border-line py-2.5";
+const PICK_NAME = "flex-1 font-sans text-[16px] text-ink";
+const PICK_THUMB = "h-11 w-11 overflow-hidden rounded-[8px] bg-surface-alt";
+const HAIRLINE_BELOW = { borderBottomWidth: StyleSheet.hairlineWidth };
+/** SearchField takes a style, not a class. */
+const SEARCH_STYLE = { height: 46, marginTop: 12 };
 
 export type SheetKind = "options" | "edit" | "media" | "collections" | "link" | "date" | "delete" | "download";
 
@@ -157,55 +170,56 @@ function EditForm({
         onCancel={onClose}
         action={{ label: saving ? "Saving…" : "Save", onPress: save, disabled: saving || !valid }}
       />
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ gap: spacing.lg, paddingBottom: spacing.lg }}>
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="gap-4 pb-4">
         <View>
           <FieldLabel>Title</FieldLabel>
-          <View style={fieldStyles.input}>
+          <View className={fieldBox}>
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="A name for this memory"
-              placeholderTextColor={colors.muted}
+              placeholderTextColorClassName="accent-muted"
               accessibilityLabel="Title"
               maxLength={160}
-              style={fieldStyles.text}
+              className={fieldText}
             />
           </View>
         </View>
         <View>
           <FieldLabel>Date</FieldLabel>
           <DateField value={day} onChange={setDay} />
-          {occurredAt === null ? <Text style={styles.error}>That isn't a date we can read.</Text> : null}
+          {occurredAt === null ? <Text className={ERROR}>That isn't a date we can read.</Text> : null}
         </View>
         <View>
           <FieldLabel>Description</FieldLabel>
-          <View style={fieldStyles.input}>
+          <View className={fieldBox}>
             <TextInput
               value={story}
               onChangeText={setStory}
               placeholder="What happened, and why it mattered…"
-              placeholderTextColor={colors.muted}
+              placeholderTextColorClassName="accent-muted"
               accessibilityLabel="Description"
               multiline
-              style={[fieldStyles.text, fieldStyles.multiline]}
+              className={`${fieldText} ${fieldMultiline}`}
+              style={{ textAlignVertical: "top" }}
             />
           </View>
         </View>
         <View>
           <FieldLabel>Location</FieldLabel>
-          <View style={fieldStyles.input}>
+          <View className={fieldBox}>
             <TextInput
               value={location}
               onChangeText={setLocation}
               placeholder="Where it happened"
-              placeholderTextColor={colors.muted}
+              placeholderTextColorClassName="accent-muted"
               accessibilityLabel="Location"
               maxLength={160}
-              style={fieldStyles.text}
+              className={fieldText}
             />
           </View>
         </View>
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text className={ERROR}>{error}</Text> : null}
       </ScrollView>
     </>
   );
@@ -270,34 +284,38 @@ function MediaArranger({
   return (
     <>
       <SheetHeader title="Arrange" action={{ label: "Done", onPress: onClose }} />
-      <Text style={styles.hint}>The first photo or video leads the memory everywhere it appears.</Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.lg, marginTop: spacing.sm }}>
+      <Text className={HINT}>The first photo or video leads the memory everywhere it appears.</Text>
+      {error ? <Text className={ERROR}>{error}</Text> : null}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="mt-2 pb-4">
         {items.map((item, i) => {
           const noun = MEDIA_NOUN[item.type];
           const label = `${noun[0].toUpperCase()}${noun.slice(1)} ${i + 1}`;
           const working = busy === item.id;
           return (
-            <View key={item.id} style={[styles.pickRow, (busy !== null && !working) && { opacity: 0.6 }]}>
-              <View style={styles.pickThumb}>
+            <View
+              key={item.id}
+              className={`${PICK_ROW} ${busy !== null && !working ? "opacity-60" : ""}`}
+              style={HAIRLINE_BELOW}
+            >
+              <View className={PICK_THUMB}>
                 {item.type === "AUDIO" ? (
-                  <View style={styles.audioThumb}>
-                    <Ionicons name="mic-outline" size={20} color={colors.inkSoft} />
+                  <View className="flex-1 items-center justify-center">
+                    <Ionicons name="mic-outline" size={20} colorClassName="accent-ink-soft" />
                   </View>
                 ) : (
                   <Thumb item={item} />
                 )}
               </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.pickName} numberOfLines={1}>
+              <View className="flex-1">
+                <Text className={PICK_NAME} numberOfLines={1}>
                   {item.caption ?? label}
                 </Text>
-                {subtitle(item, i) ? <Text style={type.caption}>{subtitle(item, i)}</Text> : null}
+                {subtitle(item, i) ? <Text className="type-caption">{subtitle(item, i)}</Text> : null}
               </View>
               {working ? (
-                <ActivityIndicator color={colors.primary} />
+                <ActivityIndicator colorClassName="accent-primary" />
               ) : (
-                <View style={styles.arrangeButtons}>
+                <View className="flex-row gap-1.5">
                   <ArrangeButton icon="chevron-up" label={`Move ${label} up`} disabled={busy !== null || i === 0} onPress={() => move(i, -1)} />
                   <ArrangeButton
                     icon="chevron-down"
@@ -311,7 +329,7 @@ function MediaArranger({
             </View>
           );
         })}
-        {items.length === 0 ? <Text style={styles.empty}>No photos or recordings left on this memory.</Text> : null}
+        {items.length === 0 ? <Text className={EMPTY}>No photos or recordings left on this memory.</Text> : null}
       </ScrollView>
     </>
   );
@@ -330,7 +348,7 @@ function ArrangeButton({
   disabled,
   danger = false,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof IoniconsGlyphs.glyphMap;
   label: string;
   onPress: () => void;
   disabled: boolean;
@@ -344,9 +362,9 @@ function ArrangeButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       accessibilityState={{ disabled }}
-      style={({ pressed }) => [styles.arrangeButton, disabled && { opacity: 0.3 }, pressed && { opacity: 0.6 }]}
+      className={`h-[34px] w-[34px] items-center justify-center rounded-full border border-line active:opacity-60 ${disabled ? "opacity-30" : ""}`}
     >
-      <Ionicons name={icon} size={18} color={danger ? DANGER : colors.ink} />
+      <Ionicons name={icon} size={18} colorClassName={danger ? "accent-danger" : "accent-ink"} />
     </Pressable>
   );
 }
@@ -452,17 +470,17 @@ function CollectionPicker({
         onCancel={onClose}
         action={{ label: saving ? "Saving…" : "Done", onPress: save, disabled: saving }}
       />
-      <Text style={styles.hint}>
+      <Text className={HINT}>
         Tick every collection this memory belongs in. Filing it in a sibling's collection shows it there too.
       </Text>
-      <SearchField value={query} onChangeText={setQuery} placeholder="Find a collection" style={styles.search} />
-      {saveError ? <Text style={styles.error}>{saveError}</Text> : null}
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.lg }}>
-        {loading && !data ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} /> : null}
-        {error && !data ? <Text style={styles.error}>Couldn't load collections. {error.message}</Text> : null}
+      <SearchField value={query} onChangeText={setQuery} placeholder="Find a collection" style={SEARCH_STYLE} />
+      {saveError ? <Text className={ERROR}>{saveError}</Text> : null}
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="pb-4">
+        {loading && !data ? <ActivityIndicator colorClassName="accent-primary" className="mt-6" /> : null}
+        {error && !data ? <Text className={ERROR}>Couldn't load collections. {error.message}</Text> : null}
         {groups.map((group) => (
-          <View key={group.key} style={{ marginTop: spacing.lg }}>
-            <Text style={type.label}>{group.title}</Text>
+          <View key={group.key} className="mt-4">
+            <Text className="type-label">{group.title}</Text>
             {group.collections.map((c) => {
               const on = chosen.has(c.id);
               return (
@@ -472,23 +490,24 @@ function CollectionPicker({
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: on }}
                   accessibilityLabel={c.personName ? `${c.name}, ${c.personName}` : c.name}
-                  style={({ pressed }) => [styles.pickRow, pressed && { opacity: 0.6 }]}
+                  className={`${PICK_ROW} active:opacity-60`}
+                  style={HAIRLINE_BELOW}
                 >
                   <IconDisc icon={c.icon} color={c.color} size={34} />
-                  <Text style={styles.pickName} numberOfLines={1}>
+                  <Text className={PICK_NAME} numberOfLines={1}>
                     {c.name}
                   </Text>
                   <Ionicons
                     name={on ? "checkmark-circle" : "ellipse-outline"}
                     size={24}
-                    color={on ? colors.primary : colors.line}
+                    colorClassName={on ? "accent-primary" : "accent-line"}
                   />
                 </Pressable>
               );
             })}
           </View>
         ))}
-        {data && groups.length === 0 ? <Text style={styles.empty}>No collection by that name.</Text> : null}
+        {data && groups.length === 0 ? <Text className={EMPTY}>No collection by that name.</Text> : null}
       </ScrollView>
     </>
   );
@@ -551,39 +570,39 @@ function LinkPicker({
   return (
     <>
       <SheetHeader title="Link a Memory" action={{ label: "Done", onPress: onClose }} />
-      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" style={styles.search} />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.lg }}>
+      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" style={SEARCH_STYLE} />
+      {error ? <Text className={ERROR}>{error}</Text> : null}
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="pb-4">
         {linked.length ? (
-          <View style={{ marginTop: spacing.lg }}>
-            <Text style={type.label}>Linked</Text>
+          <View className="mt-4">
+            <Text className="type-label">Linked</Text>
             {linked.map((m) => (
               <MemoryPickRow
                 key={m.id}
                 memory={m}
                 busy={busy === m.id}
-                trailing={<Ionicons name="close-circle" size={22} color={colors.muted} />}
+                trailing={<Ionicons name="close-circle" size={22} colorClassName="accent-muted" />}
                 actionLabel={`Unlink ${m.title}`}
                 onPress={() => unlink(m.id)}
               />
             ))}
           </View>
         ) : null}
-        <View style={{ marginTop: spacing.lg }}>
-          <Text style={type.label}>{searching ? "Matches" : "Recent memories"}</Text>
-          {loading && !data ? <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} /> : null}
+        <View className="mt-4">
+          <Text className="type-label">{searching ? "Matches" : "Recent memories"}</Text>
+          {loading && !data ? <ActivityIndicator colorClassName="accent-primary" className="mt-4" /> : null}
           {candidates.map((m) => (
             <MemoryPickRow
               key={m.id}
               memory={m}
               busy={busy === m.id}
-              trailing={<Ionicons name="add-circle-outline" size={24} color={colors.primary} />}
+              trailing={<Ionicons name="add-circle-outline" size={24} colorClassName="accent-primary" />}
               actionLabel={`Link ${m.title}`}
               onPress={() => link(m.id)}
             />
           ))}
           {data && candidates.length === 0 ? (
-            <Text style={styles.empty}>{searching ? "Nothing matches that yet." : "No other memories yet."}</Text>
+            <Text className={EMPTY}>{searching ? "Nothing matches that yet." : "No other memories yet."}</Text>
           ) : null}
         </View>
       </ScrollView>
@@ -610,18 +629,19 @@ function MemoryPickRow({
       disabled={busy}
       accessibilityRole="button"
       accessibilityLabel={actionLabel}
-      style={({ pressed }) => [styles.pickRow, (pressed || busy) && { opacity: 0.6 }]}
+      className={`${PICK_ROW} active:opacity-60 ${busy ? "opacity-60" : ""}`}
+      style={HAIRLINE_BELOW}
     >
-      <View style={styles.pickThumb}>
+      <View className={PICK_THUMB}>
         <CardArt memory={memory} compact />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.pickName} numberOfLines={1}>
+      <View className="flex-1">
+        <Text className={PICK_NAME} numberOfLines={1}>
           {memory.title}
         </Text>
-        <Text style={type.caption}>{shortDate(memory.occurredAt)}</Text>
+        <Text className="type-caption">{shortDate(memory.occurredAt)}</Text>
       </View>
-      {busy ? <ActivityIndicator color={colors.primary} /> : trailing}
+      {busy ? <ActivityIndicator colorClassName="accent-primary" /> : trailing}
     </Pressable>
   );
 }
@@ -662,12 +682,12 @@ function MoveDate({
         onCancel={onClose}
         action={{ label: saving ? "Saving…" : "Save", onPress: save, disabled: saving || !occurredAt }}
       />
-      <Text style={styles.hint}>Now on {longDate(memory.occurredAt)}. It moves everywhere it's filed.</Text>
-      <View style={{ marginTop: spacing.md, marginBottom: spacing.lg }}>
+      <Text className={HINT}>Now on {longDate(memory.occurredAt)}. It moves everywhere it's filed.</Text>
+      <View className="mt-3 mb-4">
         <FieldLabel>New date</FieldLabel>
         <DateField value={day} onChange={setDay} accessibilityLabel="New date" />
-        {occurredAt === null ? <Text style={styles.error}>That isn't a date we can read.</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {occurredAt === null ? <Text className={ERROR}>That isn't a date we can read.</Text> : null}
+        {error ? <Text className={ERROR}>{error}</Text> : null}
       </View>
     </>
   );
@@ -694,71 +714,26 @@ function ConfirmDelete({ memory, onClose, onDeleted }: { memory: Memory; onClose
   }
 
   return (
-    <View style={{ paddingBottom: spacing.sm }}>
-      <Text style={styles.confirmTitle}>Delete “{memory.title}”?</Text>
-      <Text style={[styles.hint, { textAlign: "center" }]}>
+    <View className="pb-2">
+      <Text className="my-2 text-center font-display text-[24px] leading-[30px] text-ink">
+        Delete “{memory.title}”?
+      </Text>
+      <Text className={`${HINT} text-center`}>
         It's deleted for everyone in the family, along with its photos, videos and recordings — the original files
         too. There's no trash, so this can't be undone.
       </Text>
-      {error ? <Text style={[styles.error, { textAlign: "center" }]}>{error}</Text> : null}
+      {error ? <Text className={`${ERROR} text-center`}>{error}</Text> : null}
       <Pressable
         onPress={remove}
         disabled={deleting}
         accessibilityRole="button"
-        style={({ pressed }) => [styles.deleteButton, (pressed || deleting) && { opacity: 0.75 }]}
+        className={`mt-6 items-center rounded-full bg-danger py-3.5 active:opacity-75 ${deleting ? "opacity-75" : ""}`}
       >
-        <Text style={styles.deleteLabel}>{deleting ? "Deleting…" : "Delete Memory"}</Text>
+        <Text className="font-sans-bold text-[16px] text-white">{deleting ? "Deleting…" : "Delete Memory"}</Text>
       </Pressable>
-      <Pressable onPress={onClose} accessibilityRole="button" style={styles.keepButton}>
-        <Text style={styles.keepLabel}>Keep it</Text>
+      <Pressable onPress={onClose} accessibilityRole="button" className="mt-2 items-center py-3">
+        <Text className="font-sans-semibold text-[16px] text-ink">Keep it</Text>
       </Pressable>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  hint: { fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 21, color: colors.inkSoft },
-  search: { height: 46, marginTop: spacing.md },
-  error: { fontFamily: fonts.sans, fontSize: 13.5, color: DANGER, marginTop: spacing.sm },
-  empty: { ...type.caption, marginTop: spacing.md },
-  pickRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
-  },
-  pickName: { flex: 1, fontFamily: fonts.sans, fontSize: 16, color: colors.ink },
-  pickThumb: { width: 44, height: 44, borderRadius: 8, overflow: "hidden", backgroundColor: colors.surfaceAlt },
-  audioThumb: { flex: 1, alignItems: "center", justifyContent: "center" },
-  arrangeButtons: { flexDirection: "row", gap: 6 },
-  arrangeButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  confirmTitle: {
-    fontFamily: fonts.display,
-    fontSize: 24,
-    lineHeight: 30,
-    color: colors.ink,
-    textAlign: "center",
-    marginTop: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  deleteButton: {
-    marginTop: spacing.xl,
-    backgroundColor: DANGER,
-    borderRadius: radius.pill,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
-  deleteLabel: { fontFamily: fonts.sansBold, fontSize: 16, color: "#fff" },
-  keepButton: { marginTop: spacing.sm, paddingVertical: 12, alignItems: "center" },
-  keepLabel: { fontFamily: fonts.sansSemiBold, fontSize: 16, color: colors.ink },
-});

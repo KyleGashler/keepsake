@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { ApiError, apiSend, useApi, type DeletionPreview } from "../api";
@@ -6,7 +6,7 @@ import { AuthError } from "../auth";
 import { useSession } from "../auth/session-context";
 import { friendlyError } from "../format";
 import { SUPPORT_EMAIL } from "../support";
-import { colors, fonts, radius, spacing, type } from "../theme";
+import { Ionicons } from "../styled";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
 /**
@@ -78,7 +78,7 @@ export function DeleteFamilySheet({
         we can't get any of it back for you afterwards.
       </Warning>
 
-      <View style={styles.list}>
+      <View className="gap-2">
         <Gone text={plural(stats.memoryCount, "memory", "memories")} />
         <Gone text={plural(stats.mediaCount, "photo, video and recording", "photos, videos and recordings")} />
         <Gone text={plural(stats.personCount, "person", "people")} />
@@ -134,7 +134,7 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
             <SheetButton label="Try again" variant="secondary" onPress={() => void preview.refetch()} />
           </>
         ) : (
-          <ActivityIndicator color={colors.ink} />
+          <ActivityIndicator colorClassName="accent-ink" />
         )}
       </Sheet>
     );
@@ -148,7 +148,7 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
         title="Delete your account"
         footer={<SheetButton label="Close" variant="secondary" onPress={onClose} />}
       >
-        <Text style={type.body}>{NOT_AN_OWNER}</Text>
+        <Text className="type-body">{NOT_AN_OWNER}</Text>
       </Sheet>
     );
   }
@@ -183,7 +183,7 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
       </Warning>
 
       <Field label="Deleted for everyone">
-        <View style={styles.group}>
+        <View className="overflow-hidden rounded-md border border-line bg-surface">
           {data.deletes.map((f, i) => (
             <FamilyLine
               key={f.familyId}
@@ -199,7 +199,7 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
 
       {data.leaves.length ? (
         <Field label="You'll leave">
-          <View style={styles.group}>
+          <View className="overflow-hidden rounded-md border border-line bg-surface">
             {data.leaves.map((f, i) => (
               <FamilyLine
                 key={f.familyId}
@@ -260,13 +260,17 @@ function plural(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
+/** The bold first line and the body of the Warning and SaveFirst notes. */
+const NOTE_TITLE = "font-sans-bold text-[15.5px] leading-[21px] text-ink";
+const NOTE_TEXT = "font-sans text-[14.5px] leading-[21px] text-ink";
+
 function Warning({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <View style={styles.warning} accessibilityRole="alert">
-      <Ionicons name="warning-outline" size={20} color={colors.danger} />
-      <View style={{ flex: 1, gap: spacing.xs }}>
-        <Text style={styles.warningTitle}>{title}</Text>
-        <Text style={styles.warningText}>{children}</Text>
+    <View className="flex-row items-start gap-3 rounded-md bg-danger-soft p-4" accessibilityRole="alert">
+      <Ionicons name="warning-outline" size={20} colorClassName="accent-danger" />
+      <View className="flex-1 gap-1">
+        <Text className={NOTE_TITLE}>{title}</Text>
+        <Text className={NOTE_TEXT}>{children}</Text>
       </View>
     </View>
   );
@@ -274,11 +278,11 @@ function Warning({ title, children }: { title: string; children: ReactNode }) {
 
 function SaveFirst() {
   return (
-    <View style={styles.saveFirst}>
-      <Ionicons name="download-outline" size={20} color={colors.accentDeep} />
-      <View style={{ flex: 1, gap: spacing.xs }}>
-        <Text style={styles.warningTitle}>Save what you want to keep first</Text>
-        <Text style={styles.warningText}>{SAVE_FIRST}</Text>
+    <View className="flex-row items-start gap-3 rounded-md bg-accent-soft p-4">
+      <Ionicons name="download-outline" size={20} colorClassName="accent-accent-deep" />
+      <View className="flex-1 gap-1">
+        <Text className={NOTE_TITLE}>Save what you want to keep first</Text>
+        <Text className={NOTE_TEXT}>{SAVE_FIRST}</Text>
       </View>
     </View>
   );
@@ -286,9 +290,9 @@ function SaveFirst() {
 
 function Gone({ text }: { text: string }) {
   return (
-    <View style={styles.goneRow}>
-      <Ionicons name="close-circle-outline" size={17} color={colors.danger} />
-      <Text style={styles.goneText}>{text}</Text>
+    <View className="flex-row items-center gap-2">
+      <Ionicons name="close-circle-outline" size={17} colorClassName="accent-danger" />
+      <Text className="font-sans text-[15px] text-ink">{text}</Text>
     </View>
   );
 }
@@ -302,57 +306,20 @@ function FamilyLine({
 }: {
   name: string;
   detail: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof IoniconsGlyphs.glyphMap;
   danger?: boolean;
   first: boolean;
 }) {
   return (
-    <View style={[styles.familyLine, !first && styles.familyLineDivider]}>
-      <Ionicons name={icon} size={18} color={danger ? colors.danger : colors.inkSoft} />
-      <View style={{ flex: 1 }}>
-        <Text style={styles.familyName}>{name}</Text>
-        <Text style={type.caption}>{detail}</Text>
+    <View
+      className={`flex-row items-center gap-3 px-4 py-3 ${first ? "" : "border-line"}`}
+      style={first ? undefined : { borderTopWidth: StyleSheet.hairlineWidth }}
+    >
+      <Ionicons name={icon} size={18} colorClassName={danger ? "accent-danger" : "accent-ink-soft"} />
+      <View className="flex-1">
+        <Text className="font-sans-semibold text-[15.5px] leading-[21px] text-ink">{name}</Text>
+        <Text className="type-caption">{detail}</Text>
       </View>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  warning: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerSoft,
-  },
-  saveFirst: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
-  },
-  warningTitle: { fontFamily: fonts.sansBold, fontSize: 15.5, lineHeight: 21, color: colors.ink },
-  warningText: { fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 21, color: colors.ink },
-  list: { gap: spacing.sm },
-  goneRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  goneText: { fontFamily: fonts.sans, fontSize: 15, color: colors.ink },
-  group: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    overflow: "hidden",
-  },
-  familyLine: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-  },
-  familyLineDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  familyName: { fontFamily: fonts.sansSemiBold, fontSize: 15.5, lineHeight: 21, color: colors.ink },
-});

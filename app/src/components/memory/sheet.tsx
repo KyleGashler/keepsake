@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import {
   KeyboardAvoidingView,
@@ -10,8 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fonts, MAX_WIDTH, radius, spacing } from "../../theme";
-import { DANGER } from "./helpers";
+import { Ionicons } from "../../styled";
 
 
 /**
@@ -34,23 +33,20 @@ export function Sheet({
   const insets = useSafeAreaInsets();
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.root}>
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 justify-end">
         <Pressable
-          style={StyleSheet.absoluteFill}
+          className="absolute inset-0"
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close"
         >
-          <View style={styles.backdrop} />
+          <View className="flex-1 bg-ink/42" />
         </Pressable>
         <View
-          style={[
-            styles.panel,
-            tall && { height: "88%" },
-            { paddingBottom: Math.max(insets.bottom, spacing.lg) },
-          ]}
+          className={`max-h-[92%] w-full max-w-page self-center rounded-t-[24px] bg-surface px-gutter pt-2 ${tall ? "h-[88%]" : ""}`}
+          style={{ paddingBottom: Math.max(insets.bottom, 16) }}
         >
-          <View style={styles.grabber} />
+          <View className="mb-3 h-1 w-10 self-center rounded-[2px] bg-line" />
           {children}
         </View>
       </KeyboardAvoidingView>
@@ -72,30 +68,30 @@ export function SheetHeader({
   action?: { label: string; onPress: () => void; disabled?: boolean };
 }) {
   return (
-    <View style={styles.header}>
-      <View style={styles.headerSide}>
+    <View className="mb-3 min-h-11 flex-row items-center">
+      <View className="w-[84px]">
         {onCancel ? (
           <Pressable onPress={onCancel} hitSlop={10} accessibilityRole="button">
-            <Text style={styles.cancel}>{cancelLabel}</Text>
+            <Text className="font-sans text-[16px] text-ink">{cancelLabel}</Text>
           </Pressable>
         ) : null}
       </View>
-      <Text style={styles.headerTitle} numberOfLines={1} accessibilityRole="header">
+      <Text
+        className="flex-1 text-center font-sans-bold text-[16.5px] text-ink"
+        numberOfLines={1}
+        accessibilityRole="header"
+      >
         {title}
       </Text>
-      <View style={[styles.headerSide, { alignItems: "flex-end" }]}>
+      <View className="w-[84px] items-end">
         {action ? (
           <Pressable
             onPress={action.onPress}
             disabled={action.disabled}
             accessibilityRole="button"
-            style={({ pressed }) => [
-              styles.actionPill,
-              action.disabled && { opacity: 0.45 },
-              pressed && { opacity: 0.8 },
-            ]}
+            className={`rounded-full bg-primary px-[18px] py-2 active:opacity-80 ${action.disabled ? "opacity-45" : ""}`}
           >
-            <Text style={styles.actionLabel}>{action.label}</Text>
+            <Text className="font-sans-bold text-[15px] text-on-primary">{action.label}</Text>
           </Pressable>
         ) : null}
       </View>
@@ -113,7 +109,7 @@ export function SheetRow({
   note,
   divider = true,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof IoniconsGlyphs.glyphMap;
   label: string;
   onPress?: () => void;
   danger?: boolean;
@@ -122,76 +118,28 @@ export function SheetRow({
   note?: string;
   divider?: boolean;
 }) {
-  const tint = danger ? DANGER : colors.ink;
+  let tint = { icon: "accent-ink", text: "text-ink" };
+  if (danger) tint = { icon: "accent-danger", text: "text-danger" };
+  if (disabled) tint = { icon: "accent-muted", text: "text-muted" };
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || !onPress}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
-      style={({ pressed }) => [styles.row, divider && styles.rowDivider, pressed && { opacity: 0.6 }]}
+      className={`flex-row items-center gap-4 py-[15px] active:opacity-60 ${divider ? "border-line" : ""}`}
+      style={divider ? { borderBottomWidth: StyleSheet.hairlineWidth } : undefined}
     >
-      <Ionicons name={icon} size={20} color={disabled ? colors.muted : tint} />
-      <Text style={[styles.rowLabel, { color: disabled ? colors.muted : tint }]}>{label}</Text>
-      {note ? <Text style={styles.rowNote}>{note}</Text> : null}
+      <Ionicons name={icon} size={20} colorClassName={tint.icon} />
+      <Text className={`flex-1 font-sans text-[16.5px] ${tint.text}`}>{label}</Text>
+      {note ? <Text className="font-sans text-[13px] text-muted">{note}</Text> : null}
     </Pressable>
   );
 }
 
 /** Small spaced capitals over a form field — "TITLE", "DATE". */
 export function FieldLabel({ children }: { children: string }) {
-  return <Text style={styles.fieldLabel}>{children}</Text>;
+  return (
+    <Text className="mb-1.5 font-sans-bold text-[11.5px] tracking-[1.2px] text-muted uppercase">{children}</Text>
+  );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { flex: 1, backgroundColor: "rgba(18,63,69,0.42)" },
-  panel: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    maxHeight: "92%",
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg + 2,
-    borderTopRightRadius: radius.lg + 2,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.sm,
-  },
-  grabber: {
-    alignSelf: "center",
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.line,
-    marginBottom: spacing.md,
-  },
-  header: { flexDirection: "row", alignItems: "center", minHeight: 44, marginBottom: spacing.md },
-  headerSide: { width: 84 },
-  headerTitle: {
-    flex: 1,
-    textAlign: "center",
-    fontFamily: fonts.sansBold,
-    fontSize: 16.5,
-    color: colors.ink,
-  },
-  cancel: { fontFamily: fonts.sans, fontSize: 16, color: colors.ink },
-  actionPill: {
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    paddingVertical: 8,
-    paddingHorizontal: spacing.lg + 2,
-  },
-  actionLabel: { fontFamily: fonts.sansBold, fontSize: 15, color: colors.onPrimary },
-  row: { flexDirection: "row", alignItems: "center", gap: spacing.lg, paddingVertical: spacing.lg - 1 },
-  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  rowLabel: { flex: 1, fontFamily: fonts.sans, fontSize: 16.5 },
-  rowNote: { fontFamily: fonts.sans, fontSize: 13, color: colors.muted },
-  fieldLabel: {
-    fontFamily: fonts.sansBold,
-    fontSize: 11.5,
-    letterSpacing: 1.2,
-    textTransform: "uppercase",
-    color: colors.muted,
-    marginBottom: 6,
-  },
-});

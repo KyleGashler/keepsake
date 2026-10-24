@@ -1,17 +1,9 @@
-import { StyleSheet } from "react-native";
-import { colors, fonts, radius, spacing } from "../../theme";
-
-/** The outlined text field the memory page's sheets use. */
-export const fieldStyles = StyleSheet.create({
-  input: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surface,
-    paddingHorizontal: spacing.md + 2,
-    minHeight: 46,
-    justifyContent: "center",
-  },
-  text: { fontFamily: fonts.sans, fontSize: 16, color: colors.ink, paddingVertical: 11 },
-  multiline: { minHeight: 140, textAlignVertical: "top", lineHeight: 23 },
-});
+/*
+ * The outlined text field the memory page's sheets use, as class names: the
+ * box, the words inside it, and the taller multiline variant. A multiline
+ * TextInput also needs `style={{ textAlignVertical: "top" }}` (Android only;
+ * no class sets it).
+ */
+export const fieldBox = "min-h-[46px] justify-center rounded-sm border border-line bg-surface px-3.5";
+export const fieldText = "py-[11px] font-sans text-[16px] text-ink";
+export const fieldMultiline = "min-h-[140px] leading-[23px]";

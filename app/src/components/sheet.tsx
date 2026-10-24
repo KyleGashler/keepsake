@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -17,7 +17,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { colors, fonts, MAX_WIDTH, radius, spacing, type } from "../theme";
+import { Ionicons } from "../styled";
 
 /**
  * A bottom sheet in the journey's language: paper, a grab handle, a display
@@ -56,55 +56,60 @@ export function Sheet({
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
-      <View style={styles.root}>
+      <View className="flex-1 justify-end">
         <Pressable
-          style={styles.scrim}
+          className="absolute inset-0 bg-ink/55"
           onPress={onClose}
           accessibilityRole="button"
           accessibilityLabel="Close"
         />
         <KeyboardAvoidingView
           behavior={Platform.OS === "ios" ? "padding" : undefined}
-          style={styles.avoider}
+          className="flex-1 justify-end"
+          style={{ pointerEvents: "box-none" }}
         >
           <Animated.View
             accessibilityViewIsModal
-            style={[
-              styles.panel,
-              { paddingBottom: insets.bottom + spacing.lg },
-              {
-                opacity: rise,
-                transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [48, 0] }) }],
-              },
-            ]}
+            className="max-h-[92%] w-full max-w-page self-center rounded-t-[28px] bg-paper pt-2"
+            style={{
+              paddingBottom: insets.bottom + 16,
+              opacity: rise,
+              transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [48, 0] }) }],
+            }}
           >
-            <View style={styles.handle} />
-            <View style={styles.titleRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.title} accessibilityRole="header">
+            <View className="mb-3 h-[5px] w-10 self-center rounded-[3px] bg-line" />
+            <View className="flex-row items-start gap-3 px-gutter pb-4">
+              <View className="flex-1">
+                <Text className="font-display text-[30px] leading-[36px] text-ink" accessibilityRole="header">
                   {title}
                 </Text>
-                {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
+                {subtitle ? (
+                  <Text className="mt-0.5 font-sans text-[15px] leading-[21px] text-ink-soft">{subtitle}</Text>
+                ) : null}
               </View>
               <Pressable
                 onPress={onClose}
                 hitSlop={10}
                 accessibilityRole="button"
                 accessibilityLabel="Close"
-                style={({ pressed }) => [styles.close, pressed && styles.pressed]}
+                className="mt-0.5 h-9 w-9 items-center justify-center rounded-full bg-surface-alt active:opacity-70"
               >
-                <Ionicons name="close" size={20} color={colors.ink} />
+                <Ionicons name="close" size={20} colorClassName="accent-ink" />
               </Pressable>
             </View>
+            {/*
+             * Fields sit further from each other (gap-6) than a field's own
+             * label, input and hint do (gap-2), so each reads as one group.
+             */}
             <ScrollView
-              style={styles.body}
-              contentContainerStyle={styles.bodyContent}
+              className="grow-0"
+              contentContainerClassName="gap-6 px-gutter pb-3"
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
             >
               {children}
             </ScrollView>
-            {footer ? <View style={styles.footer}>{footer}</View> : null}
+            {footer ? <View className="gap-2 px-gutter pt-2">{footer}</View> : null}
           </Animated.View>
         </KeyboardAvoidingView>
       </View>
@@ -114,7 +119,7 @@ export function Sheet({
 
 export type SheetAction = {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof IoniconsGlyphs.glyphMap;
   onPress: () => void;
   destructive?: boolean;
 };
@@ -137,7 +142,6 @@ export function ActionSheet({
     <Sheet visible={visible} onClose={onClose} title={title} subtitle={subtitle}>
       <View>
         {actions.map((action, i) => {
-          const tint = action.destructive ? colors.terracotta : colors.ink;
           return (
             <Pressable
               key={action.label}
@@ -150,16 +154,21 @@ export function ActionSheet({
                 else setTimeout(action.onPress, 350);
               }}
               accessibilityRole="button"
-              style={({ pressed }) => [
-                styles.action,
-                i < actions.length - 1 && styles.actionDivider,
-                pressed && styles.pressed,
-              ]}
+              className={`flex-row items-center gap-3 py-3.5 active:opacity-70 ${i < actions.length - 1 ? "border-line" : ""}`}
+              style={i < actions.length - 1 ? { borderBottomWidth: StyleSheet.hairlineWidth } : undefined}
             >
-              <View style={styles.actionIcon}>
-                <Ionicons name={action.icon} size={20} color={tint} />
+              <View className="h-10 w-10 items-center justify-center rounded-full bg-surface-alt">
+                <Ionicons
+                  name={action.icon}
+                  size={20}
+                  colorClassName={action.destructive ? "accent-terracotta" : "accent-ink"}
+                />
               </View>
-              <Text style={[styles.actionLabel, { color: tint }]}>{action.label}</Text>
+              <Text
+                className={`font-sans-semibold text-[16.5px] ${action.destructive ? "text-terracotta" : "text-ink"}`}
+              >
+                {action.label}
+              </Text>
             </Pressable>
           );
         })}
@@ -183,11 +192,11 @@ export function Field({
   style?: StyleProp<ViewStyle>;
 }) {
   return (
-    <View style={[styles.field, style]}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+    <View className="gap-2" style={style}>
+      <Text className="type-label text-ink-soft">{label}</Text>
       {children}
-      {error ? <Text style={styles.fieldError}>{error}</Text> : null}
-      {!error && hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
+      {error ? <Text className="type-caption text-terracotta">{error}</Text> : null}
+      {!error && hint ? <Text className="type-caption">{hint}</Text> : null}
     </View>
   );
 }
@@ -236,7 +245,7 @@ export function SheetInput({
       onBlur={onBlur}
       onSubmitEditing={onSubmitEditing}
       placeholder={placeholder}
-      placeholderTextColor={colors.muted}
+      placeholderTextColorClassName="accent-muted"
       multiline={multiline}
       autoFocus={autoFocus}
       autoCapitalize={autoCapitalize}
@@ -248,7 +257,8 @@ export function SheetInput({
       secureTextEntry={secureTextEntry}
       autoComplete={autoComplete}
       textContentType={textContentType}
-      style={[styles.input, multiline && styles.inputMultiline]}
+      className={`rounded-md border border-line bg-surface px-4 py-3 font-sans text-[16px] text-ink ${multiline ? "min-h-[84px]" : "min-h-[50px]"}`}
+      style={multiline ? { textAlignVertical: "top" } : undefined}
     />
   );
 }
@@ -271,28 +281,26 @@ export function SheetButton({
   variant?: "primary" | "secondary" | "danger";
   busy?: boolean;
   disabled?: boolean;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: keyof typeof IoniconsGlyphs.glyphMap;
   style?: StyleProp<ViewStyle>;
 }) {
   const filled = variant !== "secondary";
-  const fg = filled ? colors.onPrimary : colors.ink;
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled || busy}
       accessibilityRole="button"
       accessibilityState={{ disabled: disabled || busy, busy }}
-      style={({ pressed }) => [
-        styles.button,
-        BUTTON_VARIANT[variant],
-        (disabled || busy) && styles.buttonDisabled,
-        pressed && styles.pressed,
-        style,
-      ]}
+      className={`h-[52px] flex-row items-center justify-center gap-2 rounded-full px-6 active:opacity-70 ${BUTTON_VARIANT[variant]} ${disabled || busy ? "opacity-50" : ""}`}
+      style={style}
     >
-      {busy ? <ActivityIndicator color={fg} size="small" /> : null}
-      {!busy && icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
-      <Text style={[styles.buttonLabel, { color: fg }]}>{label}</Text>
+      {busy ? (
+        <ActivityIndicator colorClassName={filled ? "accent-on-primary" : "accent-ink"} size="small" />
+      ) : null}
+      {!busy && icon ? (
+        <Ionicons name={icon} size={18} colorClassName={filled ? "accent-on-primary" : "accent-ink"} />
+      ) : null}
+      <Text className={`font-sans-bold text-[16px] ${filled ? "text-on-primary" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -301,118 +309,15 @@ export function SheetButton({
 export function SheetError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <View style={styles.errorBox}>
-      <Ionicons name="alert-circle-outline" size={18} color={colors.terracotta} />
-      <Text style={styles.errorText}>{message}</Text>
+    <View className="flex-row items-start gap-2 rounded-sm bg-danger-soft p-3">
+      <Ionicons name="alert-circle-outline" size={18} colorClassName="accent-terracotta" />
+      <Text className="flex-1 font-sans text-[14.5px] leading-[20px] text-ink">{message}</Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.7 },
-  root: { flex: 1, justifyContent: "flex-end" },
-  scrim: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: colors.overlay },
-  avoider: { flex: 1, justifyContent: "flex-end", pointerEvents: "box-none" },
-  panel: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    maxHeight: "92%",
-    alignSelf: "center",
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingTop: spacing.sm,
-  },
-  handle: {
-    alignSelf: "center",
-    width: 40,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: colors.line,
-    marginBottom: spacing.md,
-  },
-  titleRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    paddingHorizontal: spacing.xl,
-    paddingBottom: spacing.lg,
-  },
-  title: { fontFamily: fonts.display, fontSize: 30, lineHeight: 36, color: colors.ink },
-  subtitle: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 21, color: colors.inkSoft, marginTop: 2 },
-  close: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: 2,
-  },
-  body: { flexGrow: 0 },
-  // Fields sit further from each other (xl) than a field's own label, input
-  // and hint do (sm), so each reads as one group.
-  bodyContent: { paddingHorizontal: spacing.xl, paddingBottom: spacing.md, gap: spacing.xl },
-  footer: { paddingHorizontal: spacing.xl, paddingTop: spacing.sm, gap: spacing.sm },
-
-  action: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingVertical: spacing.md + 2 },
-  actionDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  actionIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.surfaceAlt,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  actionLabel: { fontFamily: fonts.sansSemiBold, fontSize: 16.5 },
-
-  field: { gap: spacing.sm },
-  fieldLabel: { ...type.label, color: colors.inkSoft },
-  fieldHint: { ...type.caption },
-  fieldError: { ...type.caption, color: colors.terracotta },
-  input: {
-    minHeight: 50,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-    fontFamily: fonts.sans,
-    fontSize: 16,
-    color: colors.ink,
-  },
-  inputMultiline: { minHeight: 84, textAlignVertical: "top" },
-
-  button: {
-    height: 52,
-    borderRadius: radius.pill,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xl,
-  },
-  buttonPrimary: { backgroundColor: colors.primary },
-  buttonSecondary: { borderWidth: 1, borderColor: colors.line, backgroundColor: colors.surface },
-  buttonDanger: { backgroundColor: colors.danger },
-  buttonDisabled: { opacity: 0.5 },
-  buttonLabel: { fontFamily: fonts.sansBold, fontSize: 16 },
-
-  errorBox: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.sm,
-    backgroundColor: colors.dangerSoft,
-  },
-  errorText: { flex: 1, fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 20, color: colors.ink },
-});
-
 const BUTTON_VARIANT = {
-  primary: styles.buttonPrimary,
-  secondary: styles.buttonSecondary,
-  danger: styles.buttonDanger,
+  primary: "bg-primary",
+  secondary: "border border-line bg-surface",
+  danger: "bg-danger",
 } as const;
