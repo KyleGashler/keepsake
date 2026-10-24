@@ -1,6 +1,6 @@
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiSend, useApi, type LibraryPayload, type LibraryPillar, type PillarKey } from "../../../src/api";
 import { useCanContribute } from "../../../src/auth/session-context";
@@ -11,7 +11,7 @@ import { ErrorState, Loading } from "../../../src/components/ui";
 import { pickAndUploadImage } from "../../../src/pick-image";
 import { friendlyError } from "../../../src/format";
 import { routes } from "../../../src/routes";
-import { colors, layout, spacing } from "../../../src/theme";
+import { layout } from "../../../src/theme";
 
 /** Child Profiles has its own screens; the other two pillars list their collections. */
 function open(pillar: LibraryPillar) {
@@ -76,7 +76,7 @@ export default function LibraryScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -93,11 +93,12 @@ export default function LibraryScreen() {
         {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
         {loading && !data ? <Loading /> : null}
         {problem ? (
-          <View style={styles.problem}>
+          <View className="mb-3">
             <SheetError message={problem} />
           </View>
         ) : null}
-        <View style={styles.cards}>
+        {/* Cards run wider than the type above them, as in the mockup. */}
+        <View className="-mx-2.5 gap-4">
           {pillars.map((pillar) => (
             <PhotoCard
               key={pillar.key}
@@ -129,10 +130,3 @@ export default function LibraryScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  // Cards run wider than the type above them, as in the mockup.
-  cards: { gap: spacing.lg, marginHorizontal: -spacing.sm - 2 },
-  problem: { marginBottom: spacing.md },
-});

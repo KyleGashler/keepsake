@@ -1,11 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { apiSend, type ChildSummary, type Collection, type CollectionPatch, type Person, type PersonPatch } from "../api";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
-import { DISC_COLORS, glyphColorFor, ICON_KEYS, isIconKey, type IconKey } from "../icons";
+import { COLLECTION_SWATCHES, glyphColorFor, ICON_KEYS, isIconKey, type IconKey } from "../icons";
 import { pickAndUploadImage } from "../pick-image";
-import { brand, colors, fonts, spacing } from "../theme";
+import { Ionicons } from "../styled";
+import { useColor } from "../theme";
 import { ChildPortrait } from "./child-header";
 import { Glyph, IconDisc } from "./journey";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
@@ -202,9 +202,9 @@ export function EditChildSheet({
         />
       }
     >
-      <View style={styles.photoRow}>
+      <View className="flex-row items-center gap-4">
         <ChildPortrait child={portraitChild} size={96} uri={preview} />
-        <View style={styles.photoButtons}>
+        <View className="flex-1 items-start gap-2">
           <SheetButton
             label={photoButtonLabel}
             icon="image-outline"
@@ -217,10 +217,10 @@ export function EditChildSheet({
               onPress={removePhoto}
               hitSlop={8}
               accessibilityRole="button"
-              style={({ pressed }) => [styles.removePhoto, pressed && styles.pressed]}
+              className="flex-row items-center gap-1.5 px-1 py-1.5 active:opacity-70"
             >
-              <Ionicons name="trash-outline" size={16} color={colors.terracotta} />
-              <Text style={styles.removePhotoLabel}>Remove photo</Text>
+              <Ionicons name="trash-outline" size={16} colorClassName="accent-terracotta" />
+              <Text className="font-sans-semibold text-[15px] text-terracotta">Remove photo</Text>
             </Pressable>
           ) : null}
         </View>
@@ -251,10 +251,10 @@ export function EditChildSheet({
           onPress={onDelete}
           disabled={saving}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.removePhoto, styles.deleteRow, pressed && styles.pressed]}
+          className="mt-2 flex-row items-center gap-1.5 self-start px-1 py-1.5 active:opacity-70"
         >
-          <Ionicons name="trash-outline" size={16} color={colors.terracotta} />
-          <Text style={styles.removePhotoLabel}>Delete {child.name} from the archive</Text>
+          <Ionicons name="trash-outline" size={16} colorClassName="accent-terracotta" />
+          <Text className="font-sans-semibold text-[15px] text-terracotta">Delete {child.name} from the archive</Text>
         </Pressable>
       ) : null}
     </Sheet>
@@ -264,9 +264,6 @@ export function EditChildSheet({
 // ---------------------------------------------------------------------------
 // Create and edit a collection
 // ---------------------------------------------------------------------------
-
-/** The seven default discs' colours, then the rest of the brand palette. */
-const COLLECTION_SWATCHES = [...DISC_COLORS, brand.tealGrey] as const;
 
 type CollectionFields = { name: string; description: string; icon: IconKey; color: string };
 
@@ -369,6 +366,7 @@ function CollectionFormSheet({
   const [color, setColor] = useState<string>(initial.color);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const ink = useColor("ink");
   // A colour chosen before (or set elsewhere) stays on offer.
   const swatches: string[] = COLLECTION_SWATCHES.some((c) => c.toUpperCase() === initial.color.toUpperCase())
     ? [...COLLECTION_SWATCHES]
@@ -395,14 +393,14 @@ function CollectionFormSheet({
       subtitle={subtitle}
       footer={<SheetButton label={submitLabel} onPress={save} busy={saving} disabled={!name.trim()} />}
     >
-      <View style={styles.preview}>
+      <View className="flex-row items-center gap-4 rounded-md border border-line bg-surface p-3">
         <IconDisc icon={icon} color={color} size={56} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.previewName} numberOfLines={1}>
+        <View className="flex-1">
+          <Text className="font-display text-[21px] leading-[27px] text-ink" numberOfLines={1}>
             {name.trim() || "New collection"}
           </Text>
           {description.trim() ? (
-            <Text style={styles.previewDescription} numberOfLines={2}>
+            <Text className="font-sans text-[14px] leading-[19px] text-ink-soft" numberOfLines={2}>
               {description.trim()}
             </Text>
           ) : null}
@@ -432,7 +430,7 @@ function CollectionFormSheet({
       </Field>
 
       <Field label="Icon">
-        <View style={styles.grid} accessibilityRole="radiogroup">
+        <View className="flex-row flex-wrap gap-2.5" accessibilityRole="radiogroup">
           {ICON_KEYS.map((key) => {
             const selected = key === icon;
             return (
@@ -442,13 +440,10 @@ function CollectionFormSheet({
                 accessibilityRole="radio"
                 accessibilityLabel={key}
                 accessibilityState={{ selected }}
-                style={({ pressed }) => [
-                  styles.iconChoice,
-                  selected && { backgroundColor: color, borderColor: color },
-                  pressed && styles.pressed,
-                ]}
+                className="h-12 w-12 items-center justify-center rounded-full border border-line bg-surface active:opacity-70"
+                style={selected ? { backgroundColor: color, borderColor: color } : undefined}
               >
-                <Glyph icon={key} size={22} color={selected ? glyphColorFor(color) : colors.ink} />
+                <Glyph icon={key} size={22} color={selected ? glyphColorFor(color) : ink} />
               </Pressable>
             );
           })}
@@ -456,7 +451,7 @@ function CollectionFormSheet({
       </Field>
 
       <Field label="Colour">
-        <View style={styles.grid} accessibilityRole="radiogroup">
+        <View className="flex-row flex-wrap gap-2.5" accessibilityRole="radiogroup">
           {swatches.map((swatch) => {
             const selected = swatch.toUpperCase() === color.toUpperCase();
             return (
@@ -466,9 +461,11 @@ function CollectionFormSheet({
                 accessibilityRole="radio"
                 accessibilityLabel={`Colour ${swatch}`}
                 accessibilityState={{ selected }}
-                style={({ pressed }) => [styles.swatchRing, selected && styles.swatchRingSelected, pressed && styles.pressed]}
+                className={`h-12 w-12 rounded-full border-2 p-1 active:opacity-70 ${
+                  selected ? "border-ink" : "border-transparent"
+                }`}
               >
-                <View style={[styles.swatch, { backgroundColor: swatch }]}>
+                <View className="flex-1 items-center justify-center rounded-[20px]" style={{ backgroundColor: swatch }}>
                   {selected ? <Ionicons name="checkmark" size={18} color={glyphColorFor(swatch)} /> : null}
                 </View>
               </Pressable>
@@ -480,48 +477,3 @@ function CollectionFormSheet({
     </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.7 },
-
-  photoRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
-  photoButtons: { flex: 1, gap: spacing.sm, alignItems: "flex-start" },
-  removePhoto: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6, paddingHorizontal: 4 },
-  removePhotoLabel: { fontFamily: fonts.sansSemiBold, fontSize: 15, color: colors.terracotta },
-  deleteRow: { alignSelf: "flex-start", marginTop: spacing.sm },
-
-  preview: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    padding: spacing.md,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  previewName: { fontFamily: fonts.display, fontSize: 21, lineHeight: 27, color: colors.ink },
-  previewDescription: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 19, color: colors.inkSoft },
-
-  grid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
-  iconChoice: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  swatchRing: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    padding: 4,
-    borderWidth: 2,
-    borderColor: "transparent",
-  },
-  swatchRingSelected: { borderColor: colors.ink },
-  swatch: { flex: 1, borderRadius: 20, alignItems: "center", justifyContent: "center" },
-});

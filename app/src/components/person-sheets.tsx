@@ -1,8 +1,7 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { useState } from "react";
 import { apiSend, type Person, type PersonCreate, type PersonPatch } from "../api";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
-import { colors, fonts, radius, spacing } from "../theme";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
 /**
@@ -84,16 +83,20 @@ export function AddPersonSheet({ onClose, onAdded }: { onClose: () => void; onAd
         />
       </Field>
       <Field label="Who are they?">
-        <View style={styles.chips} accessibilityRole="radiogroup">
+        <View className="flex-row flex-wrap gap-2" accessibilityRole="radiogroup">
           {ADULT_ROLES.map((r) => (
             <Pressable
               key={r.role}
               onPress={() => setRole(r.role)}
               accessibilityRole="radio"
               accessibilityState={{ selected: role === r.role }}
-              style={[styles.chip, role === r.role && styles.chipSelected]}
+              className={`rounded-full border px-3 py-2 ${
+                role === r.role ? "border-primary bg-primary" : "border-line bg-surface"
+              }`}
             >
-              <Text style={[styles.chipLabel, role === r.role && { color: colors.onPrimary }]}>{r.label}</Text>
+              <Text className={`font-sans-semibold text-[14px] ${role === r.role ? "text-on-primary" : "text-ink"}`}>
+                {r.label}
+              </Text>
             </Pressable>
           ))}
         </View>
@@ -177,17 +180,3 @@ export function EditPersonSheet({
     </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipLabel: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: colors.ink },
-});

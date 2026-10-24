@@ -1,5 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   mediaUrl,
@@ -9,7 +8,7 @@ import {
   type MemoryCard,
 } from "../api";
 import { ageOn, longDate, monthDay } from "../format";
-import { colors, fonts, radius, shadow, spacing } from "../theme";
+import { Image, Ionicons } from "../styled";
 
 /**
  * How one memory reads inside a collection's archive. src/archive.ts maps a
@@ -29,7 +28,7 @@ export type EntryProps = {
 // Default: a photo-or-words row
 // ---------------------------------------------------------------------------
 
-const MEDIA_GLYPHS: Record<MediaType, { icon: keyof typeof Ionicons.glyphMap; label: string }> = {
+const MEDIA_GLYPHS: Record<MediaType, { icon: keyof typeof BaseIonicons.glyphMap; label: string }> = {
   PHOTO: { icon: "image-outline", label: "Photos" },
   VIDEO: { icon: "videocam-outline", label: "Video" },
   AUDIO: { icon: "mic-outline", label: "Audio" },
@@ -47,33 +46,34 @@ export function MemoryEntry({ memory, collection, onPress, isLast }: EntryProps)
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`${memory.title}, ${longDate(memory.occurredAt)}`}
-      style={({ pressed }) => [styles.row, !isLast && styles.rowDivider, pressed && styles.pressed]}
+      className="flex-row items-start gap-4 border-b-line py-4 active:opacity-70"
+      style={isLast ? undefined : { borderBottomWidth: StyleSheet.hairlineWidth }}
     >
       {memory.isTextOnly ? (
-        <View style={[styles.rule, { backgroundColor: collection.color }]} />
+        <View className="my-0.5 w-[3px] self-stretch rounded-[2px] opacity-85" style={{ backgroundColor: collection.color }} />
       ) : (
         <Image
           source={{ uri: mediaUrl(memory.heroUrl) }}
-          style={styles.thumb}
+          className="h-21 w-21 rounded-md bg-surface-alt"
           contentFit="cover"
           transition={200}
         />
       )}
-      <View style={styles.rowText}>
-        <Text style={styles.dateEyebrow} numberOfLines={1}>
+      <View className="min-w-0 flex-1">
+        <Text className="mb-[3px] font-sans-bold text-[11.5px] tracking-[1.3px] text-muted uppercase" numberOfLines={1}>
           {eyebrow}
         </Text>
-        <Text style={styles.rowTitle} numberOfLines={2}>
+        <Text className="font-display text-[21px] leading-[26px] text-ink" numberOfLines={2}>
           {memory.title}
         </Text>
         {memory.excerpt ? (
-          <Text style={styles.excerpt} numberOfLines={memory.isTextOnly ? 3 : 2}>
+          <Text className="mt-1 font-sans text-[14.5px] leading-[21px] text-ink-soft" numberOfLines={memory.isTextOnly ? 3 : 2}>
             {memory.excerpt}
           </Text>
         ) : null}
         <MediaGlyphs types={memory.mediaTypes} count={memory.mediaCount} />
       </View>
-      <Ionicons name="chevron-forward" size={18} color={colors.inkSoft} style={styles.chevron} />
+      <Ionicons name="chevron-forward" size={18} colorClassName="accent-ink-soft" className="self-center" />
     </Pressable>
   );
 }
@@ -82,14 +82,14 @@ function MediaGlyphs({ types, count }: { types: MediaType[]; count: number }) {
   if (types.length === 0) return null;
   return (
     <View
-      style={styles.glyphs}
+      className="mt-2 flex-row items-center gap-2"
       accessible
       accessibilityLabel={types.map((t) => MEDIA_GLYPHS[t].label).join(", ")}
     >
       {types.map((t) => (
-        <Ionicons key={t} name={MEDIA_GLYPHS[t].icon} size={15} color={colors.muted} />
+        <Ionicons key={t} name={MEDIA_GLYPHS[t].icon} size={15} colorClassName="accent-muted" />
       ))}
-      {count > 1 ? <Text style={styles.glyphCount}>{count}</Text> : null}
+      {count > 1 ? <Text className="-ml-[3px] font-sans-semibold text-[12.5px] text-muted">{count}</Text> : null}
     </View>
   );
 }
@@ -126,109 +126,25 @@ export function QuoteEntry({ memory, child, onPress }: EntryProps) {
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={`“${quote}”${speaker ? `, ${speaker}` : ""}, ${longDate(memory.occurredAt)}`}
-      style={({ pressed }) => [styles.quoteCard, pressed && styles.cardPressed]}
+      className="mb-3 rounded-lg bg-surface px-6 pt-3 pb-[18px] shadow-card active:scale-[0.995] active:opacity-90"
     >
-      <Text style={styles.quoteMark} aria-hidden>
+      <Text className="-ml-[3px] h-10 font-display text-[64px] leading-[64px] text-accent" aria-hidden>
         “
       </Text>
-      {heading ? <Text style={styles.quoteHeading}>{heading}</Text> : null}
-      <Text style={styles.quoteText}>{quote}</Text>
+      {heading ? <Text className="mb-1 font-sans-bold text-[12px] tracking-[1.3px] text-muted uppercase">{heading}</Text> : null}
+      <Text className="font-display text-[25px] leading-[32px] text-ink">{quote}</Text>
       {context ? (
-        <Text style={styles.quoteContext} numberOfLines={3}>
+        <Text className="mt-2 font-sans text-[14.5px] leading-[21px] text-ink-soft" numberOfLines={3}>
           {context}
         </Text>
       ) : null}
-      <View style={styles.attribution}>
-        <View style={styles.attributionRule} />
-        <Text style={styles.attributionText} numberOfLines={1}>
+      <View className="mt-3 flex-row items-center gap-2">
+        <View className="h-[1.5px] w-[18px] rounded-[1px] bg-accent" />
+        <Text className="shrink font-sans-semibold text-[13.5px] text-muted" numberOfLines={1}>
           {[speaker, longDate(memory.occurredAt)].filter(Boolean).join("  ·  ")}
         </Text>
-        {hasAudio ? <Ionicons name="mic-outline" size={15} color={colors.muted} /> : null}
+        {hasAudio ? <Ionicons name="mic-outline" size={15} colorClassName="accent-muted" /> : null}
       </View>
     </Pressable>
   );
 }
-
-const THUMB = 84;
-
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.7 },
-  cardPressed: { opacity: 0.9, transform: [{ scale: 0.995 }] },
-
-  row: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.lg,
-    paddingVertical: spacing.lg,
-  },
-  rowDivider: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.line },
-  thumb: {
-    width: THUMB,
-    height: THUMB,
-    borderRadius: radius.md,
-    backgroundColor: colors.surfaceAlt,
-  },
-  rule: { width: 3, alignSelf: "stretch", borderRadius: 2, marginVertical: 2, opacity: 0.85 },
-  rowText: { flex: 1, minWidth: 0 },
-  dateEyebrow: {
-    fontFamily: fonts.sansBold,
-    fontSize: 11.5,
-    letterSpacing: 1.3,
-    textTransform: "uppercase",
-    color: colors.muted,
-    marginBottom: 3,
-  },
-  rowTitle: { fontFamily: fonts.display, fontSize: 21, lineHeight: 26, color: colors.ink },
-  excerpt: {
-    fontFamily: fonts.sans,
-    fontSize: 14.5,
-    lineHeight: 21,
-    color: colors.inkSoft,
-    marginTop: 4,
-  },
-  glyphs: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: spacing.sm },
-  glyphCount: { fontFamily: fonts.sansSemiBold, fontSize: 12.5, color: colors.muted, marginLeft: -3 },
-  chevron: { alignSelf: "center" },
-
-  quoteCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg + 2,
-    paddingHorizontal: spacing.xl,
-    marginBottom: spacing.md,
-    ...shadow,
-  },
-  quoteMark: {
-    fontFamily: fonts.display,
-    fontSize: 64,
-    lineHeight: 64,
-    height: 40,
-    color: colors.accent,
-    marginLeft: -3,
-  },
-  quoteHeading: {
-    fontFamily: fonts.sansBold,
-    fontSize: 12,
-    letterSpacing: 1.3,
-    textTransform: "uppercase",
-    color: colors.muted,
-    marginBottom: spacing.xs,
-  },
-  quoteText: { fontFamily: fonts.display, fontSize: 25, lineHeight: 32, color: colors.ink },
-  quoteContext: {
-    fontFamily: fonts.sans,
-    fontSize: 14.5,
-    lineHeight: 21,
-    color: colors.inkSoft,
-    marginTop: spacing.sm,
-  },
-  attribution: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.md },
-  attributionRule: { width: 18, height: 1.5, borderRadius: 1, backgroundColor: colors.accent },
-  attributionText: {
-    flexShrink: 1,
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 13.5,
-    color: colors.muted,
-  },
-});

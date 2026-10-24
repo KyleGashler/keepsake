@@ -1,7 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, Text, TextInput, View } from "react-native";
 import {
   apiGet,
   type Collection,
@@ -10,7 +9,7 @@ import {
 } from "../src/api";
 import { AppHeader, Avatar, EmptyState, MemoryRow, Screen } from "../src/components/ui";
 import { openInLibrary, routes } from "../src/routes";
-import { colors, radius, spacing, type } from "../src/theme";
+import { Ionicons } from "../src/styled";
 
 type Results = { q: string; memories: MemoryCard[]; people: Person[]; collections: Collection[]; total: number };
 
@@ -52,31 +51,31 @@ export default function SearchScreen() {
     <>
       <AppHeader back title="Search" globalActions={false} />
       <Screen>
-        <View style={styles.field}>
-          <Ionicons name="search" size={17} color={colors.muted} />
+        <View className="flex-row items-center gap-2 rounded-full border border-line bg-surface px-4 py-[11px]">
+          <Ionicons name="search" size={17} colorClassName="accent-muted" />
           <TextInput
             value={query}
             onChangeText={changeQuery}
             autoFocus
             placeholder="A person, a place, something someone said…"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
+            placeholderTextColorClassName="accent-muted"
+            className="flex-1 text-[15.5px] text-ink"
             returnKeyType="search"
           />
           {query ? (
             <Pressable onPress={() => changeQuery("")} hitSlop={8}>
-              <Ionicons name="close-circle" size={17} color={colors.muted} />
+              <Ionicons name="close-circle" size={17} colorClassName="accent-muted" />
             </Pressable>
           ) : null}
         </View>
 
         {!results ? (
-          <View style={{ marginTop: spacing.xl }}>
-            <Text style={type.label}>Try</Text>
-            <View style={styles.chipWrap}>
+          <View className="mt-6">
+            <Text className="type-label">Try</Text>
+            <View className="mt-3 flex-row flex-wrap gap-2">
               {SUGGESTIONS.map((suggestion) => (
-                <Pressable key={suggestion} onPress={() => changeQuery(suggestion)} style={styles.chip}>
-                  <Text style={styles.chipLabel}>{suggestion}</Text>
+                <Pressable key={suggestion} onPress={() => changeQuery(suggestion)} className="rounded-full border border-line bg-surface px-4 py-2">
+                  <Text className="text-[13.5px] text-ink">{suggestion}</Text>
                 </Pressable>
               ))}
             </View>
@@ -93,17 +92,17 @@ export default function SearchScreen() {
         {results && results.total !== 0 ? (
           <>
             {results.people.length ? (
-              <View style={{ marginTop: spacing.xl }}>
-                <Text style={type.label}>People</Text>
-                <View style={{ gap: spacing.md, marginTop: spacing.md }}>
+              <View className="mt-6">
+                <Text className="type-label">People</Text>
+                <View className="mt-3 gap-3">
                   {results.people.map((person) => (
                     <Pressable
                       key={person.id}
                       onPress={() => router.push(`/person/${person.id}`)}
-                      style={styles.personRow}
+                      className="flex-row items-center gap-3"
                     >
                       <Avatar person={person} size={38} />
-                      <Text style={{ fontSize: 15, color: colors.ink }}>
+                      <Text className="text-[15px] text-ink">
                         {person.name}
                         {person.relation ? ` · ${person.relation}` : ""}
                       </Text>
@@ -114,16 +113,16 @@ export default function SearchScreen() {
             ) : null}
 
             {results.collections.length ? (
-              <View style={{ marginTop: spacing.xl }}>
-                <Text style={type.label}>Collections</Text>
-                <View style={styles.chipWrap}>
+              <View className="mt-6">
+                <Text className="type-label">Collections</Text>
+                <View className="mt-3 flex-row flex-wrap gap-2">
                   {results.collections.map((collection) => (
                     <Pressable
                       key={collection.id}
                       onPress={() => openInLibrary(routes.collection(collection.id))}
-                      style={styles.chip}
+                      className="rounded-full border border-line bg-surface px-4 py-2"
                     >
-                      <Text style={styles.chipLabel}>
+                      <Text className="text-[13.5px] text-ink">
                         {collection.personName ? `${collection.personName} · ` : ""}
                         {collection.name}
                       </Text>
@@ -134,8 +133,8 @@ export default function SearchScreen() {
             ) : null}
 
             {results.memories.length ? (
-              <View style={{ marginTop: spacing.xl }}>
-                <Text style={type.label}>Memories</Text>
+              <View className="mt-6">
+                <Text className="type-label">Memories</Text>
                 {results.memories.map((memory) => (
                   <MemoryRow key={memory.id} memory={memory} />
                 ))}
@@ -147,29 +146,3 @@ export default function SearchScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  field: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 11,
-  },
-  input: { flex: 1, fontSize: 15.5, color: colors.ink },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: spacing.md },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  chipLabel: { fontSize: 13.5, color: colors.ink },
-  personRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
-});

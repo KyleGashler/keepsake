@@ -1,9 +1,8 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { apiSend, useApi, type Collection, type MemoryCard } from "../api";
 import { friendlyError, shortDate } from "../format";
-import { colors, fonts, spacing, type } from "../theme";
+import { Ionicons } from "../styled";
 import { SearchField } from "./journey";
 import { CardArt } from "./memory/parts";
 import { Sheet } from "./sheet";
@@ -71,10 +70,10 @@ export function FileMemoriesSheet({
       title="Memories in this collection"
       subtitle={`Tick the ones that belong in ${collection.name}. Unticking only takes a memory out of here.`}
     >
-      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" style={styles.search} />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" style={{ height: 46, marginBottom: 8 }} />
+      {error ? <Text className="mt-2 font-sans text-[13.5px] text-terracotta">{error}</Text> : null}
       {(list.loading && !list.data) || (filedNow.loading && !filedNow.data) ? (
-        <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.lg }} />
+        <ActivityIndicator colorClassName="accent-primary" className="mt-4" />
       ) : null}
       {memories.map((memory) => {
         const on = isFiled(memory.id);
@@ -87,44 +86,33 @@ export function FileMemoriesSheet({
             accessibilityRole="checkbox"
             accessibilityState={{ checked: on }}
             accessibilityLabel={memory.title}
-            style={({ pressed }) => [styles.row, (pressed || working) && { opacity: 0.6 }]}
+            className={`flex-row items-center gap-3 border-b-line py-2.5 active:opacity-60 ${working ? "opacity-60" : ""}`}
+            style={{ borderBottomWidth: StyleSheet.hairlineWidth }}
           >
-            <View style={styles.thumb}>
+            <View className="h-11 w-11 overflow-hidden rounded-[8px] bg-surface-alt">
               <CardArt memory={memory} compact />
             </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.name} numberOfLines={1}>
+            <View className="flex-1">
+              <Text className="font-sans text-[16px] text-ink" numberOfLines={1}>
                 {memory.title}
               </Text>
-              <Text style={type.caption}>{shortDate(memory.occurredAt)}</Text>
+              <Text className="type-caption">{shortDate(memory.occurredAt)}</Text>
             </View>
             {working ? (
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator colorClassName="accent-primary" />
             ) : (
-              <Ionicons name={on ? "checkmark-circle" : "ellipse-outline"} size={24} color={on ? colors.primary : colors.line} />
+              <Ionicons
+                name={on ? "checkmark-circle" : "ellipse-outline"}
+                size={24}
+                colorClassName={on ? "accent-primary" : "accent-line"}
+              />
             )}
           </Pressable>
         );
       })}
       {list.data && memories.length === 0 ? (
-        <Text style={styles.empty}>{searching ? "Nothing matches that yet." : "No memories yet."}</Text>
+        <Text className="mt-3 type-caption">{searching ? "Nothing matches that yet." : "No memories yet."}</Text>
       ) : null}
     </Sheet>
   );
 }
-
-const styles = StyleSheet.create({
-  search: { height: 46, marginBottom: spacing.sm },
-  error: { fontFamily: fonts.sans, fontSize: 13.5, color: colors.terracotta, marginTop: spacing.sm },
-  empty: { ...type.caption, marginTop: spacing.md },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
-  },
-  name: { fontFamily: fonts.sans, fontSize: 16, color: colors.ink },
-  thumb: { width: 44, height: 44, borderRadius: 8, overflow: "hidden", backgroundColor: colors.surfaceAlt },
-});

@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { isNotFound, useApi, type PersonDetail } from "../../src/api";
 import { useCanContribute } from "../../src/auth/session-context";
 import { DreamCloud } from "../../src/components/brand";
@@ -21,7 +21,6 @@ import {
 import { ageFrom } from "../../src/format";
 import { deletePersonAction, deletePersonMessage } from "../../src/people";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
-import { colors, radius, spacing, type } from "../../src/theme";
 
 /**
  * Tapping a person filters the archive around their story. Someone who can
@@ -57,33 +56,33 @@ export default function PersonScreen() {
         action={canContribute ? <HeaderButton icon="ellipsis-horizontal" label={`Options for ${person.name}`} onPress={() => setMenu(true)} /> : null}
       />
       <Screen>
-        <View style={styles.header}>
+        <View className="flex-row items-center gap-4">
           <Avatar person={person} size={72} />
-          <View style={{ flex: 1 }}>
-            <Text style={type.title}>{person.name}</Text>
-            <Text style={type.caption}>
+          <View className="flex-1">
+            <Text className="type-title">{person.name}</Text>
+            <Text className="type-caption">
               {[person.relation, age].filter(Boolean).join(" · ")}
             </Text>
-            <Text style={[type.caption, { marginTop: 4 }]}>
+            <Text className="mt-1 type-caption">
               {data.memoryCount} {data.memoryCount === 1 ? "memory" : "memories"} so far
             </Text>
           </View>
           {/* Whimsical shape 6/6 — dream cloud, over the person the story is about. */}
           <DreamCloud size={44} opacity={0.8} />
         </View>
-        {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+        {notice ? <Text className="mt-3 type-caption text-terracotta">{notice}</Text> : null}
 
         {data.collections.length ? (
           <>
             <SectionHeader label="Their collections" />
-            <View style={styles.chipWrap}>
+            <View className="flex-row flex-wrap gap-2">
               {data.collections.map((collection) => (
                 <Pressable
                   key={collection.id}
                   onPress={() => openInLibrary(routes.collection(collection.id))}
-                  style={styles.chip}
+                  className="rounded-full border border-line bg-surface px-4 py-[7px]"
                 >
-                  <Text style={styles.chipLabel}>{collection.name}</Text>
+                  <Text className="text-[13px] text-ink">{collection.name}</Text>
                 </Pressable>
               ))}
             </View>
@@ -139,18 +138,3 @@ export default function PersonScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  header: { flexDirection: "row", gap: spacing.lg, alignItems: "center" },
-  notice: { ...type.caption, color: colors.terracotta, marginTop: spacing.md },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    paddingVertical: 7,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  chipLabel: { fontSize: 13, color: colors.ink },
-});

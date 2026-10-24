@@ -1,7 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isNotFound, useApi, type ChildPayload } from "../../../../src/api";
 import { useCanContribute } from "../../../../src/auth/session-context";
@@ -13,7 +12,8 @@ import { ActionSheet } from "../../../../src/components/sheet";
 import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { possessive } from "../../../../src/format";
 import { backTo, routes } from "../../../../src/routes";
-import { colors, fonts, layout, spacing } from "../../../../src/theme";
+import { Ionicons } from "../../../../src/styled";
+import { layout } from "../../../../src/theme";
 
 /**
  * One child's Collections (design/mockups/03): their photo, name, age and
@@ -53,7 +53,7 @@ export default function ChildCollectionsScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingTop: insets.top + layout.top, paddingBottom: insets.bottom + layout.bottom }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -77,19 +77,22 @@ export default function ChildCollectionsScreen() {
         {child ? (
           <>
             <ChildHeader child={child} />
-            {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+            {notice ? <Text className="mt-3 font-sans text-[14px] text-terracotta">{notice}</Text> : null}
 
-            <Text style={styles.sectionTitle} accessibilityRole="header">
+            <Text
+              className="mt-after-header font-display text-[36px] leading-[42px] tracking-[-0.4px] text-ink"
+              accessibilityRole="header"
+            >
               Collections
             </Text>
-            <Text style={styles.sectionSubtitle}>
+            <Text className="mt-1 font-sans text-[15.5px] leading-[22px] text-ink-soft">
               Different parts of {possessive(child.name)} story, beautifully saved.
             </Text>
             <SearchField
               value={query}
               onChangeText={setQuery}
               placeholder="Search collections..."
-              style={styles.search}
+              style={{ marginTop: 16, marginBottom: 8, height: 44 }}
             />
 
             <View>
@@ -104,7 +107,7 @@ export default function ChildCollectionsScreen() {
                 />
               ))}
               {needle && collections.length === 0 ? (
-                <Text style={styles.noMatch}>
+                <Text className="py-4 font-sans text-[15px] text-muted">
                   No collections match “{query.trim()}”.
                 </Text>
               ) : null}
@@ -114,16 +117,17 @@ export default function ChildCollectionsScreen() {
               <Pressable
                 onPress={() => setCreating(true)}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.create, pressed && styles.pressed]}
+                className="mt-4 flex-row items-center gap-4 rounded-[14px] border border-line py-2.5 pr-3 active:opacity-70"
               >
-                <View style={styles.createSlot}>
-                  <View style={styles.createCircle}>
-                    <Ionicons name="add" size={24} color={colors.ink} />
+                {/* Same width as a disc, so the title lines up with the list's. */}
+                <View className="w-[52px] items-end">
+                  <View className="h-[38px] w-[38px] items-center justify-center rounded-full border-[1.5px] border-ink">
+                    <Ionicons name="add" size={24} colorClassName="accent-ink" />
                   </View>
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.createTitle}>Create a Collection</Text>
-                  <Text style={styles.createBody}>Add a new collection tailored to your child.</Text>
+                <View className="flex-1">
+                  <Text className="font-display text-[20px] leading-[25px] text-ink">Create a Collection</Text>
+                  <Text className="mt-px font-sans text-[14px] leading-[19px] text-ink-soft">Add a new collection tailored to your child.</Text>
                 </View>
               </Pressable>
             ) : null}
@@ -170,45 +174,3 @@ export default function ChildCollectionsScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  pressed: { opacity: 0.7 },
-  sectionTitle: {
-    fontFamily: fonts.display,
-    fontSize: 36,
-    lineHeight: 42,
-    letterSpacing: -0.4,
-    color: colors.ink,
-    marginTop: layout.afterHeader,
-  },
-  sectionSubtitle: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 22, color: colors.inkSoft, marginTop: spacing.xs },
-  search: { marginTop: spacing.lg, marginBottom: spacing.sm, height: 44 },
-  noMatch: { fontFamily: fonts.sans, fontSize: 15, color: colors.muted, paddingVertical: spacing.lg },
-  notice: { fontFamily: fonts.sans, fontSize: 14, color: colors.terracotta, marginTop: spacing.md },
-
-  create: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    marginTop: spacing.lg,
-    paddingVertical: spacing.sm + 2,
-    paddingRight: spacing.md,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  // Same width as a disc, so the title lines up with the list's.
-  createSlot: { width: 52, alignItems: "flex-end" },
-  createCircle: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    borderWidth: 1.5,
-    borderColor: colors.ink,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  createTitle: { fontFamily: fonts.display, fontSize: 20, lineHeight: 25, color: colors.ink },
-  createBody: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 19, color: colors.inkSoft, marginTop: 1 },
-});

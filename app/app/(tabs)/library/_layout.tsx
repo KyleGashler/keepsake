@@ -1,5 +1,5 @@
 import { Stack } from "expo-router";
-import { colors } from "../../../src/theme";
+import { useColor } from "../../../src/theme";
 
 /**
  * The Library journey: landing → Child Profiles → a child's collections → one
@@ -17,11 +17,12 @@ export const unstable_settings = {
 };
 
 export default function LibraryLayout() {
+  const paper = useColor("paper");
   return (
     <Stack
       screenOptions={{
         headerShown: false,
-        contentStyle: { backgroundColor: colors.bg },
+        contentStyle: { backgroundColor: paper },
       }}
     />
   );

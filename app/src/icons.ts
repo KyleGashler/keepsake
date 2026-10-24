@@ -1,5 +1,4 @@
 import type { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
-import { brand } from "./theme";
 
 export type IconSpec =
   | { set: "ion"; name: keyof typeof Ionicons.glyphMap }
@@ -43,21 +42,32 @@ export function iconSpec(key: string): IconSpec {
   return ICONS[isIconKey(key) ? key : "sparkles"];
 }
 
+/*
+ * A disc's colour is data, not theme: the hex is saved in `Collection.color`
+ * (the server seeds its defaults with hex too), compared as a string, and
+ * fed to `glyphColorFor`. So these stay literal values here rather than
+ * classes; a collection made last year keeps its colour if the brand
+ * palette in src/global.css moves. They were taken from that palette.
+ */
+
 /**
  * Disc colours a family can pick for a custom collection: the seven the
  * default child collections use, in their order (Milestones … Phases).
  */
 export const DISC_COLORS = [
-  brand.goldenHoney,
-  brand.sage,
-  brand.deepTeal,
-  brand.terracotta,
-  brand.forest,
-  brand.duskBlue,
-  brand.peach,
+  "#D4994A", // golden honey
+  "#8E9A74", // sage
+  "#123F45", // deep teal
+  "#D56947", // terracotta
+  "#1D543D", // forest
+  "#7DA2B3", // dusk blue
+  "#F0DCC8", // peach
 ] as const;
 
-/** The gold a glyph takes on a pale disc (the moon on peach). */
+/** The seven default discs' colours, then the rest of the brand palette. */
+export const COLLECTION_SWATCHES = [...DISC_COLORS, "#4E6E73" /* teal grey */] as const;
+
+/** The gold a glyph takes on a pale disc (the moon on peach); --color-pale-disc-glyph in src/global.css. */
 const PALE_DISC_GLYPH = "#B5853F";
 
 function luminance(hex: string) {
@@ -71,7 +81,7 @@ function luminance(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** White on a coloured disc; gold on a pale one, where white would vanish. */
+/** White on a coloured disc; gold on a pale one, where white would vanish. Returns a raw colour for an icon's `color` prop. */
 export function glyphColorFor(discColor: string) {
   return luminance(discColor) > 0.55 ? PALE_DISC_GLYPH : "#FFFFFF";
 }

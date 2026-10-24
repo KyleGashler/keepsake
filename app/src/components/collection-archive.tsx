@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { router, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -15,7 +15,8 @@ import { useCanContribute } from "../auth/session-context";
 import { childAge, count, possessive, refusalMessage } from "../format";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, routes } from "../routes";
-import { colors, fonts, layout, radius, spacing } from "../theme";
+import { Ionicons } from "../styled";
+import { layout } from "../theme";
 import { ChildPortrait } from "./child-header";
 import { FileMemoriesSheet } from "./file-memories-sheet";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
@@ -119,7 +120,7 @@ export function CollectionArchive({
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
@@ -128,18 +129,18 @@ export function CollectionArchive({
         <View style={{ paddingTop: insets.top + layout.top }}>
           <BackRow label={backLabel} parent={backParent} onMore={canContribute ? () => setSheet("menu") : undefined} />
 
-          <View style={styles.discWrap}>
+          <View className="mb-4 self-start">
             <IconDisc icon={collection.icon} color={collection.color} size={76} />
-            <Sparkle size={22} style={styles.discSparkle} />
+            <Sparkle size={22} style={{ position: "absolute", right: -18, top: -6 }} />
           </View>
-          <Text style={styles.title} accessibilityRole="header">
+          <Text className="font-display text-[42px] leading-[48px] tracking-[-0.5px] text-ink" accessibilityRole="header">
             {collection.name}
           </Text>
           {collection.description ? (
-            <Text style={styles.description}>{collection.description}</Text>
+            <Text className="mt-1 font-sans text-[16.5px] leading-[23px] text-ink-soft">{collection.description}</Text>
           ) : null}
           <Identity child={child} pillar={collection.pillar} memoryCount={collection.memoryCount} />
-          {notice ? <Text style={styles.notice}>{notice}</Text> : null}
+          {notice ? <Text className="mt-3 font-sans text-[14px] text-terracotta">{notice}</Text> : null}
         </View>
 
         {isEmpty ? (
@@ -150,7 +151,7 @@ export function CollectionArchive({
               value={text}
               onChangeText={setText}
               placeholder="Search memories…"
-              style={styles.search}
+              style={{ marginTop: 24 }}
             />
             <YearChips
               years={years}
@@ -159,12 +160,12 @@ export function CollectionArchive({
               loading={loading}
             />
 
-            <View style={[styles.results, loading && styles.resultsLoading]}>
+            <View className={`mt-2 ${loading ? "opacity-50" : ""}`}>
               {groups.length === 0 ? (
                 <NothingMatches q={filters.q} year={filters.year} onClear={clearFilters} />
               ) : (
                 groups.map(({ year, memories: inYear }) => (
-                  <View key={year} style={styles.group}>
+                  <View key={year} className="mt-6">
                     <YearHeading year={year} count={inYear.length} />
                     {inYear.map((memory, i) => (
                       <Entry
@@ -256,16 +257,16 @@ function groupByYear(memories: MemoryCard[]) {
 
 function BackRow({ label, parent, onMore }: { label: string; parent: Href; onMore?: () => void }) {
   return (
-    <View style={styles.backRow}>
+    <View className="mb-3 min-h-11 flex-row items-center justify-between">
       <Pressable
         onPress={() => backTo(parent)}
         hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel={`Back to ${label}`}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        className="-ml-1 flex-row items-center gap-1 active:opacity-70"
       >
-        <Ionicons name="chevron-back" size={22} color={colors.ink} />
-        <Text style={styles.backLabel}>{label}</Text>
+        <Ionicons name="chevron-back" size={22} colorClassName="accent-ink" />
+        <Text className="font-sans text-[17px] text-ink">{label}</Text>
       </Pressable>
       {onMore ? (
         <Pressable
@@ -273,9 +274,9 @@ function BackRow({ label, parent, onMore }: { label: string; parent: Href; onMor
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Collection options"
-          style={({ pressed }) => [styles.more, pressed && styles.pressed]}
+          className="-mr-2 h-11 w-11 items-center justify-center active:opacity-70"
         >
-          <Ionicons name="ellipsis-horizontal" size={24} color={colors.ink} />
+          <Ionicons name="ellipsis-horizontal" size={24} colorClassName="accent-ink" />
         </Pressable>
       ) : null}
     </View>
@@ -295,9 +296,9 @@ function Identity({
   const memories = count(memoryCount, "memory", "memories");
   if (!child) {
     return (
-      <View style={styles.identity}>
-        <Text style={styles.identityText}>
-          <Text style={styles.identityName}>{PILLAR_NAMES[pillar]}</Text>
+      <View className="mt-4 flex-row items-center gap-2">
+        <Text className="shrink font-sans text-[15px] text-ink-soft">
+          <Text className="font-sans-bold text-ink">{PILLAR_NAMES[pillar]}</Text>
           {` · ${memories}`}
         </Text>
       </View>
@@ -305,11 +306,11 @@ function Identity({
   }
   const age = childAge(child.birthDate);
   return (
-    <View style={styles.identity}>
+    <View className="mt-4 flex-row items-center gap-2">
       {/* Their photo, or their monogram — the same face Child Profiles shows, not the generated avatar. */}
       <ChildPortrait child={child} size={30} uri={child.photoUrl} />
-      <Text style={styles.identityText} numberOfLines={1}>
-        <Text style={styles.identityName}>{child.name}</Text>
+      <Text className="shrink font-sans text-[15px] text-ink-soft" numberOfLines={1}>
+        <Text className="font-sans-bold text-ink">{child.name}</Text>
         {[age, memories].filter(Boolean).map((part) => ` · ${part}`).join("")}
       </Text>
     </View>
@@ -342,12 +343,13 @@ function YearChips({
         ]
       : years;
   return (
-    <View style={styles.chipsRow}>
+    <View className="mt-3 flex-row items-center">
+      {/* Chips scroll edge to edge on a narrow phone, past the column's gutter. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.chips}
-        style={styles.chipsScroll}
+        contentContainerClassName="gap-2 px-gutter"
+        className="-mx-gutter grow"
       >
         <Chip label="All" count={total} selected={selected === null} onPress={() => onSelect(null)} />
         {shown.map(({ year, count: n }) => (
@@ -360,7 +362,7 @@ function YearChips({
           />
         ))}
       </ScrollView>
-      {loading ? <ActivityIndicator size="small" color={colors.inkSoft} style={styles.spinner} /> : null}
+      {loading ? <ActivityIndicator size="small" colorClassName="accent-ink-soft" className="absolute right-0" /> : null}
     </View>
   );
 }
@@ -382,20 +384,22 @@ function Chip({
       accessibilityRole="button"
       accessibilityState={{ selected }}
       accessibilityLabel={`${label}, ${count(n, "memory", "memories")}`}
-      style={({ pressed }) => [styles.chip, selected && styles.chipSelected, pressed && styles.pressed]}
+      className={`h-[38px] flex-row items-center gap-1.5 rounded-full border px-4 active:opacity-70 ${
+        selected ? "border-primary bg-primary" : "border-line bg-paper"
+      }`}
     >
-      <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
-      <Text style={[styles.chipCount, selected && styles.chipCountSelected]}>{n}</Text>
+      <Text className={`font-sans-bold text-[14.5px] ${selected ? "text-on-primary" : "text-ink"}`}>{label}</Text>
+      <Text className={`font-sans text-[13.5px] ${selected ? "text-white/72" : "text-muted"}`}>{n}</Text>
     </Pressable>
   );
 }
 
 function YearHeading({ year, count: n }: { year: number; count: number }) {
   return (
-    <View style={styles.yearHeading} accessibilityRole="header">
-      <Text style={styles.yearText}>{year}</Text>
-      <View style={styles.yearLine} />
-      <Text style={styles.yearCount}>{count(n, "memory", "memories")}</Text>
+    <View className="mb-1 flex-row items-center gap-3" accessibilityRole="header">
+      <Text className="font-display text-[28px] leading-[34px] text-ink">{year}</Text>
+      <View className="flex-1 bg-line" style={{ height: StyleSheet.hairlineWidth }} />
+      <Text className="font-sans-semibold text-[13px] text-muted">{count(n, "memory", "memories")}</Text>
     </View>
   );
 }
@@ -403,6 +407,9 @@ function YearHeading({ year, count: n }: { year: number; count: number }) {
 // ---------------------------------------------------------------------------
 // Empty states and the add action
 // ---------------------------------------------------------------------------
+
+const EMPTY_TITLE = "mt-3 text-center font-display text-[24px] leading-[30px] text-ink";
+const EMPTY_BODY = "mt-2 mb-6 max-w-[340px] text-center font-sans text-[15.5px] leading-[23px] text-ink-soft";
 
 function EmptyCollection({
   child,
@@ -415,19 +422,19 @@ function EmptyCollection({
   onCapture?: () => void;
 }) {
   return (
-    <View style={styles.emptyPanel}>
+    <View className="mt-6 items-center rounded-lg bg-surface-alt px-6 py-9">
       <Sparkle size={26} />
-      <Text style={styles.emptyTitle}>A page waiting for its first memory</Text>
+      <Text className={EMPTY_TITLE}>A page waiting for its first memory</Text>
       {onCapture ? (
         <>
-          <Text style={styles.emptyBody}>
+          <Text className={EMPTY_BODY}>
             Start {child ? `${possessive(child.name)} ${name}` : name} with a moment worth keeping. It will
             live here, alongside every one that follows.
           </Text>
           <PillButton label="Preserve the first one" icon="add" onPress={onCapture} />
         </>
       ) : (
-        <Text style={styles.emptyBody}>Nothing has been saved to {name} yet.</Text>
+        <Text className={EMPTY_BODY}>Nothing has been saved to {name} yet.</Text>
       )}
     </View>
   );
@@ -438,9 +445,9 @@ function NothingMatches({ q, year, onClear }: { q: string; year: number | null; 
     .filter(Boolean)
     .join(" ");
   return (
-    <View style={styles.nothing}>
-      <Text style={styles.emptyTitle}>Nothing matches</Text>
-      <Text style={styles.emptyBody}>
+    <View className="items-center px-4 py-[52px]">
+      <Text className={EMPTY_TITLE}>Nothing matches</Text>
+      <Text className={EMPTY_BODY}>
         No memories here {q.trim() ? `match ${what}` : what}. Try another word, or see them all.
       </Text>
       <PillButton label="Clear filters" icon="close" variant="outline" onPress={onClear} />
@@ -455,7 +462,7 @@ function PillButton({
   variant = "filled",
 }: {
   label: string;
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof BaseIonicons.glyphMap;
   onPress: () => void;
   variant?: "filled" | "outline";
 }) {
@@ -464,10 +471,12 @@ function PillButton({
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
-      style={({ pressed }) => [styles.pill, filled ? styles.pillFilled : styles.pillOutline, pressed && styles.pressed]}
+      className={`h-[50px] flex-row items-center gap-2 rounded-full px-6 active:opacity-70 ${
+        filled ? "bg-primary" : "border border-line bg-paper"
+      }`}
     >
-      <Ionicons name={icon} size={18} color={filled ? colors.onPrimary : colors.ink} />
-      <Text style={[styles.pillLabel, { color: filled ? colors.onPrimary : colors.ink }]}>{label}</Text>
+      <Ionicons name={icon} size={18} colorClassName={filled ? "accent-on-primary" : "accent-ink"} />
+      <Text className={`font-sans-bold text-[16px] ${filled ? "text-on-primary" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -479,147 +488,17 @@ function AddCard({ title, subtitle, onPress }: { title: string; subtitle: string
       onPress={onPress}
       accessibilityRole="button"
       accessibilityLabel={title}
-      style={({ pressed }) => [styles.addCard, pressed && styles.pressed]}
+      className="mt-6 flex-row items-center gap-4 rounded-lg border border-line p-4 active:opacity-70"
     >
-      <View style={styles.addCircle}>
-        <Ionicons name="add" size={26} color={colors.ink} />
+      <View className="h-[52px] w-[52px] items-center justify-center rounded-full border-[1.5px] border-ink">
+        <Ionicons name="add" size={26} colorClassName="accent-ink" />
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.addTitle}>{title}</Text>
-        <Text style={styles.addSubtitle} numberOfLines={2}>
+      <View className="flex-1">
+        <Text className="font-display text-[21px] leading-[27px] text-ink">{title}</Text>
+        <Text className="mt-0.5 font-sans text-[14.5px] leading-[20px] text-ink-soft" numberOfLines={2}>
           {subtitle}
         </Text>
       </View>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  pressed: { opacity: 0.7 },
-
-  backRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 44,
-    marginBottom: spacing.md,
-  },
-  more: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -8 },
-  notice: { fontFamily: fonts.sans, fontSize: 14, color: colors.terracotta, marginTop: spacing.md },
-  back: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: -4 },
-  backLabel: { fontFamily: fonts.sans, fontSize: 17, color: colors.ink },
-
-  discWrap: { alignSelf: "flex-start", marginBottom: spacing.lg },
-  discSparkle: { position: "absolute", right: -18, top: -6 },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 42,
-    lineHeight: 48,
-    letterSpacing: -0.5,
-    color: colors.ink,
-  },
-  description: {
-    fontFamily: fonts.sans,
-    fontSize: 16.5,
-    lineHeight: 23,
-    color: colors.inkSoft,
-    marginTop: spacing.xs,
-  },
-  identity: { flexDirection: "row", alignItems: "center", gap: spacing.sm, marginTop: spacing.lg },
-  identityText: { flexShrink: 1, fontFamily: fonts.sans, fontSize: 15, color: colors.inkSoft },
-  identityName: { fontFamily: fonts.sansBold, color: colors.ink },
-
-  search: { marginTop: spacing.xl },
-  chipsRow: { flexDirection: "row", alignItems: "center", marginTop: spacing.md },
-  // Chips scroll edge to edge on a narrow phone, past the column's gutter.
-  chipsScroll: { flexGrow: 1, marginHorizontal: -layout.gutter },
-  chips: { gap: spacing.sm, paddingHorizontal: layout.gutter },
-  spinner: { position: "absolute", right: 0 },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    height: 38,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.bg,
-  },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipLabel: { fontFamily: fonts.sansBold, fontSize: 14.5, color: colors.ink },
-  chipLabelSelected: { color: colors.onPrimary },
-  chipCount: { fontFamily: fonts.sans, fontSize: 13.5, color: colors.muted },
-  chipCountSelected: { color: "rgba(255,255,255,0.72)" },
-
-  results: { marginTop: spacing.sm },
-  resultsLoading: { opacity: 0.5 },
-  group: { marginTop: spacing.xl },
-  yearHeading: { flexDirection: "row", alignItems: "center", gap: spacing.md, marginBottom: spacing.xs },
-  yearText: { fontFamily: fonts.display, fontSize: 28, lineHeight: 34, color: colors.ink },
-  yearLine: { flex: 1, height: StyleSheet.hairlineWidth, backgroundColor: colors.line },
-  yearCount: { fontFamily: fonts.sansSemiBold, fontSize: 13, color: colors.muted },
-
-  emptyPanel: {
-    alignItems: "center",
-    marginTop: spacing.xl,
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceAlt,
-  },
-  nothing: { alignItems: "center", paddingVertical: spacing.xxl + spacing.lg, paddingHorizontal: spacing.lg },
-  emptyTitle: {
-    fontFamily: fonts.display,
-    fontSize: 24,
-    lineHeight: 30,
-    color: colors.ink,
-    textAlign: "center",
-    marginTop: spacing.md,
-  },
-  emptyBody: {
-    fontFamily: fonts.sans,
-    fontSize: 15.5,
-    lineHeight: 23,
-    color: colors.inkSoft,
-    textAlign: "center",
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-    maxWidth: 340,
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    height: 50,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.pill,
-  },
-  pillFilled: { backgroundColor: colors.primary },
-  pillOutline: { borderWidth: 1, borderColor: colors.line, backgroundColor: colors.bg },
-  pillLabel: { fontFamily: fonts.sansBold, fontSize: 16 },
-
-  addCard: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    marginTop: spacing.xl,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  addCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    borderWidth: 1.5,
-    borderColor: colors.ink,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addTitle: { fontFamily: fonts.display, fontSize: 21, lineHeight: 27, color: colors.ink },
-  addSubtitle: { fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 20, color: colors.inkSoft, marginTop: 2 },
-});
