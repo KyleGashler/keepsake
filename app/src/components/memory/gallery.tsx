@@ -1,15 +1,14 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { mediaUrl, type MediaItem } from "../../api";
 import { duration } from "../../format";
-import { colors, fonts, radius, spacing } from "../../theme";
+import { Image, Ionicons } from "../../styled";
 import { VideoStill } from "./video-still";
 
 /** Tiles in the row; the last becomes "+N" when there are more. */
 const TILES = 4;
-const GAP = spacing.sm;
+/** The row's `gap-2`, for sizing the tiles. */
+const GAP = 8;
 
 /**
  * "Media": every photo and video on the memory as a row of square tiles —
@@ -23,7 +22,7 @@ export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (i
   const shown = overflow ? items.slice(0, TILES - 1) : items.slice(0, TILES);
 
   return (
-    <View style={styles.row} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View className="min-h-[60px] flex-row gap-2" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {size > 0
         ? shown.map((item, i) => (
             <Pressable
@@ -31,15 +30,22 @@ export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (i
               onPress={() => onOpen(i)}
               accessibilityRole="button"
               accessibilityLabel={`${item.type === "VIDEO" ? "Video" : "Photo"} ${i + 1} of ${items.length}`}
-              style={({ pressed }) => [styles.tile, { width: size, height: size }, pressed && styles.pressed]}
+              className="overflow-hidden rounded-[8px] bg-surface-alt active:opacity-80"
+              style={{ width: size, height: size }}
             >
               <Thumb item={item} />
               {item.type === "VIDEO" ? (
-                <View style={styles.videoBadge}>
-                  <View style={styles.playDisc}>
-                    <Ionicons name="play" size={14} color="#fff" style={{ marginLeft: 2 }} />
+                <View className="pointer-events-none absolute right-1.5 bottom-1.5 left-1.5 flex-row items-center justify-between">
+                  <View className="h-7 w-7 items-center justify-center rounded-full border-[1.5px] border-white bg-black/35">
+                    <Ionicons name="play" size={14} colorClassName="accent-white" className="ml-0.5" />
                   </View>
-                  {item.durationS ? <Text style={styles.duration}>{duration(item.durationS)}</Text> : null}
+                  {item.durationS ? (
+                    // A scrim like the play disc's rather than a text shadow: react-native-web
+                    // warns on the textShadow* longhands, and native has nothing else.
+                    <Text className="overflow-hidden rounded-[6px] bg-black/35 px-[5px] font-sans-bold text-[12px] text-white">
+                      {duration(item.durationS)}
+                    </Text>
+                  ) : null}
                 </View>
               ) : null}
             </Pressable>
@@ -50,9 +56,10 @@ export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (i
           onPress={() => onOpen(TILES - 1)}
           accessibilityRole="button"
           accessibilityLabel={`${overflow} more — open the viewer`}
-          style={({ pressed }) => [styles.tile, styles.more, { width: size, height: size }, pressed && styles.pressed]}
+          className="items-center justify-center overflow-hidden rounded-[8px] bg-surface-alt active:opacity-80"
+          style={{ width: size, height: size }}
         >
-          <Text style={styles.moreLabel}>+{overflow}</Text>
+          <Text className="font-sans-semibold text-[17px] text-ink-soft">+{overflow}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -65,49 +72,10 @@ export function Thumb({ item }: { item: MediaItem }) {
   return (
     <Image
       source={{ uri: mediaUrl(item.url) }}
-      style={StyleSheet.absoluteFill}
+      className="absolute inset-0"
       contentFit="cover"
       transition={200}
       recyclingKey={item.id}
     />
   );
 }
-
-const styles = StyleSheet.create({
-  row: { flexDirection: "row", gap: GAP, minHeight: 60 },
-  tile: { borderRadius: radius.sm - 2, overflow: "hidden", backgroundColor: colors.surfaceAlt },
-  pressed: { opacity: 0.8 },
-  videoBadge: {
-    pointerEvents: "none",
-    position: "absolute",
-    left: 6,
-    right: 6,
-    bottom: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  playDisc: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: "#fff",
-    backgroundColor: "rgba(0,0,0,0.35)",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  duration: {
-    fontFamily: fonts.sansBold,
-    fontSize: 12,
-    color: "#fff",
-    // A scrim like the play disc's rather than a text shadow: react-native-web
-    // warns on the textShadow* longhands, and native has nothing else.
-    backgroundColor: "rgba(0,0,0,0.35)",
-    paddingHorizontal: 5,
-    borderRadius: 6,
-    overflow: "hidden",
-  },
-  more: { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceAlt },
-  moreLabel: { fontFamily: fonts.sansSemiBold, fontSize: 17, color: colors.inkSoft },
-});

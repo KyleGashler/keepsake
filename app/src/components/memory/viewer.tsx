@@ -1,5 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -7,7 +5,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   useWindowDimensions,
   View,
@@ -16,7 +13,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaStatus, mediaUrl, type MediaItem } from "../../api";
-import { fonts, radius, spacing } from "../../theme";
+import { Image, Ionicons } from "../../styled";
 import { VideoClip } from "../video";
 import { Thumb } from "./gallery";
 
@@ -73,7 +70,7 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
   }, []);
 
   return (
-    <View style={styles.root}>
+    <View className="flex-1 bg-black">
       <ScrollView
         ref={pager}
         horizontal
@@ -86,15 +83,15 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
         // react-native-web has no momentum events; follow the scroll itself.
         scrollEventThrottle={32}
         onScroll={Platform.OS === "web" ? onSettle : undefined}
-        style={StyleSheet.absoluteFill}
+        className="absolute inset-0"
       >
         {items.map((item, i) => (
-          <View key={item.id} style={[styles.page, { width }]}>
+          <View key={item.id} className="h-full justify-center" style={{ width }}>
             {item.type === "VIDEO" && i === current ? <ViewerVideo item={item} /> : null}
             {item.type === "PHOTO" ? (
               <Image
                 source={{ uri: mediaUrl(item.url) }}
-                style={styles.media}
+                className="h-[72%] w-full"
                 contentFit="contain"
                 transition={150}
                 recyclingKey={item.id}
@@ -104,37 +101,43 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
         ))}
       </ScrollView>
 
-      <View style={[styles.top, { paddingTop: insets.top + spacing.md }]}>
+      <View
+        className="absolute top-0 right-0 left-0 flex-row items-center justify-between px-4"
+        style={{ pointerEvents: "box-none", paddingTop: insets.top + 12 }}
+      >
         <Pressable
           onPress={onClose}
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel="Close viewer"
-          style={styles.roundButton}
+          className="h-10 w-10 items-center justify-center rounded-full bg-white/14"
         >
-          <Ionicons name="close" size={22} color="#fff" />
+          <Ionicons name="close" size={22} colorClassName="accent-white" />
         </Pressable>
-        <View style={styles.counter}>
-          <Text style={styles.counterText}>
+        <View className="rounded-full bg-white/14 px-3 py-[5px]">
+          <Text className="font-sans-semibold text-[14px] tracking-[1px] text-white">
             {current + 1} / {items.length}
           </Text>
         </View>
-        <View style={{ width: 40 }} />
+        <View className="w-10" />
       </View>
 
       {items.length > 1 ? (
-        <View style={[styles.strip, { paddingBottom: insets.bottom + spacing.md }]}>
+        <View
+          className="absolute right-0 bottom-0 left-0 flex-row items-center gap-2 bg-black/55 px-3 pt-3"
+          style={{ paddingBottom: insets.bottom + 12 }}
+        >
           <Pressable
             onPress={() => go(current - 1)}
             disabled={current === 0}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Previous"
-            style={[styles.stripArrow, current === 0 && { opacity: 0.3 }]}
+            className={`h-[52px] w-8 items-center justify-center ${current === 0 ? "opacity-30" : ""}`}
           >
-            <Ionicons name="chevron-back" size={20} color="#fff" />
+            <Ionicons name="chevron-back" size={20} colorClassName="accent-white" />
           </Pressable>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbs}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 px-0.5">
             {items.map((item, i) => (
               <Pressable
                 key={item.id}
@@ -142,7 +145,9 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
                 accessibilityRole="button"
                 accessibilityLabel={`Show ${i + 1} of ${items.length}`}
                 accessibilityState={{ selected: i === current }}
-                style={[styles.thumb, i === current && styles.thumbCurrent]}
+                className={`h-[52px] w-[52px] overflow-hidden rounded-[6px] border-2 ${
+                  i === current ? "border-white opacity-100" : "border-transparent opacity-60"
+                }`}
               >
                 <Thumb item={item} />
               </Pressable>
@@ -154,9 +159,9 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Next"
-            style={[styles.stripArrow, current === items.length - 1 && { opacity: 0.3 }]}
+            className={`h-[52px] w-8 items-center justify-center ${current === items.length - 1 ? "opacity-30" : ""}`}
           >
-            <Ionicons name="chevron-forward" size={20} color="#fff" />
+            <Ionicons name="chevron-forward" size={20} colorClassName="accent-white" />
           </Pressable>
         </View>
       ) : null}
@@ -174,78 +179,21 @@ function ViewerVideo({ item }: { item: MediaItem }) {
         uri={mediaUrl(item.url)}
         posterUrl={item.posterUrl}
         onError={() => setFailed(true)}
-        style={styles.media}
+        // VideoClip takes a style, not a className.
+        style={{ width: "100%", height: "72%" }}
       />
     );
   }
   return (
-    <View style={[styles.media, styles.videoNote]}>
+    <View className="h-[72%] w-full items-center justify-center gap-3">
       {status === "PROCESSING" ? (
-        <ActivityIndicator color="rgba(255,255,255,0.8)" />
+        <ActivityIndicator colorClassName="accent-white/80" />
       ) : (
-        <Ionicons name="videocam-off-outline" size={28} color="rgba(255,255,255,0.7)" />
+        <Ionicons name="videocam-off-outline" size={28} colorClassName="accent-white/70" />
       )}
-      <Text style={styles.videoNoteText}>
+      <Text className="font-sans-semibold text-[15px] text-white/80">
         {status === "PROCESSING" ? "Preparing video…" : "This video can't play right now."}
       </Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: "#000" },
-  videoNote: { alignItems: "center", justifyContent: "center", gap: spacing.md },
-  videoNoteText: { fontFamily: fonts.sansSemiBold, fontSize: 15, color: "rgba(255,255,255,0.8)" },
-  page: { height: "100%", justifyContent: "center" },
-  media: { width: "100%", height: "72%" },
-  top: {
-    pointerEvents: "box-none",
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-  },
-  roundButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  counter: {
-    paddingHorizontal: spacing.md,
-    paddingVertical: 5,
-    borderRadius: radius.pill,
-    backgroundColor: "rgba(255,255,255,0.14)",
-  },
-  counterText: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: "#fff", letterSpacing: 1 },
-  strip: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    backgroundColor: "rgba(0,0,0,0.55)",
-  },
-  stripArrow: { width: 32, height: 52, alignItems: "center", justifyContent: "center" },
-  thumbs: { gap: spacing.sm, paddingHorizontal: 2 },
-  thumb: {
-    width: 52,
-    height: 52,
-    borderRadius: 6,
-    overflow: "hidden",
-    borderWidth: 2,
-    borderColor: "transparent",
-    opacity: 0.6,
-  },
-  thumbCurrent: { borderColor: "#fff", opacity: 1 },
-});

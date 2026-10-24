@@ -1,5 +1,5 @@
 import { createElement, useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { isHlsUrl } from "../../playback";
 import { useHlsSource } from "../web-hls";
 import { VideoControls, type HeroVideoProps } from "./video-controls";
@@ -66,7 +66,7 @@ export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }
   }
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View className="absolute inset-0">
       {createElement("video", {
         ref: video,
         src,
@@ -84,18 +84,10 @@ export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }
           if (el.videoWidth === 0) onError?.();
           if (Number.isFinite(el.duration) && el.duration > 0) setTotal(el.duration);
         },
-        style: {
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: fullscreen ? "contain" : "cover",
-          backgroundColor: "#000",
-          display: "block",
-        },
+        className: `absolute inset-0 block h-full w-full bg-black ${fullscreen ? "object-contain" : "object-cover"}`,
       })}
       <Pressable
-        style={StyleSheet.absoluteFill}
+        className="absolute inset-0"
         onPress={toggle}
         accessibilityRole="button"
         accessibilityLabel={playing ? "Pause video" : "Play video"}

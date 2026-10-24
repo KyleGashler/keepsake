@@ -1,9 +1,9 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { clock } from "../../format";
-import { fonts, spacing } from "../../theme";
+import { Ionicons } from "../../styled";
+import { useColor } from "../../theme";
 import { ScrubTrack } from "../audio";
 
 export type HeroVideoProps = {
@@ -45,15 +45,20 @@ export function VideoControls({
     onSeek(seconds);
   };
   const fraction = total > 0 ? Math.min(1, Math.max(0, shown / total)) : 0;
+  const black = useColor("black");
 
   return (
-    <View style={styles.bar}>
+    <View
+      // Clear of the content card's rounded top, which overlaps the hero.
+      className="absolute right-0 bottom-0 left-0 flex-row items-center gap-3 px-4 pt-9 pb-10"
+      style={{ pointerEvents: "box-none" }}
+    >
       {/* A soft dark fade so white controls read over a bright frame. */}
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none" pointerEvents="none">
         <Defs>
           <LinearGradient id="hero-video-scrim" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor="#000" stopOpacity={0} />
-            <Stop offset="1" stopColor="#000" stopOpacity={0.5} />
+            <Stop offset="0" stopColor={black} stopOpacity={0} />
+            <Stop offset="1" stopColor={black} stopOpacity={0.5} />
           </LinearGradient>
         </Defs>
         <Rect x="0" y="0" width="100%" height="100%" fill="url(#hero-video-scrim)" />
@@ -63,9 +68,9 @@ export function VideoControls({
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel={playing ? "Pause video" : "Play video"}
-        style={styles.iconButton}
+        className="h-[30px] w-[30px] items-center justify-center"
       >
-        <Ionicons name={playing ? "pause" : "play"} size={24} color="#fff" />
+        <Ionicons name={playing ? "pause" : "play"} size={24} colorClassName="accent-white" />
       </Pressable>
       <ScrubTrack
         value={shown}
@@ -73,16 +78,20 @@ export function VideoControls({
         onScrub={setScrubbing}
         onCommit={commit}
         label="Video position"
-        style={styles.track}
+        // ScrubTrack takes a style, not a className.
+        style={{ flex: 1, height: 28, justifyContent: "center" }}
       >
-        <View style={styles.rail}>
-          <View style={[styles.fill, { width: `${fraction * 100}%` }]} />
+        <View className="pointer-events-none h-[3px] overflow-hidden rounded-[2px] bg-white/45">
+          <View className="h-[3px] bg-white" style={{ width: `${fraction * 100}%` }} />
         </View>
         {total > 0 ? (
-          <View style={[styles.thumb, { left: `${fraction * 100}%` }]} />
+          <View
+            className="pointer-events-none absolute ml-[-6.5px] h-[13px] w-[13px] rounded-full bg-white"
+            style={{ left: `${fraction * 100}%` }}
+          />
         ) : null}
       </ScrubTrack>
-      <Text style={styles.time}>
+      <Text className="font-sans-semibold text-[13px] text-white tabular-nums">
         {clock(shown)}
         {total > 0 ? ` / ${clock(total)}` : ""}
       </Text>
@@ -91,43 +100,10 @@ export function VideoControls({
         hitSlop={10}
         accessibilityRole="button"
         accessibilityLabel="Full screen"
-        style={styles.iconButton}
+        className="h-[30px] w-[30px] items-center justify-center"
       >
-        <Ionicons name="scan-outline" size={22} color="#fff" />
+        <Ionicons name="scan-outline" size={22} colorClassName="accent-white" />
       </Pressable>
     </View>
   );
 }
-
-const THUMB = 13;
-
-const styles = StyleSheet.create({
-  bar: {
-    pointerEvents: "box-none",
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    // Clear of the content card's rounded top, which overlaps the hero.
-    paddingTop: spacing.xxl,
-    paddingBottom: spacing.xl + spacing.lg,
-  },
-  iconButton: { width: 30, height: 30, alignItems: "center", justifyContent: "center" },
-  track: { flex: 1, height: 28, justifyContent: "center" },
-  rail: { pointerEvents: "none", height: 3, borderRadius: 2, backgroundColor: "rgba(255,255,255,0.45)", overflow: "hidden" },
-  fill: { height: 3, backgroundColor: "#fff" },
-  thumb: {
-    pointerEvents: "none",
-    position: "absolute",
-    width: THUMB,
-    height: THUMB,
-    marginLeft: -THUMB / 2,
-    borderRadius: THUMB / 2,
-    backgroundColor: "#fff",
-  },
-  time: { fontFamily: fonts.sansSemiBold, fontSize: 13, color: "#fff", fontVariant: ["tabular-nums"] },
-});
