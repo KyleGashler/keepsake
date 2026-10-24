@@ -1,4 +1,4 @@
-import { Ionicons } from "@expo/vector-icons";
+import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -34,8 +34,8 @@ import { friendlyError, monthDay } from "../src/format";
 import { leaveFor } from "../src/routes";
 import { INVITE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from "../src/roles";
 import { canCopy, copyLink, shareLink } from "../src/share-link";
+import { Ionicons } from "../src/styled";
 import { SUPPORT_EMAIL } from "../src/support";
-import { colors, fonts, radius, spacing, type } from "../src/theme";
 
 const SETTINGS = [
   { icon: "lock-closed-outline" as const, label: "Privacy & ownership", detail: "Your family owns every memory" },
@@ -181,7 +181,7 @@ export default function FamilyHubScreen() {
       <Screen>
         <VerifyEmailNudge />
 
-        <View style={styles.stats}>
+        <View className="flex-row gap-2">
           <Stat value={data.stats.memoryCount} label="Memories" />
           <Stat value={data.stats.mediaCount} label="Media" />
           <Stat value={data.stats.collectionCount} label="Collections" />
@@ -207,7 +207,7 @@ export default function FamilyHubScreen() {
           ))}
         </Group>
         {isOwner && data.members.length === 1 && !pending.data?.invites.length ? (
-          <Text style={styles.groupHint}>
+          <Text className={GROUP_HINT}>
             Invite a grandparent, an aunt, a co-parent — anyone who should see the archive.
           </Text>
         ) : null}
@@ -221,7 +221,7 @@ export default function FamilyHubScreen() {
                 <Row
                   key={invite.id}
                   first={i === 0}
-                  leading={<LeadingIcon name="mail-outline" tint={colors.accentSoft} />}
+                  leading={<LeadingIcon name="mail-outline" tintClassName="bg-accent-soft" />}
                   title={invite.forName ?? "Anyone with the link"}
                   detail={`${ROLE_LABEL[invite.role]} · until ${monthDay(invite.expiresAt)}${invite.email ? ` · ${invite.email}` : ""}`}
                   trailing={<RowIcon name="ellipsis-horizontal" />}
@@ -259,7 +259,7 @@ export default function FamilyHubScreen() {
             <Group>
               <Row
                 first
-                leading={<LeadingIcon name="trash-outline" color={colors.danger} />}
+                leading={<LeadingIcon name="trash-outline" colorClassName="accent-danger" />}
                 title="Delete this family"
                 detail="For everyone in it, with every memory"
                 destructive
@@ -382,7 +382,7 @@ export default function FamilyHubScreen() {
   );
 }
 
-const ROLE_ICON: Record<MembershipRole, keyof typeof Ionicons.glyphMap> = {
+const ROLE_ICON: Record<MembershipRole, keyof typeof BaseIonicons.glyphMap> = {
   OWNER: "key-outline",
   CONTRIBUTOR: "create-outline",
   VIEWER: "eye-outline",
@@ -432,7 +432,7 @@ function OthersSection({
         action={canContribute ? <SmallButton label="Add" icon="add" onPress={onAdd} /> : null}
       />
       {people.length === 0 ? (
-        <Text style={styles.groupHint}>
+        <Text className={GROUP_HINT}>
           Add someone who belongs in the family's story but won't sign in — a great-grandparent, an aunt abroad.
         </Text>
       ) : (
@@ -500,14 +500,14 @@ function AccountSection({
           />
         ) : null}
         <Row
-          leading={<LeadingIcon name="log-out-outline" color={colors.terracotta} />}
+          leading={<LeadingIcon name="log-out-outline" colorClassName="accent-terracotta" />}
           title="Sign out"
           destructive
           onPress={() => leaveFor(() => void session.signOut())}
         />
         {ownsAFamily ? (
           <Row
-            leading={<LeadingIcon name="trash-outline" color={colors.danger} />}
+            leading={<LeadingIcon name="trash-outline" colorClassName="accent-danger" />}
             title="Delete account"
             detail="For good, with every family you own"
             destructive
@@ -517,7 +517,7 @@ function AccountSection({
         ) : null}
       </Group>
       {ownsAFamily ? null : (
-        <Text style={styles.groupHint}>
+        <Text className={GROUP_HINT}>
           Only a family's owner can delete their account. To delete yours, write to {SUPPORT_EMAIL}.
         </Text>
       )}
@@ -525,20 +525,24 @@ function AccountSection({
   );
 }
 
-/** Every row's leading disc, so text lines up down the whole screen. */
+/** Every row's leading disc, so text lines up down the whole screen. `DISC` is the same size. */
 const LEADING = 40;
+const DISC = "h-10 w-10 items-center justify-center rounded-full";
+
+const GROUP_HINT = "mt-2 px-1 type-caption";
+const ROW_TITLE = "font-sans-semibold text-[15.5px] leading-[21px]";
 
 type HubNotice = { section: "members" | "invites"; text: string };
 
 /** What just happened (or went wrong), shown at the top of the section it happened in. */
 function Notice({ notice, section }: { notice: HubNotice | null; section: HubNotice["section"] }) {
   if (notice?.section !== section) return null;
-  return <Text style={styles.notice}>{notice.text}</Text>;
+  return <Text className="mb-2 type-caption text-accent-deep">{notice.text}</Text>;
 }
 
 /** A white card of `Row`s. */
 function Group({ children }: { children: ReactNode }) {
-  return <View style={styles.group}>{children}</View>;
+  return <View className="overflow-hidden rounded-md border border-line bg-surface">{children}</View>;
 }
 
 function Row({
@@ -564,16 +568,22 @@ function Row({
       onPress={onPress}
       disabled={!onPress}
       accessibilityRole={onPress ? "button" : undefined}
-      style={({ pressed }) => [styles.row, pressed && { backgroundColor: colors.surfaceAlt }]}
+      className="min-h-16 flex-row items-center gap-3 px-4 py-3 active:bg-surface-alt"
     >
-      {first ? null : <View style={styles.divider} />}
+      {first ? null : (
+        // Between rows, starting under the text — past the row's padding, the leading disc and the gap.
+        <View
+          className="absolute top-0 right-0 bg-line"
+          style={{ left: 16 + LEADING + 12, height: StyleSheet.hairlineWidth }}
+        />
+      )}
       {leading}
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.rowTitle, destructive && { color: colors.terracotta }]} numberOfLines={1}>
+      <View className="flex-1">
+        <Text className={`${ROW_TITLE} ${destructive ? "text-terracotta" : "text-ink"}`} numberOfLines={1}>
           {title}
         </Text>
         {detail ? (
-          <Text style={type.caption} numberOfLines={1}>
+          <Text className="type-caption" numberOfLines={1}>
             {detail}
           </Text>
         ) : null}
@@ -583,22 +593,24 @@ function Row({
   );
 }
 
-function RowIcon({ name }: { name: keyof typeof Ionicons.glyphMap }) {
-  return <Ionicons name={name} size={18} color={colors.muted} />;
+function RowIcon({ name }: { name: keyof typeof BaseIonicons.glyphMap }) {
+  return <Ionicons name={name} size={18} colorClassName="accent-muted" />;
 }
 
 function LeadingIcon({
   name,
-  color = colors.inkSoft,
-  tint = colors.surfaceAlt,
+  colorClassName = "accent-ink-soft",
+  tintClassName = "bg-surface-alt",
 }: {
-  name: keyof typeof Ionicons.glyphMap;
-  color?: string;
-  tint?: string;
+  name: keyof typeof BaseIonicons.glyphMap;
+  /** An `accent-*` class for the glyph. */
+  colorClassName?: string;
+  /** A `bg-*` class for the disc. */
+  tintClassName?: string;
 }) {
   return (
-    <View style={[styles.disc, { backgroundColor: tint }]}>
-      <Ionicons name={name} size={19} color={color} />
+    <View className={`${DISC} ${tintClassName}`}>
+      <Ionicons name={name} size={19} colorClassName={colorClassName} />
     </View>
   );
 }
@@ -611,8 +623,8 @@ function Initials({ name }: { name: string }) {
     .join("")
     .toUpperCase();
   return (
-    <View style={[styles.disc, { backgroundColor: colors.surfaceAlt }]}>
-      <Text style={styles.initialsText}>{initials}</Text>
+    <View className={`${DISC} bg-surface-alt`}>
+      <Text className="font-sans-bold text-[14px] text-ink-soft">{initials}</Text>
     </View>
   );
 }
@@ -696,13 +708,13 @@ function InviteSheet({
           </>
         }
       >
-        <View style={styles.linkBox}>
-          <Text selectable style={styles.linkText}>
+        <View className="rounded-sm bg-surface-alt p-3">
+          <Text selectable className="font-sans text-[14px] text-ink">
             {invite.url}
           </Text>
         </View>
         {invite.email ? (
-          <Text style={type.caption}>
+          <Text className="type-caption">
             {emailed
               ? `We've also emailed it to ${invite.email}.`
               : `It wasn't emailed to ${invite.email} — share it yourself.`}
@@ -723,7 +735,7 @@ function InviteSheet({
       {/* Only worth asking when there's someone in the archive to pick. */}
       {people.length ? (
         <Field label="Who is this?">
-          <View style={styles.chips}>
+          <View className="flex-row flex-wrap gap-2">
             {people.map((p) => (
               <Chip key={p.id} label={p.name} selected={who === p.id} onPress={() => setWho(p.id)} />
             ))}
@@ -744,23 +756,25 @@ function InviteSheet({
         </Field>
       ) : null}
       <Field label="What can they do?">
-        <View style={{ gap: spacing.sm }}>
+        <View className="gap-2">
           {INVITE_ROLES.map((r) => (
             <Pressable
               key={r}
               onPress={() => setRole(r)}
               accessibilityRole="radio"
               accessibilityState={{ selected: role === r }}
-              style={[styles.roleOption, role === r && styles.roleOptionSelected]}
+              className={`flex-row items-start gap-3 rounded-sm border p-3 ${
+                role === r ? "border-primary bg-paper" : "border-line bg-surface"
+              }`}
             >
               <Ionicons
                 name={role === r ? "radio-button-on" : "radio-button-off"}
                 size={20}
-                color={role === r ? colors.primary : colors.muted}
+                colorClassName={role === r ? "accent-primary" : "accent-muted"}
               />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.rowTitle}>{ROLE_LABEL[r]}</Text>
-                <Text style={type.caption}>{ROLE_DESCRIPTION[r]}</Text>
+              <View className="flex-1">
+                <Text className={`${ROW_TITLE} text-ink`}>{ROLE_LABEL[r]}</Text>
+                <Text className="type-caption">{ROLE_DESCRIPTION[r]}</Text>
               </View>
             </Pressable>
           ))}
@@ -792,95 +806,18 @@ function Chip({ label, selected, onPress }: { label: string; selected: boolean; 
       onPress={onPress}
       accessibilityRole="radio"
       accessibilityState={{ selected }}
-      style={[styles.chip, selected && styles.chipSelected]}
+      className={`rounded-full border px-3 py-2 ${selected ? "border-primary bg-primary" : "border-line bg-surface"}`}
     >
-      <Text style={[styles.chipLabel, selected && { color: colors.onPrimary }]}>{label}</Text>
+      <Text className={`font-sans-semibold text-[14px] ${selected ? "text-on-primary" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
 
 function Stat({ value, label }: { value: number; label: string }) {
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={type.caption}>{label}</Text>
+    <View className="flex-1 items-center rounded-md border border-line bg-surface py-4">
+      <Text className="font-display text-[22px] text-ink">{value}</Text>
+      <Text className="type-caption">{label}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  stats: { flexDirection: "row", gap: spacing.sm },
-  stat: {
-    flex: 1,
-    alignItems: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingVertical: spacing.lg,
-  },
-  statValue: { fontFamily: type.title.fontFamily, fontSize: 22, color: colors.ink },
-  notice: { ...type.caption, color: colors.accentDeep, marginBottom: spacing.sm },
-  group: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    overflow: "hidden",
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.md,
-    minHeight: 64,
-  },
-  /** Between rows, starting under the text — past the leading disc. */
-  divider: {
-    position: "absolute",
-    top: 0,
-    right: 0,
-    left: spacing.lg + LEADING + spacing.md,
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.line,
-  },
-  rowTitle: { fontSize: 15.5, lineHeight: 21, color: colors.ink, fontFamily: fonts.sansSemiBold },
-  groupHint: { ...type.caption, marginTop: spacing.sm, paddingHorizontal: spacing.xs },
-  disc: {
-    width: LEADING,
-    height: LEADING,
-    borderRadius: LEADING / 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  initialsText: { fontFamily: fonts.sansBold, fontSize: 14, color: colors.inkSoft },
-  linkBox: {
-    padding: spacing.md,
-    borderRadius: radius.sm,
-    backgroundColor: colors.surfaceAlt,
-  },
-  linkText: { fontFamily: fonts.sans, fontSize: 14, color: colors.ink },
-  chips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipLabel: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: colors.ink },
-  roleOption: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.md,
-    padding: spacing.md,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  roleOptionSelected: { borderColor: colors.primary, backgroundColor: colors.bg },
-});

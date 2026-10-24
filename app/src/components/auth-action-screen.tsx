@@ -1,10 +1,9 @@
 import { useGlobalSearchParams } from "expo-router";
 import { useEffect, useEffectEvent, useState } from "react";
-import { ActivityIndicator, StyleSheet, View } from "react-native";
+import { ActivityIndicator, View } from "react-native";
 import { auth, AuthError, LINK_UNUSABLE, type ActionCodeInfo, type ActionCodes } from "../auth";
 import { useSession } from "../auth/session-context";
 import { SUPPORT_EMAIL } from "../support";
-import { colors, spacing } from "../theme";
 import { AuthFrame, Notice, TextLink } from "./auth-screens";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
@@ -433,8 +432,8 @@ function RecoverEmail({ code, codes, onDone }: ModeProps) {
 function Checking({ title = "One moment", subtitle = "Checking your link…" }: { title?: string; subtitle?: string }) {
   return (
     <AuthFrame title={title} subtitle={subtitle}>
-      <View style={styles.spinner}>
-        <ActivityIndicator color={colors.primary} />
+      <View className="items-start py-2">
+        <ActivityIndicator colorClassName="accent-primary" />
       </View>
     </AuthFrame>
   );
@@ -475,7 +474,3 @@ function NotInDevMode({ onDone }: { onDone: () => void }) {
     </AuthFrame>
   );
 }
-
-const styles = StyleSheet.create({
-  spinner: { alignItems: "flex-start", paddingVertical: spacing.sm },
-});
