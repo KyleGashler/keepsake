@@ -1,4 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
 import {
   requestRecordingPermissionsAsync,
   setAudioModeAsync,
@@ -7,18 +6,21 @@ import {
 } from "expo-audio";
 import { File as FsFile } from "expo-file-system";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ComponentProps } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, Text, View } from "react-native";
 import { levelFromMetering, normalizeAudioType, VOICE_RECORDING } from "../../src/audio";
 import { AudioClip } from "../../src/components/audio";
 import { StardustCluster } from "../../src/components/brand";
 import { AppHeader, Button } from "../../src/components/ui";
 import { draft } from "../../src/draft";
 import { clock, errorMessage } from "../../src/format";
-import { colors, layout, MAX_WIDTH, radius, spacing, type } from "../../src/theme";
+import { Ionicons } from "../../src/styled";
 
 type Phase = "asking" | "denied" | "ready" | "starting" | "recording" | "paused" | "stopping" | "review";
+
+/** The asking and denied pages: one message in the middle of the page. */
+const CENTRE = "flex-1 items-center justify-center px-4 py-12";
 
 /** How many bars the meter keeps — the most recent ~3 seconds at the poll rate. */
 const BARS = 36;
@@ -208,27 +210,32 @@ export default function RecordScreen() {
   return (
     <>
       <AppHeader back subtitle="Capture" title="Record a conversation" globalActions={false} />
-      <View style={[styles.page, { paddingBottom: insets.bottom + spacing.lg }]}>
+      <View
+        className="w-full max-w-page flex-1 self-center bg-paper px-gutter"
+        style={{ paddingBottom: insets.bottom + 16 }}
+      >
         {phase === "asking" ? (
-          <View style={styles.centre}>
-            <ActivityIndicator color={colors.accentDeep} />
-            <Text style={[type.caption, { marginTop: spacing.md }]}>Asking for the microphone…</Text>
+          <View className={CENTRE}>
+            <ActivityIndicator colorClassName="accent-accent-deep" />
+            <Text className="mt-3 type-caption">Asking for the microphone…</Text>
           </View>
         ) : null}
         {phase === "denied" ? <Denied onRetry={askForMicrophone} /> : null}
         {phase === "asking" || phase === "denied" ? null : (
-          <View style={styles.stage}>
-            <View style={{ alignItems: "center", gap: spacing.sm }}>
+          <View className="flex-1 items-center justify-evenly gap-4 py-6">
+            <View className="items-center gap-2">
               <StardustCluster size={40} opacity={live ? 1 : 0.6} />
-              <Text style={[type.caption, { textAlign: "center" }]}>{caption(phase)}</Text>
+              <Text className="text-center type-caption">{caption(phase)}</Text>
             </View>
 
-            <Text style={styles.timer} accessibilityLabel={`Elapsed ${clock(elapsedMs / 1000)}`}>
+            <Text
+              className="font-display text-[54px] leading-[64px] text-ink tabular-nums"
+              accessibilityLabel={`Elapsed ${clock(elapsedMs / 1000)}`}>
               {clock(elapsedMs / 1000)}
             </Text>
 
             {phase === "review" && clip ? (
-              <View style={{ alignSelf: "stretch" }}>
+              <View className="self-stretch">
                 <AudioClip uri={clip.uri} title="New recording" durationS={clip.durationS} />
               </View>
             ) : (
@@ -236,7 +243,7 @@ export default function RecordScreen() {
             )}
 
             {phase === "review" ? (
-              <View style={styles.reviewActions}>
+              <View className="items-center gap-3 self-stretch">
                 <Button
                   label={handingOff ? "Opening…" : "Use recording"}
                   icon="checkmark"
@@ -247,7 +254,7 @@ export default function RecordScreen() {
                 <Button label="Discard" variant="secondary" icon="trash-outline" onPress={discard} />
               </View>
             ) : (
-              <View style={styles.controls}>
+              <View className="flex-row items-center justify-center gap-4">
                 <SideButton
                   icon="trash-outline"
                   label="Discard"
@@ -268,7 +275,7 @@ export default function RecordScreen() {
               </View>
             )}
 
-            {error ? <Text style={styles.error}>{error}</Text> : null}
+            {error ? <Text className="text-center type-caption text-error">{error}</Text> : null}
           </View>
         )}
       </View>
@@ -320,17 +327,13 @@ function Denied({ onRetry }: { onRetry: () => void }) {
   // Browsers only expose the microphone on https or localhost.
   const insecure = web && typeof window !== "undefined" && !window.isSecureContext;
   return (
-    <View style={styles.centre}>
-      <View style={styles.deniedIcon}>
-        <Ionicons name="mic-off-outline" size={26} color={colors.accentDeep} />
+    <View className={CENTRE}>
+      <View className="h-[60px] w-[60px] items-center justify-center rounded-full bg-accent-soft">
+        <Ionicons name="mic-off-outline" size={26} colorClassName="accent-accent-deep" />
       </View>
-      <Text style={[type.heading, { textAlign: "center", marginTop: spacing.lg }]}>
-        We can't hear you yet
-      </Text>
-      <Text style={[type.body, { textAlign: "center", marginTop: spacing.sm, maxWidth: 420 }]}>
-        {deniedAdvice(web, insecure)}
-      </Text>
-      <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xl }}>
+      <Text className="mt-4 text-center type-heading">We can't hear you yet</Text>
+      <Text className="mt-2 max-w-[420px] text-center type-body">{deniedAdvice(web, insecure)}</Text>
+      <View className="mt-6 flex-row gap-3">
         {web ? null : (
           <Button label="Open settings" icon="settings-outline" onPress={() => void Linking.openSettings()} />
         )}
@@ -353,19 +356,18 @@ function deniedAdvice(web: boolean, insecure: boolean) {
 /** A rolling level: newest bar on the right, each one a ~90 ms sample. */
 function Meter({ levels, active }: { levels: number[]; active: boolean }) {
   return (
-    <View style={styles.meter} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+    <View
+      className="h-[84px] flex-row items-center justify-center gap-[3px] self-stretch"
+      accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
       {levels.map((level, i) => (
         <View
           // oxlint-disable-next-line react/no-array-index-key -- bars are fixed slots the levels scroll through
           key={i}
-          style={[
-            styles.bar,
-            {
-              height: 4 + level * 72,
-              backgroundColor: active ? colors.accent : colors.line,
-              opacity: active ? 0.35 + 0.65 * (i / levels.length) : 1,
-            },
-          ]}
+          className={`w-[5px] rounded-[3px] ${active ? "bg-accent" : "bg-line"}`}
+          style={{
+            height: 4 + level * 72,
+            opacity: active ? 0.35 + 0.65 * (i / levels.length) : 1,
+          }}
         />
       ))}
     </View>
@@ -379,10 +381,16 @@ function RecordButton({ recording, busy, onPress }: { recording: boolean; busy: 
       disabled={busy}
       accessibilityRole="button"
       accessibilityLabel={recording ? "Stop recording" : "Start recording"}
-      style={({ pressed }) => [styles.recordOuter, pressed && { opacity: 0.8 }]}
+      className="h-[88px] w-[88px] items-center justify-center rounded-[44px] border-4 border-accent-soft bg-surface active:opacity-80"
     >
-      <View style={[styles.recordInner, recording && styles.recordInnerStop]}>
-        {busy ? <ActivityIndicator color={colors.surface} /> : null}
+      <View
+        className={`items-center justify-center ${
+          recording
+            ? "h-[34px] w-[34px] rounded-[8px] bg-accent-deep"
+            : "h-[66px] w-[66px] rounded-[33px] bg-terracotta"
+        }`}
+      >
+        {busy ? <ActivityIndicator colorClassName="accent-surface" /> : null}
       </View>
     </Pressable>
   );
@@ -394,101 +402,27 @@ function SideButton({
   onPress,
   hidden,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: ComponentProps<typeof Ionicons>["name"];
   label: string;
   onPress: () => void;
   hidden: boolean;
 }) {
   // Kept in the layout while hidden so the record button doesn't jump sideways.
   return (
-    <View style={{ width: 76, alignItems: "center", opacity: hidden ? 0 : 1 }} pointerEvents={hidden ? "none" : "auto"}>
+    <View
+      className={`w-[76px] items-center ${hidden ? "opacity-0" : "opacity-100"}`}
+      pointerEvents={hidden ? "none" : "auto"}
+    >
       <Pressable
         onPress={onPress}
         accessibilityRole="button"
         accessibilityLabel={label}
         accessibilityElementsHidden={hidden}
-        style={({ pressed }) => [styles.side, pressed && { opacity: 0.7 }]}
+        className="h-[52px] w-[52px] items-center justify-center rounded-full border border-line bg-surface active:opacity-70"
       >
-        <Ionicons name={icon} size={20} color={colors.ink} />
+        <Ionicons name={icon} size={20} colorClassName="accent-ink" />
       </Pressable>
-      <Text style={[type.caption, { marginTop: 6 }]}>{label}</Text>
+      <Text className="mt-1.5 type-caption">{label}</Text>
     </View>
   );
 }
-
-const RECORD = 88;
-
-const styles = StyleSheet.create({
-  page: {
-    flex: 1,
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: layout.gutter,
-    backgroundColor: colors.bg,
-  },
-  centre: { flex: 1, alignItems: "center", justifyContent: "center", paddingVertical: 48, paddingHorizontal: spacing.lg },
-  stage: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "space-evenly",
-    paddingVertical: spacing.xl,
-    gap: spacing.lg,
-  },
-  timer: {
-    fontFamily: type.display.fontFamily,
-    fontSize: 54,
-    lineHeight: 64,
-    color: colors.ink,
-    fontVariant: ["tabular-nums"],
-  },
-  meter: {
-    height: 84,
-    alignSelf: "stretch",
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 3,
-  },
-  bar: { width: 5, borderRadius: 3 },
-  controls: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.lg },
-  reviewActions: { alignSelf: "stretch", gap: spacing.md, alignItems: "center" },
-  recordOuter: {
-    width: RECORD,
-    height: RECORD,
-    borderRadius: RECORD / 2,
-    borderWidth: 4,
-    borderColor: colors.accentSoft,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recordInner: {
-    width: RECORD - 22,
-    height: RECORD - 22,
-    borderRadius: (RECORD - 22) / 2,
-    backgroundColor: colors.terracotta,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recordInnerStop: { width: 34, height: 34, borderRadius: radius.sm - 2, backgroundColor: colors.accentDeep },
-  side: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  deniedIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  error: { ...type.caption, color: "#9C4A38", textAlign: "center" },
-});

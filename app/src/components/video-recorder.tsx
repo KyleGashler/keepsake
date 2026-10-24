@@ -1,10 +1,9 @@
-import { Ionicons } from "@expo/vector-icons";
 import { StatusBar } from "expo-status-bar";
-import type { ReactNode } from "react";
-import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import type { ComponentProps, ReactNode } from "react";
+import { ActivityIndicator, Linking, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clock } from "../format";
-import { colors, MAX_WIDTH, radius, spacing, type } from "../theme";
+import { Ionicons } from "../styled";
 import { AppHeader, Button } from "./ui";
 import { VideoClip, type VideoMeta } from "./video";
 
@@ -16,6 +15,15 @@ import { VideoClip, type VideoMeta } from "./video";
  */
 
 export type Facing = "front" | "back";
+
+/** The camera's black column, capped like every page so a wide browser keeps the phone layout. */
+const STAGE = "w-full max-w-page flex-1 self-center bg-black";
+// Record (or Retake) centred, with equal-width sides so it stays centred
+// whichever side buttons are showing.
+const CONTROLS = "flex-row items-center self-stretch";
+const CONTROLS_SIDE = "flex-1 flex-row items-center gap-2";
+const HINT = "text-center type-caption text-white/85";
+const STAGE_ERROR = "overflow-hidden rounded-sm bg-error/85 px-3 py-1.5 text-center type-caption text-surface";
 
 /** Asking for access, or explaining why there isn't any — the light pages around the camera. */
 export function RecorderNotice({
@@ -32,25 +40,23 @@ export function RecorderNotice({
   return (
     <>
       <AppHeader back subtitle="Capture" title="Record a video" globalActions={false} />
-      <View style={styles.notice}>
+      <View className="flex-1 items-center justify-center bg-paper px-6 py-12">
         {state === "asking" ? (
           <>
-            <ActivityIndicator color={colors.accentDeep} />
-            <Text style={[type.caption, { marginTop: spacing.md }]}>Asking for the camera and microphone…</Text>
+            <ActivityIndicator colorClassName="accent-accent-deep" />
+            <Text className="mt-3 type-caption">Asking for the camera and microphone…</Text>
           </>
         ) : (
           <>
-            <View style={styles.noticeIcon}>
-              <Ionicons name="videocam-off-outline" size={26} color={colors.accentDeep} />
+            <View className="h-[60px] w-[60px] items-center justify-center rounded-full bg-accent-soft">
+              <Ionicons name="videocam-off-outline" size={26} colorClassName="accent-accent-deep" />
             </View>
-            <Text style={[type.heading, { textAlign: "center", marginTop: spacing.lg }]}>
+            <Text className="mt-4 text-center type-heading">
               {state === "unavailable" ? "The camera didn't start" : "We can't see you yet"}
             </Text>
-            <Text style={[type.body, { textAlign: "center", marginTop: spacing.sm, maxWidth: 420 }]}>
-              {noticeBody(state, web, message)}
-            </Text>
+            <Text className="mt-2 max-w-[420px] text-center type-body">{noticeBody(state, web, message)}</Text>
             {state === "insecure" ? null : (
-              <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.xl }}>
+              <View className="mt-6 flex-row gap-3">
                 {web || state === "unavailable" ? null : (
                   <Button label="Open settings" icon="settings-outline" onPress={() => void Linking.openSettings()} />
                 )}
@@ -125,32 +131,37 @@ export function RecorderStage({
   const remaining = Math.max(0, maxDurationS - Math.floor(elapsedS));
   const nearlyDone = recording && remaining <= 10;
   return (
-    <View style={styles.backdrop}>
+    <View className="flex-1 bg-black">
       <StatusBar style="light" />
-      <View style={styles.stage}>
-        <View style={StyleSheet.absoluteFill}>{preview}</View>
+      <View className={STAGE}>
+        <View className="absolute inset-0">{preview}</View>
 
         {/* Every control lives down here: the top of the screen is where system
             banners and browser prompts land, and they'd cover anything we put there. */}
-        <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.xl }]}>
-          {error ? <Text style={styles.stageError}>{error}</Text> : null}
+        <View
+          className="absolute inset-x-0 bottom-0 items-center gap-3 px-4 pt-4"
+          style={{ paddingBottom: insets.bottom + 24 }}
+        >
+          {error ? <Text className={STAGE_ERROR}>{error}</Text> : null}
           <View
-            style={[styles.timerPill, recording && styles.timerPillLive]}
+            className={`flex-row items-center gap-2 rounded-full px-3 py-[7px] ${
+              recording ? "bg-logo-ink/60" : "bg-logo-ink/45"
+            }`}
             accessibilityLabel={`Elapsed ${clock(elapsedS)}, ${clock(remaining)} left`}
           >
-            {recording ? <View style={styles.liveDot} /> : null}
-            <Text style={styles.timerText}>{clock(elapsedS)}</Text>
-            <Text style={[styles.timerLeft, nearlyDone && { color: colors.terracotta }]}>
+            {recording ? <View className="h-2 w-2 rounded-[4px] bg-terracotta" /> : null}
+            <Text className="text-[15px] font-semibold text-surface tabular-nums">{clock(elapsedS)}</Text>
+            <Text className={`text-[13px] tabular-nums ${nearlyDone ? "text-terracotta" : "text-white/75"}`}>
               {clock(remaining)} left
             </Text>
           </View>
-          <Text style={styles.hint}>{stageHint(recording, nearlyDone, maxDurationS)}</Text>
-          <View style={styles.controls}>
-            <View style={styles.controlsSide}>
+          <Text className={HINT}>{stageHint(recording, nearlyDone, maxDurationS)}</Text>
+          <View className={CONTROLS}>
+            <View className={CONTROLS_SIDE}>
               <RoundButton icon="close" label="Close" onPress={onClose} />
             </View>
             <RecordButton recording={recording} busy={busy} onPress={recording ? onStop : onRecord} />
-            <View style={[styles.controlsSide, { justifyContent: "flex-end" }]}>
+            <View className={`${CONTROLS_SIDE} justify-end`}>
               {torch !== undefined && onToggleTorch ? (
                 <RoundButton
                   icon={torch ? "flashlight" : "flashlight-outline"}
@@ -194,13 +205,16 @@ export function RecorderReview({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={styles.backdrop}>
+    <View className="flex-1 bg-black">
       <StatusBar style="light" />
-      <View style={[styles.stage, { paddingTop: insets.top + spacing.md }]}>
-        <VideoClip key={uri} uri={uri} autoPlay onLoad={onLoad} style={{ flex: 1 }} />
-        <View style={[styles.reviewBar, { paddingBottom: insets.bottom + spacing.lg }]}>
-          {error ? <Text style={styles.stageError}>{error}</Text> : null}
-          <Text style={styles.hint}>Have a look, then keep it or try again.</Text>
+      <View className={STAGE} style={{ paddingTop: insets.top + 12 }}>
+        <VideoClip key={uri} uri={uri} autoPlay onLoad={onLoad} className="flex-1" />
+        <View
+          className="items-center gap-3 bg-black px-4 pt-4"
+          style={{ paddingBottom: insets.bottom + 16 }}
+        >
+          {error ? <Text className={STAGE_ERROR}>{error}</Text> : null}
+          <Text className={HINT}>Have a look, then keep it or try again.</Text>
           <Button
             label={handingOff ? "Opening…" : "Use video"}
             icon="checkmark"
@@ -208,12 +222,12 @@ export function RecorderReview({
             disabled={handingOff}
             style={{ alignSelf: "stretch" }}
           />
-          <View style={styles.controls}>
-            <View style={styles.controlsSide}>
+          <View className={CONTROLS}>
+            <View className={CONTROLS_SIDE}>
               <RoundButton icon="close" label="Close" onPress={onClose} disabled={handingOff} />
             </View>
             <Button label="Retake" variant="secondary" icon="refresh" onPress={onRetake} disabled={handingOff} />
-            <View style={styles.controlsSide} />
+            <View className={CONTROLS_SIDE} />
           </View>
         </View>
       </View>
@@ -228,10 +242,14 @@ function RecordButton({ recording, busy, onPress }: { recording: boolean; busy: 
       disabled={busy}
       accessibilityRole="button"
       accessibilityLabel={recording ? "Stop recording" : "Start recording"}
-      style={({ pressed }) => [styles.recordOuter, pressed && { opacity: 0.8 }]}
+      className="h-[84px] w-[84px] items-center justify-center rounded-[42px] border-4 border-accent-soft bg-surface active:opacity-80"
     >
-      <View style={[styles.recordInner, recording && styles.recordInnerStop]}>
-        {busy ? <ActivityIndicator color={colors.surface} /> : null}
+      <View
+        className={`items-center justify-center ${
+          recording ? "h-8 w-8 rounded-[8px] bg-accent-deep" : "h-[62px] w-[62px] rounded-[31px] bg-terracotta"
+        }`}
+      >
+        {busy ? <ActivityIndicator colorClassName="accent-surface" /> : null}
       </View>
     </Pressable>
   );
@@ -243,7 +261,7 @@ function RoundButton({
   onPress,
   disabled,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: ComponentProps<typeof Ionicons>["name"];
   label: string;
   onPress: () => void;
   disabled?: boolean;
@@ -255,105 +273,11 @@ function RoundButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       hitSlop={6}
-      style={({ pressed }) => [styles.round, disabled && { opacity: 0.35 }, pressed && { opacity: 0.7 }]}
+      className={`h-11 w-11 items-center justify-center rounded-full bg-logo-ink/45 active:opacity-70 ${
+        disabled ? "opacity-35" : ""
+      }`}
     >
-      <Ionicons name={icon} size={20} color={colors.surface} />
+      <Ionicons name={icon} size={20} colorClassName="accent-surface" />
     </Pressable>
   );
 }
-
-const RECORD = 84;
-const SCRIM = "rgba(20,24,20,0.45)";
-
-const styles = StyleSheet.create({
-  notice: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingVertical: 48,
-    paddingHorizontal: spacing.xl,
-    backgroundColor: colors.bg,
-  },
-  noticeIcon: {
-    width: 60,
-    height: 60,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backdrop: { flex: 1, backgroundColor: "#000" },
-  stage: { flex: 1, width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center", backgroundColor: "#000" },
-  // Record (or Retake) centred, with equal-width sides so it stays centred
-  // whichever side buttons are showing.
-  controls: { flexDirection: "row", alignItems: "center", alignSelf: "stretch" },
-  controlsSide: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  timerPill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    backgroundColor: SCRIM,
-    borderRadius: radius.pill,
-    paddingVertical: 7,
-    paddingHorizontal: spacing.md,
-  },
-  timerPillLive: { backgroundColor: "rgba(20,24,20,0.6)" },
-  liveDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.terracotta },
-  timerText: { color: colors.surface, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] },
-  timerLeft: { color: "rgba(255,255,255,0.75)", fontSize: 13, fontVariant: ["tabular-nums"] },
-  bottomBar: {
-    position: "absolute",
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: "center",
-    gap: spacing.md,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
-  },
-  reviewBar: {
-    alignItems: "center",
-    gap: spacing.md,
-    paddingTop: spacing.lg,
-    paddingHorizontal: spacing.lg,
-    backgroundColor: "#000",
-  },
-  hint: { ...type.caption, color: "rgba(255,255,255,0.85)", textAlign: "center" },
-  stageError: {
-    ...type.caption,
-    color: colors.surface,
-    backgroundColor: "rgba(156,74,56,0.85)",
-    borderRadius: radius.sm,
-    paddingVertical: 6,
-    paddingHorizontal: spacing.md,
-    textAlign: "center",
-    overflow: "hidden",
-  },
-  round: {
-    width: 44,
-    height: 44,
-    borderRadius: radius.pill,
-    backgroundColor: SCRIM,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recordOuter: {
-    width: RECORD,
-    height: RECORD,
-    borderRadius: RECORD / 2,
-    borderWidth: 4,
-    borderColor: colors.accentSoft,
-    backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recordInner: {
-    width: RECORD - 22,
-    height: RECORD - 22,
-    borderRadius: (RECORD - 22) / 2,
-    backgroundColor: colors.terracotta,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  recordInnerStop: { width: 32, height: 32, borderRadius: radius.sm - 2, backgroundColor: colors.accentDeep },
-});

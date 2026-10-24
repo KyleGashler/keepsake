@@ -386,13 +386,6 @@ function Preview({ stream, mirrored }: { stream: MediaStream | null; mirrored: b
     autoPlay: true,
     muted: true,
     playsInline: true,
-    style: {
-      width: "100%",
-      height: "100%",
-      objectFit: "cover",
-      backgroundColor: "#000",
-      transform: mirrored ? "scaleX(-1)" : undefined,
-      display: "block",
-    },
+    className: `block h-full w-full bg-black object-cover ${mirrored ? "-scale-x-100" : ""}`,
   });
 }

@@ -26,6 +26,7 @@ export function VideoClip({
   contentFit = "contain",
   onLoad,
   onError,
+  className,
   style,
 }: VideoClipProps) {
   const [source] = useState(uri);
@@ -40,7 +41,7 @@ export function VideoClip({
       : played;
 
   return (
-    <View style={[{ overflow: "hidden" }, style]}>
+    <View className={`overflow-hidden ${className ?? ""}`} style={style}>
       {createElement("video", {
         ref: video,
         src,
@@ -64,13 +65,9 @@ export function VideoClip({
           };
           onLoad?.(meta);
         },
-        style: {
-          width: "100%",
-          height: "100%",
-          objectFit: contentFit,
-          backgroundColor: controls ? "#000" : "transparent",
-          display: "block",
-        },
+        className: `block h-full w-full ${contentFit === "cover" ? "object-cover" : "object-contain"} ${
+          controls ? "bg-black" : "bg-transparent"
+        }`,
       })}
     </View>
   );

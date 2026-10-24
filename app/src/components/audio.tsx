@@ -1,8 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRef, type ReactNode } from "react";
 import {
   Pressable,
-  StyleSheet,
   Text,
   View,
   type GestureResponderEvent,
@@ -12,7 +10,7 @@ import {
 } from "react-native";
 import { useClipPlayback } from "../audio";
 import { clock } from "../format";
-import { colors, radius, spacing, type } from "../theme";
+import { Ionicons } from "../styled";
 
 /**
  * One recording, playable in place: play/pause, a seekable track, and time.
@@ -33,35 +31,37 @@ export function AudioClip({
   const { playing, position, total, failed, toggle, seek, scrub } = useClipPlayback(uri, durationS);
 
   return (
-    <View style={styles.card}>
+    <View className="flex-row items-center gap-3 rounded-md border border-line bg-surface p-3">
       <Pressable
         onPress={toggle}
         disabled={failed}
         accessibilityRole="button"
         accessibilityLabel={playing ? `Pause ${title}` : `Play ${title}`}
         hitSlop={6}
-        style={({ pressed }) => [styles.play, failed && { opacity: 0.4 }, pressed && { opacity: 0.75 }]}
+        className={`h-10 w-10 items-center justify-center rounded-full bg-accent-deep active:opacity-75 ${
+          failed ? "opacity-40" : ""
+        }`}
       >
         <Ionicons
           name={playing ? "pause" : "play"}
           size={17}
-          color={colors.surface}
+          colorClassName="accent-surface"
           // The play triangle reads as off-centre without a nudge.
-          style={playing ? undefined : { marginLeft: 2 }}
+          className={playing ? undefined : "ml-0.5"}
         />
       </Pressable>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.title} numberOfLines={1}>
+      <View className="flex-1">
+        <Text className="text-[14.5px] text-ink" numberOfLines={1}>
           {title}
         </Text>
         {failed ? (
-          <Text style={type.caption}>This recording can't play here.</Text>
+          <Text className="type-caption">This recording can't play here.</Text>
         ) : (
           <>
             <Scrubber value={position} max={total} onScrub={scrub} onCommit={seek} />
-            <View style={styles.times}>
-              <Text style={styles.time}>{clock(position)}</Text>
-              <Text style={styles.time}>{total > 0 ? clock(total) : ""}</Text>
+            <View className="flex-row justify-between">
+              <Text className="text-[11.5px] text-muted tabular-nums">{clock(position)}</Text>
+              <Text className="text-[11.5px] text-muted tabular-nums">{total > 0 ? clock(total) : ""}</Text>
             </View>
           </>
         )}
@@ -84,6 +84,7 @@ export function ScrubTrack({
   onCommit,
   label = "Playback position",
   onWidth,
+  className,
   style,
   children,
 }: {
@@ -94,6 +95,7 @@ export function ScrubTrack({
   label?: string;
   /** The track's laid-out width, for children that draw to it. */
   onWidth?: (width: number) => void;
+  className?: string;
   style?: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
@@ -135,6 +137,7 @@ export function ScrubTrack({
         const step = e.nativeEvent.actionName === "increment" ? 5 : -5;
         onCommit(Math.min(max, Math.max(0, value + step)));
       }}
+      className={className}
       style={style}
     >
       {children}
@@ -156,50 +159,22 @@ function Scrubber({
 }) {
   const fraction = max > 0 ? Math.min(1, Math.max(0, value / max)) : 0;
   return (
-    <ScrubTrack value={value} max={max} onScrub={onScrub} onCommit={onCommit} style={styles.hitbox}>
-      <View style={styles.rail}>
-        <View style={[styles.fill, { width: `${fraction * 100}%` }]} />
+    <ScrubTrack
+      value={value}
+      max={max}
+      onScrub={onScrub}
+      onCommit={onCommit}
+      className="mt-0.5 h-[22px] justify-center"
+    >
+      <View className="pointer-events-none h-1 overflow-hidden rounded-[2px] bg-surface-alt">
+        <View className="h-1 bg-accent" style={{ width: `${fraction * 100}%` }} />
       </View>
-      {max > 0 ? <View style={[styles.thumb, { left: `${fraction * 100}%` }]} /> : null}
+      {max > 0 ? (
+        <View
+          className="pointer-events-none absolute -ml-1.5 h-3 w-3 rounded-[6px] bg-accent-deep"
+          style={{ left: `${fraction * 100}%` }}
+        />
+      ) : null}
     </ScrubTrack>
   );
 }
-
-const THUMB = 12;
-
-const styles = StyleSheet.create({
-  card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-  },
-  play: {
-    width: 40,
-    height: 40,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentDeep,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: { fontSize: 14.5, color: colors.ink },
-  hitbox: { height: 22, justifyContent: "center", marginTop: 2 },
-  rail: { pointerEvents: "none", height: 4, borderRadius: 2, backgroundColor: colors.surfaceAlt, overflow: "hidden" },
-  fill: { height: 4, backgroundColor: colors.accent },
-  thumb: {
-    pointerEvents: "none",
-    position: "absolute",
-    width: THUMB,
-    height: THUMB,
-    marginLeft: -THUMB / 2,
-    borderRadius: THUMB / 2,
-    backgroundColor: colors.accentDeep,
-  },
-  times: { flexDirection: "row", justifyContent: "space-between" },
-  time: { fontSize: 11.5, color: colors.muted, fontVariant: ["tabular-nums"] },
-});
