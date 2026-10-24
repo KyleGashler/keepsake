@@ -1,4 +1,3 @@
-import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import { useEffect, useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
@@ -13,7 +12,7 @@ import {
 } from "../../api";
 import { confirmAction } from "../../confirm";
 import { duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
-import { Ionicons } from "../../styled";
+import { Ionicons, type IoniconName } from "../../styled";
 import { IconDisc, SearchField } from "../journey";
 import { fieldBox, fieldMultiline, fieldText } from "./field-styles";
 import { Thumb } from "./gallery";
@@ -33,8 +32,6 @@ const PICK_ROW = "flex-row items-center gap-3 border-line py-2.5";
 const PICK_NAME = "flex-1 font-sans text-[16px] text-ink";
 const PICK_THUMB = "h-11 w-11 overflow-hidden rounded-[8px] bg-surface-alt";
 const HAIRLINE_BELOW = { borderBottomWidth: StyleSheet.hairlineWidth };
-/** SearchField takes a style, not a class. */
-const SEARCH_STYLE = { height: 46, marginTop: 12 };
 
 export type SheetKind = "options" | "edit" | "media" | "collections" | "link" | "date" | "delete" | "download";
 
@@ -348,7 +345,7 @@ function ArrangeButton({
   disabled,
   danger = false,
 }: {
-  icon: keyof typeof IoniconsGlyphs.glyphMap;
+  icon: IoniconName;
   label: string;
   onPress: () => void;
   disabled: boolean;
@@ -473,7 +470,7 @@ function CollectionPicker({
       <Text className={HINT}>
         Tick every collection this memory belongs in. Filing it in a sibling's collection shows it there too.
       </Text>
-      <SearchField value={query} onChangeText={setQuery} placeholder="Find a collection" style={SEARCH_STYLE} />
+      <SearchField value={query} onChangeText={setQuery} placeholder="Find a collection" className="mt-3" style={{ height: 46 }} />
       {saveError ? <Text className={ERROR}>{saveError}</Text> : null}
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="pb-4">
         {loading && !data ? <ActivityIndicator colorClassName="accent-primary" className="mt-6" /> : null}
@@ -570,7 +567,7 @@ function LinkPicker({
   return (
     <>
       <SheetHeader title="Link a Memory" action={{ label: "Done", onPress: onClose }} />
-      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" style={SEARCH_STYLE} />
+      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" className="mt-3" style={{ height: 46 }} />
       {error ? <Text className={ERROR}>{error}</Text> : null}
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="pb-4">
         {linked.length ? (

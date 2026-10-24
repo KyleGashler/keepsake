@@ -10,5 +10,7 @@ import { withUniwind } from "uniwind";
  * `<Ionicons name="mic" size={11} colorClassName="accent-surface" />`.
  */
 export const Ionicons = withUniwind(BaseIonicons);
+/** The wrapper drops `glyphMap`, so name an icon with this. */
+export type IoniconName = keyof typeof BaseIonicons.glyphMap;
 export const Image = withUniwind(BaseImage);
 export const VideoView = withUniwind(BaseVideoView);

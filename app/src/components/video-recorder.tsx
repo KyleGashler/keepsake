@@ -1,9 +1,9 @@
 import { StatusBar } from "expo-status-bar";
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ActivityIndicator, Linking, Platform, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { clock } from "../format";
-import { Ionicons } from "../styled";
+import { Ionicons, type IoniconName } from "../styled";
 import { AppHeader, Button } from "./ui";
 import { VideoClip, type VideoMeta } from "./video";
 
@@ -261,7 +261,7 @@ function RoundButton({
   onPress,
   disabled,
 }: {
-  icon: ComponentProps<typeof Ionicons>["name"];
+  icon: IoniconName;
   label: string;
   onPress: () => void;
   disabled?: boolean;

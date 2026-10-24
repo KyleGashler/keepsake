@@ -1,4 +1,3 @@
-import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { router, type Href } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -15,7 +14,7 @@ import { useCanContribute } from "../auth/session-context";
 import { childAge, count, possessive, refusalMessage } from "../format";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, routes } from "../routes";
-import { Ionicons } from "../styled";
+import { Ionicons, type IoniconName } from "../styled";
 import { layout } from "../theme";
 import { ChildPortrait } from "./child-header";
 import { FileMemoriesSheet } from "./file-memories-sheet";
@@ -131,7 +130,7 @@ export function CollectionArchive({
 
           <View className="mb-4 self-start">
             <IconDisc icon={collection.icon} color={collection.color} size={76} />
-            <Sparkle size={22} style={{ position: "absolute", right: -18, top: -6 }} />
+            <Sparkle size={22} className="absolute -right-[18px] -top-1.5" />
           </View>
           <Text className="font-display text-[42px] leading-[48px] tracking-[-0.5px] text-ink" accessibilityRole="header">
             {collection.name}
@@ -151,7 +150,7 @@ export function CollectionArchive({
               value={text}
               onChangeText={setText}
               placeholder="Search memories…"
-              style={{ marginTop: 24 }}
+              className="mt-6"
             />
             <YearChips
               years={years}
@@ -462,7 +461,7 @@ function PillButton({
   variant = "filled",
 }: {
   label: string;
-  icon: keyof typeof BaseIonicons.glyphMap;
+  icon: IoniconName;
   onPress: () => void;
   variant?: "filled" | "outline";
 }) {

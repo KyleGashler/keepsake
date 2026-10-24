@@ -1,4 +1,3 @@
-import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   mediaUrl,
@@ -8,7 +7,7 @@ import {
   type MemoryCard,
 } from "../api";
 import { ageOn, longDate, monthDay } from "../format";
-import { Image, Ionicons } from "../styled";
+import { Image, Ionicons, type IoniconName } from "../styled";
 
 /**
  * How one memory reads inside a collection's archive. src/archive.ts maps a
@@ -28,7 +27,7 @@ export type EntryProps = {
 // Default: a photo-or-words row
 // ---------------------------------------------------------------------------
 
-const MEDIA_GLYPHS: Record<MediaType, { icon: keyof typeof BaseIonicons.glyphMap; label: string }> = {
+const MEDIA_GLYPHS: Record<MediaType, { icon: IoniconName; label: string }> = {
   PHOTO: { icon: "image-outline", label: "Photos" },
   VIDEO: { icon: "videocam-outline", label: "Video" },
   AUDIO: { icon: "mic-outline", label: "Audio" },

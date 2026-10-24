@@ -1,4 +1,3 @@
-import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import type { ReactNode } from "react";
 import {
   KeyboardAvoidingView,
@@ -10,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "../../styled";
+import { Ionicons, type IoniconName } from "../../styled";
 
 
 /**
@@ -109,7 +108,7 @@ export function SheetRow({
   note,
   divider = true,
 }: {
-  icon: keyof typeof IoniconsGlyphs.glyphMap;
+  icon: IoniconName;
   label: string;
   onPress?: () => void;
   danger?: boolean;

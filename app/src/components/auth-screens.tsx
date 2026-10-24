@@ -3,7 +3,6 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } fro
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, AuthError, DEV_DEFAULT_EMAIL } from "../auth";
 import { useSession } from "../auth/session-context";
-import { spacing } from "../theme";
 import { Wordmark } from "./brand";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
@@ -34,14 +33,14 @@ export function AuthFrame({
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 bg-paper">
       <ScrollView
         contentContainerClassName="grow justify-center px-6"
-        contentContainerStyle={{ paddingTop: insets.top + spacing.xxl, paddingBottom: insets.bottom + spacing.xxl }}
+        contentContainerStyle={{ paddingTop: insets.top + 36, paddingBottom: insets.bottom + 36 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* Forms read best narrower than the app's 720pt content column. */}
         <View className="w-full max-w-[440px] self-center">
           {/* Wordmark takes a style, not a className. */}
-          <Wordmark width={148} style={{ marginBottom: spacing.xxl }} />
+          <Wordmark width={148} style={{ marginBottom: 36 }} />
           {eyebrow ? <Text className="mb-1 type-eyebrow">{eyebrow}</Text> : null}
           <Text className="font-display text-[40px] leading-[46px] tracking-[-0.5px] text-ink" accessibilityRole="header">
             {title}

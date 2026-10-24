@@ -92,7 +92,8 @@ export default function ChildCollectionsScreen() {
               value={query}
               onChangeText={setQuery}
               placeholder="Search collections..."
-              style={{ marginTop: 16, marginBottom: 8, height: 44 }}
+              className="mt-4 mb-2"
+              style={{ height: 44 }}
             />
 
             <View>

@@ -6,7 +6,7 @@ import {
 } from "expo-audio";
 import { File as FsFile } from "expo-file-system";
 import { router, useLocalSearchParams } from "expo-router";
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ActivityIndicator, Alert, Linking, Platform, Pressable, Text, View } from "react-native";
 import { levelFromMetering, normalizeAudioType, VOICE_RECORDING } from "../../src/audio";
@@ -15,7 +15,7 @@ import { StardustCluster } from "../../src/components/brand";
 import { AppHeader, Button } from "../../src/components/ui";
 import { draft } from "../../src/draft";
 import { clock, errorMessage } from "../../src/format";
-import { Ionicons } from "../../src/styled";
+import { Ionicons, type IoniconName } from "../../src/styled";
 
 type Phase = "asking" | "denied" | "ready" | "starting" | "recording" | "paused" | "stopping" | "review";
 
@@ -402,7 +402,7 @@ function SideButton({
   onPress,
   hidden,
 }: {
-  icon: ComponentProps<typeof Ionicons>["name"];
+  icon: IoniconName;
   label: string;
   onPress: () => void;
   hidden: boolean;

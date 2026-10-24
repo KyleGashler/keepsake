@@ -70,7 +70,8 @@ export function FileMemoriesSheet({
       title="Memories in this collection"
       subtitle={`Tick the ones that belong in ${collection.name}. Unticking only takes a memory out of here.`}
     >
-      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" style={{ height: 46, marginBottom: 8 }} />
+      <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" className="mb-2"
+        style={{ height: 46 }} />
       {error ? <Text className="mt-2 font-sans text-[13.5px] text-terracotta">{error}</Text> : null}
       {(list.loading && !list.data) || (filedNow.loading && !filedNow.data) ? (
         <ActivityIndicator colorClassName="accent-primary" className="mt-4" />

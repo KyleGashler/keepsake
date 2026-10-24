@@ -300,7 +300,9 @@ function ComposeScreen() {
               placeholder="What happened, and why it mattered…"
               placeholderTextColorClassName="accent-muted"
               multiline
-              className={`${INPUT} min-h-[130px] align-top font-sans text-[16px] leading-[24px]`}
+              className={`${INPUT} min-h-[130px] font-sans text-[16px] leading-[24px]`}
+              // Android only; no class sets it.
+              style={{ textAlignVertical: "top" }}
             />
           </Field>
 

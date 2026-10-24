@@ -1,5 +1,5 @@
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState, type ComponentProps } from "react";
+import { useCallback, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, useApi, type HomePayload } from "../../src/api";
@@ -20,7 +20,7 @@ import {
   SmallButton,
 } from "../../src/components/ui";
 import { count, relativeTime } from "../../src/format";
-import { Image, Ionicons } from "../../src/styled";
+import { Image, Ionicons, type IoniconName } from "../../src/styled";
 import { layout, useColor } from "../../src/theme";
 
 /**
@@ -289,7 +289,7 @@ function PlaceholderChip({
   label,
   onPress,
 }: {
-  icon: ComponentProps<typeof Ionicons>["name"];
+  icon: IoniconName;
   label: string;
   onPress: () => void;
 }) {

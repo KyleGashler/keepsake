@@ -1,8 +1,3 @@
-import { colors } from "../../theme";
-
-/** Destructive red for Delete — terracotta deepened until small text holds AA on white. */
-export const DANGER = colors.danger;
-
 /** A story split into paragraphs on blank lines, each with a stable key. */
 export function paragraphs(text: string) {
   return text

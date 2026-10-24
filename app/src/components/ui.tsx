@@ -1,14 +1,13 @@
 import { router } from "expo-router";
-import type { ComponentProps, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
-import { Image, Ionicons } from "../styled";
+import { Image, Ionicons, type IoniconName } from "../styled";
 import { layout } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
 
-type IconName = ComponentProps<typeof Ionicons>["name"];
 
 export function Screen({
   children,
@@ -117,7 +116,7 @@ export function HeaderButton({
   label,
   onPress,
 }: {
-  icon: IconName;
+  icon: IoniconName;
   label: string;
   onPress: () => void;
 }) {
@@ -155,7 +154,7 @@ export function SmallButton({
   onPress,
 }: {
   label: string;
-  icon?: IconName;
+  icon?: IoniconName;
   filled?: boolean;
   accessibilityLabel?: string;
   onPress: () => void;
@@ -320,7 +319,7 @@ export function Button({
   label: string;
   onPress?: () => void;
   variant?: "primary" | "secondary";
-  icon?: IconName;
+  icon?: IoniconName;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   className?: string;

@@ -1,4 +1,3 @@
-import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -34,7 +33,7 @@ import { friendlyError, monthDay } from "../src/format";
 import { leaveFor } from "../src/routes";
 import { INVITE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from "../src/roles";
 import { canCopy, copyLink, shareLink } from "../src/share-link";
-import { Ionicons } from "../src/styled";
+import { Ionicons, type IoniconName } from "../src/styled";
 import { SUPPORT_EMAIL } from "../src/support";
 
 const SETTINGS = [
@@ -382,7 +381,7 @@ export default function FamilyHubScreen() {
   );
 }
 
-const ROLE_ICON: Record<MembershipRole, keyof typeof BaseIonicons.glyphMap> = {
+const ROLE_ICON: Record<MembershipRole, IoniconName> = {
   OWNER: "key-outline",
   CONTRIBUTOR: "create-outline",
   VIEWER: "eye-outline",
@@ -593,7 +592,7 @@ function Row({
   );
 }
 
-function RowIcon({ name }: { name: keyof typeof BaseIonicons.glyphMap }) {
+function RowIcon({ name }: { name: IoniconName }) {
   return <Ionicons name={name} size={18} colorClassName="accent-muted" />;
 }
 
@@ -602,7 +601,7 @@ function LeadingIcon({
   colorClassName = "accent-ink-soft",
   tintClassName = "bg-surface-alt",
 }: {
-  name: keyof typeof BaseIonicons.glyphMap;
+  name: IoniconName;
   /** An `accent-*` class for the glyph. */
   colorClassName?: string;
   /** A `bg-*` class for the disc. */

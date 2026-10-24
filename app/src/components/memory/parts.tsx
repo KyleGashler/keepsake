@@ -1,11 +1,10 @@
-import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { mediaUrl, type MemoryCard, type Person } from "../../api";
 import { shortDate } from "../../format";
 import { routes } from "../../routes";
-import { Image, Ionicons } from "../../styled";
+import { Image, Ionicons, type IoniconName } from "../../styled";
 import { paragraphs, pseudoWaveform } from "./helpers";
 
 // ---------------------------------------------------------------------------
@@ -151,7 +150,7 @@ export function DetailRow({
   label,
   children,
 }: {
-  icon: keyof typeof BaseIonicons.glyphMap;
+  icon: IoniconName;
   label: string;
   children: ReactNode;
 }) {

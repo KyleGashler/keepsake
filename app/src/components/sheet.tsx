@@ -1,4 +1,3 @@
-import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import { useEffect, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
@@ -17,7 +16,7 @@ import {
   type ViewStyle,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Ionicons } from "../styled";
+import { Ionicons, type IoniconName } from "../styled";
 
 /**
  * A bottom sheet in the journey's language: paper, a grab handle, a display
@@ -119,7 +118,7 @@ export function Sheet({
 
 export type SheetAction = {
   label: string;
-  icon: keyof typeof IoniconsGlyphs.glyphMap;
+  icon: IoniconName;
   onPress: () => void;
   destructive?: boolean;
 };
@@ -281,7 +280,7 @@ export function SheetButton({
   variant?: "primary" | "secondary" | "danger";
   busy?: boolean;
   disabled?: boolean;
-  icon?: keyof typeof IoniconsGlyphs.glyphMap;
+  icon?: IoniconName;
   style?: StyleProp<ViewStyle>;
 }) {
   const filled = variant !== "secondary";

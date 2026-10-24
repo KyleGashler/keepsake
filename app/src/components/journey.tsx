@@ -1,6 +1,6 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { router, type Href } from "expo-router";
-import { useId, type ComponentProps, type ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -17,11 +17,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { mediaUrl } from "../api";
 import { glyphColorFor, iconSpec } from "../icons";
-import { Image, Ionicons } from "../styled";
+import { Image, Ionicons, type IoniconName } from "../styled";
 import { layout, useColor } from "../theme";
 import { Twinkle } from "./brand";
 
-type IconName = ComponentProps<typeof Ionicons>["name"];
 
 /**
  * The visual language of the Library journey redesign (design/mockups/):
@@ -227,7 +226,7 @@ function HeaderButton({
   label,
   onPress,
 }: {
-  icon: IconName;
+  icon: IoniconName;
   label: string;
   onPress: () => void;
 }) {

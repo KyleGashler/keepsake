@@ -1,4 +1,3 @@
-import type { Ionicons as IoniconsGlyphs } from "@expo/vector-icons";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { ApiError, apiSend, useApi, type DeletionPreview } from "../api";
@@ -6,7 +5,7 @@ import { AuthError } from "../auth";
 import { useSession } from "../auth/session-context";
 import { friendlyError } from "../format";
 import { SUPPORT_EMAIL } from "../support";
-import { Ionicons } from "../styled";
+import { Ionicons, type IoniconName } from "../styled";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
 /**
@@ -306,7 +305,7 @@ function FamilyLine({
 }: {
   name: string;
   detail: string;
-  icon: keyof typeof IoniconsGlyphs.glyphMap;
+  icon: IoniconName;
   danger?: boolean;
   first: boolean;
 }) {

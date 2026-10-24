@@ -20,7 +20,13 @@ Styles are Tailwind classes (`className`), compiled by Uniwind
   type-body type-story type-label type-eyebrow type-caption`. Each sets face,
   size, leading and colour; add `text-*` after it to recolour.
 - **Fonts**: `font-display font-sans font-sans-semibold font-sans-bold`.
-  Never `font-bold`/`font-semibold` — custom fonts ignore weight on Android.
+  Custom fonts ignore weight on Android, so never pair them with
+  `font-bold`/`font-semibold`; those are only for the few labels that
+  deliberately use the system font.
+- **Icon names**: type them `IoniconName` from `src/styled.ts` (the wrapped
+  Ionicons has no `glyphMap`).
+- **Hairlines** (`StyleSheet.hairlineWidth`), `pointerEvents: "box-none"` and
+  `textAlignVertical: "top"` have no class; keep them in `style`.
 - **Spacing**: Tailwind's 4px scale (old `spacing.xs/sm/md/lg/xl/xxl` = 1/2/3/4/6/9),
   plus page rhythm `gutter top after-header section bottom`
   (`px-gutter`, `mt-section`). Radius: `rounded-sm/md/lg/full`.
@@ -37,5 +43,6 @@ Styles are Tailwind classes (`className`), compiled by Uniwind
   `useColor("ink")` from `src/theme.ts`. Only when no class fits.
 - **Computed values** (sizes from `useWindowDimensions`, insets, animated
   values) stay in `style`, next to `className` for everything static.
-- `layout` and `MAX_WIDTH` in `src/theme.ts` remain for JS layout math; they
-  must match `--spacing-*` / `--container-page` in global.css.
+- `layout` and `MAX_WIDTH` in `src/theme.ts` are for JS layout math; they
+  must match `--spacing-*` / `--container-page` in global.css. The splash
+  `backgroundColor` in app.json can't read CSS either — keep it on `paper`.

@@ -669,7 +669,9 @@ function TranscriptEditor({
         onChangeText={onChange}
         multiline
         autoFocus
-        className="min-h-[180px] rounded-md border border-line bg-surface p-4 align-top font-sans text-[15.5px] leading-[25px] text-ink"
+        className="min-h-[180px] rounded-md border border-line bg-surface p-4 font-sans text-[15.5px] leading-[25px] text-ink"
+        // Android only; no class sets it.
+        style={{ textAlignVertical: "top" }}
         placeholder="What was said, in your words…"
         placeholderTextColorClassName="accent-muted"
         accessibilityLabel="Transcript"

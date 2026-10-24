@@ -610,7 +610,8 @@ app/                     Expo + expo-router
   app/memory/[id].tsx      the immersive memory page
   src/api.ts               API client + response types
   src/auth/                AuthProvider (dev / Firebase), session phases, chosen family
-  src/theme.ts             palette, fonts, type scale, spacing
+  src/global.css           the theme: Tailwind tokens for colours, fonts, type scale, spacing (Uniwind)
+  src/theme.ts             useColor (a token in JS) + layout numbers for JS maths
   src/components/journey.tsx  redesign primitives: PageHeader, PhotoCard, SearchField, IconDisc, ListRow, Sparkle
   src/routes.ts            route paths + openInLibrary
   src/components/brand.tsx logo lockups + the six whimsical shapes
