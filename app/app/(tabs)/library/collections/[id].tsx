@@ -1,13 +1,12 @@
 import { useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isNotFound, useApi, type CollectionArchivePayload } from "../../../../src/api";
 import { archivePath, NO_FILTERS, type ArchiveFilters } from "../../../../src/archive";
 import { CollectionArchive } from "../../../../src/components/collection-archive";
 import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { goBackOr, routes } from "../../../../src/routes";
-import { colors } from "../../../../src/theme";
 
 /**
  * One collection's archive. The filters live here, in the screen, so a memory
@@ -45,7 +44,7 @@ export default function CollectionScreen() {
   // 404s on the refresh back here, and the stale list shouldn't stay up.
   if (isNotFound(error)) {
     return (
-      <View style={[styles.screen, { paddingTop: insets.top }]}>
+      <View className="flex-1 justify-center bg-paper" style={{ paddingTop: insets.top }}>
         <NotFoundState
           title="This collection isn't here anymore"
           backLabel="Go back"
@@ -57,7 +56,7 @@ export default function CollectionScreen() {
 
   if (!data) {
     return (
-      <View style={styles.screen}>
+      <View className="flex-1 justify-center bg-paper">
         {error ? <ErrorState error={error} onRetry={refetch} /> : <Loading />}
       </View>
     );
@@ -73,7 +72,3 @@ export default function CollectionScreen() {
     />
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg, justifyContent: "center" },
-});

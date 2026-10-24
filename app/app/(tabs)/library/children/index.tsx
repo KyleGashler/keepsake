@@ -1,7 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useApi, type ChildrenPayload } from "../../../../src/api";
 import { useCanContribute } from "../../../../src/auth/session-context";
@@ -11,7 +10,8 @@ import { AddChildSheet } from "../../../../src/components/library-sheets";
 import { ErrorState, Loading } from "../../../../src/components/ui";
 import { childAge } from "../../../../src/format";
 import { routes } from "../../../../src/routes";
-import { colors, fonts, layout, radius, spacing } from "../../../../src/theme";
+import { Ionicons } from "../../../../src/styled";
+import { layout } from "../../../../src/theme";
 
 /**
  * Child Profiles (design/mockups/02): one photo card per child, oldest first,
@@ -35,7 +35,7 @@ export default function ChildProfilesScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -51,10 +51,10 @@ export default function ChildProfilesScreen() {
         {loading && !data ? <Loading /> : null}
 
         {data && children.length === 0 ? (
-          <View style={styles.empty}>
+          <View className="items-center gap-3 rounded-lg bg-surface-alt px-4 py-9">
             <Sparkle size={34} variant="filled" />
-            <Text style={styles.emptyTitle}>Every story starts with a name</Text>
-            <Text style={styles.emptyBody}>
+            <Text className="text-center font-display text-[26px] leading-[32px] text-ink">Every story starts with a name</Text>
+            <Text className="max-w-[340px] text-center font-sans text-[15.5px] leading-[22px] text-ink-soft">
               Add a child and their collections are made for them — milestones, everyday moments, the things
               they say — ready for the first memory.
             </Text>
@@ -62,17 +62,18 @@ export default function ChildProfilesScreen() {
               <Pressable
                 onPress={() => setAdding(true)}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.emptyButton, pressed && styles.pressed]}
+                className="mt-2 h-[50px] flex-row items-center gap-2 rounded-full bg-primary px-6 active:opacity-70"
               >
-                <Ionicons name="add" size={20} color={colors.onPrimary} />
-                <Text style={styles.emptyButtonLabel}>Add a child</Text>
+                <Ionicons name="add" size={20} colorClassName="accent-on-primary" />
+                <Text className="font-sans-bold text-[16px] text-on-primary">Add a child</Text>
               </Pressable>
             ) : null}
           </View>
         ) : null}
 
         {children.length > 0 ? (
-          <View style={styles.cards}>
+          // Cards run wider than the type above them, as in the mockup.
+          <View className="-mx-2.5 gap-4">
             {children.map((child) => (
               <PhotoCard
                 key={child.id}
@@ -87,14 +88,14 @@ export default function ChildProfilesScreen() {
               <Pressable
                 onPress={() => setAdding(true)}
                 accessibilityRole="button"
-                style={({ pressed }) => [styles.addRow, pressed && styles.pressed]}
+                className="flex-row items-center gap-4 rounded-[14px] border border-line px-4 py-3 active:opacity-70"
               >
-                <View style={styles.addCircle}>
-                  <Ionicons name="add" size={24} color={colors.ink} />
+                <View className="h-10 w-10 items-center justify-center rounded-full border-[1.5px] border-ink">
+                  <Ionicons name="add" size={24} colorClassName="accent-ink" />
                 </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.addTitle}>Add a child</Text>
-                  <Text style={styles.addBody}>Start another story, little by little.</Text>
+                <View className="flex-1">
+                  <Text className="font-display text-[20px] leading-[25px] text-ink">Add a child</Text>
+                  <Text className="font-sans text-[14px] leading-[19px] text-ink-soft">Start another story, little by little.</Text>
                 </View>
               </Pressable>
             ) : null}
@@ -106,61 +107,3 @@ export default function ChildProfilesScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  pressed: { opacity: 0.7 },
-  // Cards run wider than the type above them, as in the mockup.
-  cards: { gap: spacing.lg, marginHorizontal: -spacing.sm - 2 },
-
-  addRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.lg,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  addCircle: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: colors.ink,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  addTitle: { fontFamily: fonts.display, fontSize: 20, lineHeight: 25, color: colors.ink },
-  addBody: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 19, color: colors.inkSoft },
-
-  empty: {
-    alignItems: "center",
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.lg,
-    backgroundColor: colors.surfaceAlt,
-    gap: spacing.md,
-  },
-  emptyTitle: { fontFamily: fonts.display, fontSize: 26, lineHeight: 32, color: colors.ink, textAlign: "center" },
-  emptyBody: {
-    fontFamily: fonts.sans,
-    fontSize: 15.5,
-    lineHeight: 22,
-    color: colors.inkSoft,
-    textAlign: "center",
-    maxWidth: 340,
-  },
-  emptyButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    height: 50,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primary,
-    marginTop: spacing.sm,
-  },
-  emptyButtonLabel: { fontFamily: fonts.sansBold, fontSize: 16, color: colors.onPrimary },
-});

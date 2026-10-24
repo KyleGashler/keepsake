@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   useApi,
@@ -13,7 +13,7 @@ import { Column, IconDisc, ListRow, PageHeader } from "../../../../src/component
 import { Avatar, EmptyState, ErrorState, Loading } from "../../../../src/components/ui";
 import { count } from "../../../../src/format";
 import { routes } from "../../../../src/routes";
-import { colors, fonts, layout, radius, spacing } from "../../../../src/theme";
+import { layout } from "../../../../src/theme";
 
 /**
  * Arrival Stories and Family Life — minimally restyled until their own pass.
@@ -45,7 +45,7 @@ export default function PillarScreen() {
 
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -53,11 +53,12 @@ export default function PillarScreen() {
         <PageHeader backLabel="Library" title={meta.name} subtitle={meta.tagline} />
 
         {selectsChild && kids.length > 1 ? (
+          // Chips scroll edge to edge on a narrow phone, past the column's gutter.
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
-            style={styles.chipsScroll}
-            contentContainerStyle={styles.chips}
+            className="-mx-gutter mb-4 grow-0"
+            contentContainerClassName="gap-2 px-gutter"
           >
             {kids.map((child) => {
               const selected = child.id === personId;
@@ -66,10 +67,12 @@ export default function PillarScreen() {
                   key={child.id}
                   onPress={() => setPicked(child.id)}
                   accessibilityState={{ selected }}
-                  style={[styles.chip, selected && styles.chipSelected]}
+                  className={`flex-row items-center gap-2 rounded-full border py-1.5 pr-4 pl-1.5 ${
+                    selected ? "border-primary bg-primary" : "border-line"
+                  }`}
                 >
                   <Avatar person={child} size={32} />
-                  <Text style={[styles.chipName, selected && styles.chipNameSelected]}>{child.name}</Text>
+                  <Text className={`font-sans-semibold text-[14.5px] ${selected ? "text-on-primary" : "text-ink"}`}>{child.name}</Text>
                 </Pressable>
               );
             })}
@@ -100,24 +103,3 @@ export default function PillarScreen() {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  // Chips scroll edge to edge on a narrow phone, past the column's gutter.
-  chipsScroll: { flexGrow: 0, marginHorizontal: -layout.gutter, marginBottom: spacing.lg },
-  chips: { gap: spacing.sm, paddingHorizontal: layout.gutter },
-  chip: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: 6,
-    paddingLeft: 6,
-    paddingRight: spacing.lg,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  chipSelected: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipName: { fontFamily: fonts.sansSemiBold, fontSize: 14.5, color: colors.ink },
-  chipNameSelected: { color: colors.onPrimary },
-});
