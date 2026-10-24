@@ -1,8 +1,6 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { mediaStatus, type MediaItem } from "../../api";
-import { colors } from "../../theme";
+import { Image, Ionicons } from "../../styled";
 
 export type VideoStillProps = { item: Pick<MediaItem, "id" | "type" | "status" | "url" | "posterUrl"> };
 
@@ -15,12 +13,12 @@ export type VideoStillProps = { item: Pick<MediaItem, "id" | "type" | "status" |
 export function VideoStill({ item }: VideoStillProps) {
   const poster = mediaStatus(item) === "READY" ? item.posterUrl : null;
   return (
-    <View style={[StyleSheet.absoluteFill, styles.tile]}>
-      <Ionicons name="videocam-outline" size={22} color="rgba(255,255,255,0.55)" />
+    <View className="absolute inset-0 items-center justify-center bg-ink">
+      <Ionicons name="videocam-outline" size={22} colorClassName="accent-white/55" />
       {poster ? (
         <Image
           source={{ uri: poster }}
-          style={StyleSheet.absoluteFill}
+          className="absolute inset-0"
           contentFit="cover"
           transition={200}
           recyclingKey={item.id}
@@ -29,7 +27,3 @@ export function VideoStill({ item }: VideoStillProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  tile: { backgroundColor: colors.ink, alignItems: "center", justifyContent: "center" },
-});

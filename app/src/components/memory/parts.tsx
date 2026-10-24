@@ -1,12 +1,11 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
+import type { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type TextStyle } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { mediaUrl, type MemoryCard, type Person } from "../../api";
 import { shortDate } from "../../format";
-import { brand, colors, fonts, radius, spacing } from "../../theme";
 import { routes } from "../../routes";
+import { Image, Ionicons } from "../../styled";
 import { paragraphs, pseudoWaveform } from "./helpers";
 
 // ---------------------------------------------------------------------------
@@ -18,7 +17,10 @@ export type WordsView = "story" | "transcript";
 /** The two-way pill at the top of the content card; the chosen side fills deep teal. */
 export function WordsToggle({ value, onChange }: { value: WordsView; onChange: (next: WordsView) => void }) {
   return (
-    <View style={styles.toggle} accessibilityRole="tablist">
+    <View
+      className="flex-row self-center rounded-full border border-line bg-surface p-[3px]"
+      accessibilityRole="tablist"
+    >
       {(["story", "transcript"] as const).map((key) => {
         const selected = value === key;
         return (
@@ -27,9 +29,11 @@ export function WordsToggle({ value, onChange }: { value: WordsView; onChange: (
             onPress={() => onChange(key)}
             accessibilityRole="tab"
             accessibilityState={{ selected }}
-            style={[styles.toggleItem, selected && styles.toggleItemOn]}
+            className={`min-w-[132px] rounded-full px-4 py-[9px] ${selected ? "bg-primary" : ""}`}
           >
-            <Text style={[styles.toggleLabel, selected && styles.toggleLabelOn]}>
+            <Text
+              className={`text-center font-sans-semibold text-[14.5px] ${selected ? "text-on-primary" : "text-ink"}`}
+            >
               {key === "story" ? "Story" : "Original Words"}
             </Text>
           </Pressable>
@@ -52,13 +56,25 @@ const SERIF_LEAD_MAX = 220;
 export function StoryText({ story, textOnly }: { story: string; textOnly: boolean }) {
   const [lead, ...rest] = paragraphs(story);
   if (!lead) return null;
-  let leadStyle: TextStyle = styles.lead;
-  if (textOnly) leadStyle = lead.text.length <= SERIF_LEAD_MAX ? styles.serifLead : styles.roomyLead;
+  let leadClass = "font-sans text-[17px] leading-[25px] text-ink-soft";
+  if (textOnly) {
+    leadClass =
+      lead.text.length <= SERIF_LEAD_MAX
+        ? "font-display text-[21px] leading-[30px] text-ink"
+        : "font-sans text-[19px] leading-[31px] text-ink";
+  }
   return (
-    <View style={{ gap: textOnly ? spacing.lg : spacing.md + 2 }}>
-      <Text style={leadStyle}>{lead.text}</Text>
+    <View className={textOnly ? "gap-4" : "gap-3.5"}>
+      <Text className={leadClass}>{lead.text}</Text>
       {rest.map((p) => (
-        <Text key={p.key} style={textOnly ? styles.roomyBody : styles.body}>
+        <Text
+          key={p.key}
+          className={
+            textOnly
+              ? "font-sans text-[17.5px] leading-[30px] text-ink"
+              : "font-sans text-[16px] leading-[26px] text-ink"
+          }
+        >
           {p.text}
         </Text>
       ))}
@@ -78,18 +94,19 @@ export function AvatarStack({ people }: { people: Person[] }) {
   const shown = all ? people : people.slice(0, STACK);
   const extra = people.length - shown.length;
   return (
-    <View style={styles.stack} accessibilityLabel={`With ${people.map((p) => p.name).join(", ")}`}>
+    <View className="flex-row flex-wrap items-center gap-y-1.5" accessibilityLabel={`With ${people.map((p) => p.name).join(", ")}`}>
       {shown.map((person, i) => (
         <Pressable
           key={person.id}
           onPress={() => router.push(routes.person(person.id))}
           accessibilityRole="button"
           accessibilityLabel={person.name}
-          style={[styles.face, { marginLeft: i === 0 ? 0 : -8, zIndex: shown.length - i }]}
+          className="h-8 w-8 overflow-hidden rounded-full border-2 border-surface bg-surface-alt"
+          style={{ marginLeft: i === 0 ? 0 : -8, zIndex: shown.length - i }}
         >
           <Image
             source={{ uri: mediaUrl(person.avatarUrl) }}
-            style={StyleSheet.absoluteFill}
+            className="absolute inset-0"
             contentFit="cover"
             transition={150}
           />
@@ -100,9 +117,9 @@ export function AvatarStack({ people }: { people: Person[] }) {
           onPress={() => setAll(true)}
           accessibilityRole="button"
           accessibilityLabel={`${extra} more people`}
-          style={[styles.face, styles.more]}
+          className="ml-1 h-8 w-8 items-center justify-center overflow-hidden rounded-full border-2 border-surface-alt bg-surface-alt"
         >
-          <Text style={styles.moreText}>+{extra}</Text>
+          <Text className="font-sans-semibold text-[12.5px] text-ink-soft">+{extra}</Text>
         </Pressable>
       ) : null}
     </View>
@@ -116,8 +133,11 @@ export function AvatarStack({ people }: { people: Person[] }) {
 /** A titled block under a hairline — "Media", "Audio", "Memory Details". */
 export function Section({ title, children, divider = true }: { title: string; children: ReactNode; divider?: boolean }) {
   return (
-    <View style={[styles.section, divider && styles.sectionDivider]}>
-      <Text style={styles.sectionTitle} accessibilityRole="header">
+    <View
+      className="mt-4 gap-3 border-line pt-4"
+      style={divider ? { borderTopWidth: StyleSheet.hairlineWidth } : undefined}
+    >
+      <Text className="font-sans-bold text-[15.5px] text-ink" accessibilityRole="header">
         {title}
       </Text>
       {children}
@@ -131,24 +151,28 @@ export function DetailRow({
   label,
   children,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: keyof typeof BaseIonicons.glyphMap;
   label: string;
   children: ReactNode;
 }) {
   return (
-    <View style={styles.detail}>
-      <Ionicons name={icon} size={19} color={colors.inkSoft} />
-      <Text style={styles.detailLabel}>{label}</Text>
-      <View style={styles.detailValue}>{children}</View>
+    <View className="flex-row items-start gap-3 py-1">
+      <Ionicons name={icon} size={19} colorClassName="accent-ink-soft" />
+      <Text className="font-sans text-[15px] leading-[21px] text-ink">{label}</Text>
+      <View className="flex-1 items-end gap-1.5">{children}</View>
     </View>
   );
 }
 
 export function DetailValue({ children, onPress }: { children: string; onPress?: () => void }) {
-  if (!onPress) return <Text style={styles.detailValueText}>{children}</Text>;
+  if (!onPress) {
+    return <Text className="text-right font-sans text-[15px] leading-[21px] text-ink-soft">{children}</Text>;
+  }
   return (
-    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="link" style={({ pressed }) => pressed && { opacity: 0.6 }}>
-      <Text style={[styles.detailValueText, styles.detailLink]}>{children}</Text>
+    <Pressable onPress={onPress} hitSlop={6} accessibilityRole="link" className="active:opacity-60">
+      <Text className="text-right font-sans text-[15px] leading-[21px] text-ink underline decoration-line">
+        {children}
+      </Text>
     </Pressable>
   );
 }
@@ -163,8 +187,8 @@ export function RelatedRow({ memories }: { memories: MemoryCard[] }) {
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.relatedRow}
-      style={styles.relatedScroll}
+      contentContainerClassName="gap-3 px-6"
+      className="-mx-6"
     >
       {memories.map((m) => (
         <RelatedCard key={m.id} memory={m} />
@@ -179,16 +203,16 @@ function RelatedCard({ memory }: { memory: MemoryCard }) {
       onPress={() => router.push(routes.memory(memory.id))}
       accessibilityRole="button"
       accessibilityLabel={`${memory.title}, ${shortDate(memory.occurredAt)}`}
-      style={({ pressed }) => [styles.related, pressed && { opacity: 0.8 }]}
+      className="w-[148px] overflow-hidden rounded-sm border border-line bg-surface active:opacity-80"
     >
-      <View style={styles.relatedArt}>
+      <View className="h-[84px] bg-surface-alt">
         <CardArt memory={memory} />
       </View>
-      <View style={styles.relatedText}>
-        <Text style={styles.relatedTitle} numberOfLines={1}>
+      <View className="gap-px px-3 py-2.5">
+        <Text className="font-sans-semibold text-[13.5px] text-ink" numberOfLines={1}>
           {memory.title}
         </Text>
-        <Text style={styles.relatedDate}>{shortDate(memory.occurredAt)}</Text>
+        <Text className="font-sans text-[12.5px] text-muted">{shortDate(memory.occurredAt)}</Text>
       </View>
     </Pressable>
   );
@@ -203,13 +227,13 @@ export function CardArt({ memory, compact = false }: { memory: MemoryCard; compa
   const types = memory.mediaTypes;
   if (memory.isTextOnly) {
     return (
-      <View style={[StyleSheet.absoluteFill, styles.wordsArt]}>
+      <View className="absolute inset-0 items-center justify-center bg-peach p-3">
         {!compact && memory.excerpt ? (
-          <Text style={styles.wordsText} numberOfLines={3}>
+          <Text className="text-center font-display text-[13.5px] leading-[18px] text-ink" numberOfLines={3}>
             “{memory.excerpt}”
           </Text>
         ) : (
-          <Ionicons name="chatbubble-ellipses-outline" size={compact ? 18 : 22} color={colors.accentDeep} />
+          <Ionicons name="chatbubble-ellipses-outline" size={compact ? 18 : 22} colorClassName="accent-accent-deep" />
         )}
       </View>
     );
@@ -218,23 +242,23 @@ export function CardArt({ memory, compact = false }: { memory: MemoryCard; compa
     // `heroUrl` is the video's poster frame. The deep tile shows through
     // while the clip is still being prepared, and the glyph sits on top.
     return (
-      <View style={[StyleSheet.absoluteFill, styles.glyphArt, { backgroundColor: colors.ink }]}>
+      <View className="absolute inset-0 items-center justify-center bg-ink">
         <Image
           source={{ uri: mediaUrl(memory.heroUrl) }}
-          style={StyleSheet.absoluteFill}
+          className="absolute inset-0"
           contentFit="cover"
           transition={200}
           recyclingKey={memory.id}
         />
-        <Ionicons name="play-circle-outline" size={compact ? 20 : 26} color="rgba(255,255,255,0.8)" />
+        <Ionicons name="play-circle-outline" size={compact ? 20 : 26} colorClassName="accent-white/80" />
       </View>
     );
   }
   if (!types.includes("PHOTO")) {
     return (
-      <View style={[StyleSheet.absoluteFill, styles.glyphArt, { backgroundColor: colors.accentSoft }]}>
+      <View className="absolute inset-0 items-center justify-center bg-accent-soft">
         {compact ? (
-          <Ionicons name="mic-outline" size={18} color={colors.accentDeep} />
+          <Ionicons name="mic-outline" size={18} colorClassName="accent-accent-deep" />
         ) : (
           <MiniWave seed={memory.id} />
         )}
@@ -244,7 +268,7 @@ export function CardArt({ memory, compact = false }: { memory: MemoryCard; compa
   return (
     <Image
       source={{ uri: mediaUrl(memory.heroUrl) }}
-      style={StyleSheet.absoluteFill}
+      className="absolute inset-0"
       contentFit="cover"
       transition={200}
       recyclingKey={memory.id}
@@ -254,78 +278,14 @@ export function CardArt({ memory, compact = false }: { memory: MemoryCard; compa
 
 function MiniWave({ seed }: { seed: string }) {
   return (
-    <View style={styles.miniWave}>
+    <View className="flex-row items-center gap-[2.5px]">
       {pseudoWaveform(seed, 18).map((bar) => (
-        <View key={bar.key} style={[styles.miniBar, { height: 4 + bar.height * 26 }]} />
+        <View
+          key={bar.key}
+          className="w-[2.5px] rounded-[1.5px] bg-accent"
+          style={{ height: 4 + bar.height * 26 }}
+        />
       ))}
     </View>
   );
 }
-
-const RELATED_W = 148;
-
-const styles = StyleSheet.create({
-  toggle: {
-    flexDirection: "row",
-    alignSelf: "center",
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.pill,
-    padding: 3,
-    backgroundColor: colors.surface,
-  },
-  toggleItem: { minWidth: 132, paddingVertical: 9, paddingHorizontal: spacing.lg, borderRadius: radius.pill },
-  toggleItemOn: { backgroundColor: colors.primary },
-  toggleLabel: { fontFamily: fonts.sansSemiBold, fontSize: 14.5, color: colors.ink, textAlign: "center" },
-  toggleLabelOn: { color: colors.onPrimary },
-
-  lead: { fontFamily: fonts.sans, fontSize: 17, lineHeight: 25, color: colors.inkSoft },
-  body: { fontFamily: fonts.sans, fontSize: 16, lineHeight: 26, color: colors.ink },
-  serifLead: { fontFamily: fonts.display, fontSize: 21, lineHeight: 30, color: colors.ink },
-  roomyLead: { fontFamily: fonts.sans, fontSize: 19, lineHeight: 31, color: colors.ink },
-  roomyBody: { fontFamily: fonts.sans, fontSize: 17.5, lineHeight: 30, color: colors.ink },
-
-  stack: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", rowGap: 6 },
-  face: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 2,
-    borderColor: colors.surface,
-    backgroundColor: colors.surfaceAlt,
-  },
-  more: { marginLeft: 4, alignItems: "center", justifyContent: "center", borderColor: colors.surfaceAlt },
-  moreText: { fontFamily: fonts.sansSemiBold, fontSize: 12.5, color: colors.inkSoft },
-
-  section: { paddingTop: spacing.lg, marginTop: spacing.lg, gap: spacing.md },
-  sectionDivider: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
-  sectionTitle: { fontFamily: fonts.sansBold, fontSize: 15.5, color: colors.ink },
-
-  detail: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, paddingVertical: 4 },
-  detailLabel: { fontFamily: fonts.sans, fontSize: 15, color: colors.ink, lineHeight: 21 },
-  detailValue: { flex: 1, alignItems: "flex-end", gap: 6 },
-  detailValueText: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 21, color: colors.inkSoft, textAlign: "right" },
-  detailLink: { color: colors.ink, textDecorationLine: "underline", textDecorationColor: colors.line },
-
-  relatedScroll: { marginHorizontal: -spacing.xl },
-  relatedRow: { gap: spacing.md, paddingHorizontal: spacing.xl },
-  related: {
-    width: RELATED_W,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-    overflow: "hidden",
-  },
-  relatedArt: { height: 84, backgroundColor: colors.surfaceAlt },
-  relatedText: { paddingHorizontal: spacing.md, paddingVertical: spacing.sm + 2, gap: 1 },
-  relatedTitle: { fontFamily: fonts.sansSemiBold, fontSize: 13.5, color: colors.ink },
-  relatedDate: { fontFamily: fonts.sans, fontSize: 12.5, color: colors.muted },
-
-  wordsArt: { backgroundColor: brand.peach, alignItems: "center", justifyContent: "center", padding: spacing.md },
-  wordsText: { fontFamily: fonts.display, fontSize: 13.5, lineHeight: 18, color: colors.ink, textAlign: "center" },
-  glyphArt: { alignItems: "center", justifyContent: "center" },
-  miniWave: { flexDirection: "row", alignItems: "center", gap: 2.5 },
-  miniBar: { width: 2.5, borderRadius: 1.5, backgroundColor: colors.accent },
-});

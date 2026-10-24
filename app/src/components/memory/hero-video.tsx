@@ -1,9 +1,9 @@
 import { useEventListener } from "expo";
-import { Image } from "expo-image";
 import { useVideoPlayer, VideoView, type VideoPlayer } from "expo-video";
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { videoSource } from "../../playback";
+import { Image } from "../../styled";
 import { VideoControls, type HeroVideoProps } from "./video-controls";
 
 export type { HeroVideoProps };
@@ -69,7 +69,7 @@ export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }
   }
 
   return (
-    <View style={StyleSheet.absoluteFill}>
+    <View className="absolute inset-0">
       <VideoView
         ref={view}
         player={player}
@@ -82,13 +82,13 @@ export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }
       {poster && !started ? (
         <Image
           source={{ uri: poster }}
-          style={StyleSheet.absoluteFill}
+          className="absolute inset-0"
           contentFit="cover"
           transition={200}
         />
       ) : null}
       <Pressable
-        style={StyleSheet.absoluteFill}
+        className="absolute inset-0"
         onPress={toggle}
         accessibilityRole="button"
         accessibilityLabel={playing ? "Pause video" : "Play video"}

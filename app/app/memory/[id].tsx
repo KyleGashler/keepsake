@@ -1,5 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -37,7 +35,6 @@ import {
   WordsToggle,
   type WordsView,
 } from "../../src/components/memory/parts";
-import { DANGER } from "../../src/components/memory/helpers";
 import { MemorySheets, type SheetKind } from "../../src/components/memory/sheets";
 import { MediaViewer } from "../../src/components/memory/viewer";
 import { WaveformPlayer } from "../../src/components/memory/waveform";
@@ -45,7 +42,8 @@ import { Button, ErrorState, Loading, NotFoundState } from "../../src/components
 import { useCanContribute } from "../../src/auth/session-context";
 import { errorMessage, seasonOf, shortDate } from "../../src/format";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
-import { brand, colors, fonts, MAX_WIDTH, radius, shadow, spacing, type } from "../../src/theme";
+import { Image, Ionicons } from "../../src/styled";
+import { layout, MAX_WIDTH } from "../../src/theme";
 
 /** How often to look again while a clip is being prepared or transcribed. */
 const POLL_MS = 3000;
@@ -113,7 +111,7 @@ export default function MemoryScreen() {
   // gone doesn't leave the old memory up.
   if (isNotFound(error)) {
     return (
-      <View style={[styles.goneScreen, { paddingTop: insets.top }]}>
+      <View className="flex-1 justify-center bg-paper" style={{ paddingTop: insets.top }}>
         <NotFoundState
           title="This memory isn't here anymore"
           backLabel="Go back"
@@ -218,13 +216,13 @@ export default function MemoryScreen() {
       );
     }
     return (
-      <View key={clip.id} style={styles.transcriptState}>
+      <View key={clip.id} className="flex-row items-center gap-3 rounded-md bg-surface-alt p-3">
         {status === "FAILED" ? (
-          <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
+          <Ionicons name="alert-circle-outline" size={18} colorClassName="accent-accent-deep" />
         ) : (
-          <ActivityIndicator color={colors.accentDeep} size="small" />
+          <ActivityIndicator colorClassName="accent-accent-deep" size="small" />
         )}
-        <Text style={[type.caption, { flex: 1 }]}>
+        <Text className="flex-1 type-caption">
           {status === "FAILED" ? "This recording couldn't be prepared to play." : "Preparing audio…"}
         </Text>
       </View>
@@ -232,22 +230,22 @@ export default function MemoryScreen() {
   });
 
   return (
-    <View style={styles.screen}>
+    <View className="flex-1 bg-paper">
       {hero ? null : <View style={{ paddingTop: insets.top }}>{actions}</View>}
       <ScrollView
-        style={styles.screen}
-        contentContainerStyle={{ flexGrow: 1 }}
+        className="flex-1 bg-paper"
+        contentContainerClassName="grow"
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={32}
         onScroll={
           hero
-            ? (e) => setPastHero(e.nativeEvent.contentOffset.y > heroHeight - insets.top - DISC - spacing.lg)
+            ? (e) => setPastHero(e.nativeEvent.contentOffset.y > heroHeight - insets.top - DISC - 16)
             : undefined
         }
       >
-        <View style={[styles.column, { flexGrow: 1 }]}>
+        <View className="w-full max-w-page grow self-center">
           {hero ? (
-            <View style={[styles.hero, { height: heroHeight + CARD_OVERLAP }]}>
+            <View className="w-full overflow-hidden bg-ink" style={{ height: heroHeight + CARD_OVERLAP }}>
               <HeroMedia
                 hero={hero}
                 paused={!focused || viewerAt !== null}
@@ -267,14 +265,12 @@ export default function MemoryScreen() {
           ) : null}
 
           <View
-            style={[
-              styles.card,
-              hero ? { marginTop: -CARD_OVERLAP } : styles.cardAlone,
-              { paddingBottom: insets.bottom + spacing.xxl },
-            ]}
+            // Over a hero, -mt-6 rides the card up by CARD_OVERLAP.
+            className={`grow rounded-t-[24px] bg-surface px-6 pt-[18px] ${hero ? "-mt-6" : "mt-2 shadow-card"}`}
+            style={{ paddingBottom: insets.bottom + layout.bottom }}
           >
             {view && hasStory && hasWords ? (
-              <View style={{ marginBottom: spacing.lg }}>
+              <View className="mb-4">
                 <WordsToggle
                   value={view}
                   onChange={(next) => {
@@ -285,9 +281,14 @@ export default function MemoryScreen() {
               </View>
             ) : null}
 
-            <Text style={styles.date}>{shortDate(memory.occurredAt)}</Text>
-            <View style={styles.titleRow}>
-              <Text style={[styles.title, !hero && styles.titleLarge]} accessibilityRole="header">
+            <Text className="font-sans-semibold text-[13px] tracking-[0.6px] text-ink-soft uppercase">
+              {shortDate(memory.occurredAt)}
+            </Text>
+            <View className="mt-0.5 flex-row items-start gap-3">
+              <Text
+                className={`flex-1 font-display text-ink ${hero ? "text-[31px] leading-[37px]" : "text-[36px] leading-[42px]"}`}
+                accessibilityRole="header"
+              >
                 {memory.title}
               </Text>
               {can.edit ? (
@@ -296,9 +297,9 @@ export default function MemoryScreen() {
                   hitSlop={10}
                   accessibilityRole="button"
                   accessibilityLabel="Edit memory"
-                  style={({ pressed }) => [styles.pencil, pressed && { opacity: 0.6 }]}
+                  className="pt-2 active:opacity-60"
                 >
-                  <Ionicons name="pencil-outline" size={20} color={colors.inkSoft} />
+                  <Ionicons name="pencil-outline" size={20} colorClassName="accent-ink-soft" />
                 </Pressable>
               ) : null}
             </View>
@@ -306,13 +307,13 @@ export default function MemoryScreen() {
             {view === "story" && memory.story ? (
               <Pressable
                 onLongPress={can.edit}
-                style={{ marginTop: spacing.sm }}
+                className="mt-2"
               >
                 <StoryText story={memory.story} textOnly={memory.isTextOnly} />
               </Pressable>
             ) : null}
             {view === "transcript" ? (
-              <View style={{ marginTop: spacing.md, gap: spacing.md }}>
+              <View className="mt-3 gap-3">
                 {players}
                 {editingTranscript ? (
                   <TranscriptEditor
@@ -336,14 +337,18 @@ export default function MemoryScreen() {
               </View>
             ) : null}
             {view === null && can.edit ? (
-              <Pressable onPress={() => setSheet("edit")} style={styles.editLink} accessibilityRole="button">
-                <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
-                <Text style={styles.editLinkText}>Write the story of this memory</Text>
+              <Pressable
+                onPress={() => setSheet("edit")}
+                className="mt-2 flex-row items-center gap-1.5"
+                accessibilityRole="button"
+              >
+                <Ionicons name="create-outline" size={15} colorClassName="accent-accent-deep" />
+                <Text className="font-sans-semibold text-[14px] text-accent-deep">Write the story of this memory</Text>
               </Pressable>
             ) : null}
 
             {memory.participants.length ? (
-              <View style={{ marginTop: spacing.lg }}>
+              <View className="mt-4">
                 <AvatarStack people={memory.participants} />
               </View>
             ) : null}
@@ -358,7 +363,7 @@ export default function MemoryScreen() {
             {/* Original Words carries its own players at the top. */}
             {recordings.length && view !== "transcript" ? (
               <Section title="Audio">
-                <View style={{ gap: spacing.md }}>{players}</View>
+                <View className="gap-3">{players}</View>
               </Section>
             ) : null}
 
@@ -375,9 +380,11 @@ export default function MemoryScreen() {
 
       {hero ? (
         // Once the hero has scrolled away, a white strip settles in behind
-        // the buttons so they don't sit on top of the words.
+        // the buttons so they don't sit on top of the words. Until then its
+        // hairline is there but transparent.
         <View
-          style={[styles.floating, { paddingTop: insets.top + spacing.sm }, pastHero && styles.floatingSettled]}
+          className={`absolute top-0 right-0 left-0 items-center pb-2 ${pastHero ? "border-line bg-surface" : "border-transparent"}`}
+          style={{ pointerEvents: "box-none", paddingTop: insets.top + 8, borderBottomWidth: StyleSheet.hairlineWidth }}
         >
           {actions}
         </View>
@@ -461,11 +468,11 @@ function HeroMedia({
       onPress={onOpen}
       accessibilityRole="imagebutton"
       accessibilityLabel="Open photo full screen"
-      style={StyleSheet.absoluteFill}
+      className="absolute inset-0"
     >
       <Image
         source={{ uri: mediaUrl(hero.url) }}
-        style={StyleSheet.absoluteFill}
+        className="absolute inset-0"
         contentFit="cover"
         transition={280}
         recyclingKey={hero.id}
@@ -505,30 +512,35 @@ function TopActions({
   /** Absent for a VIEWER when there's nothing to download: every other option changes the memory. */
   onMore?: () => void;
 }) {
-  const disc = [styles.disc, floating ? styles.discFloating : styles.discFlat];
+  const disc = `h-10 w-10 items-center justify-center rounded-full ${
+    floating ? "bg-white/94 shadow-card" : "border border-line bg-surface"
+  }`;
   return (
-    <View style={[styles.actions, !floating && styles.actionsBar]}>
-      <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back" style={disc}>
-        <Ionicons name="chevron-back" size={22} color={colors.ink} style={{ marginLeft: -2 }} />
+    <View
+      className={`w-full max-w-page flex-row items-center justify-between px-4 ${floating ? "" : "self-center py-2"}`}
+      style={{ pointerEvents: "box-none" }}
+    >
+      <Pressable onPress={onBack} hitSlop={8} accessibilityRole="button" accessibilityLabel="Back" className={disc}>
+        <Ionicons name="chevron-back" size={22} colorClassName="accent-ink" className="-ml-0.5" />
       </Pressable>
-      <View style={styles.actionsRight}>
+      <View className="flex-row gap-3">
         <Pressable
           onPress={onFavorite}
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={favorite ? "Remove from favourites" : "Favourite this memory"}
           accessibilityState={{ selected: favorite }}
-          style={disc}
+          className={disc}
         >
           <Ionicons
             name={favorite ? "heart" : "heart-outline"}
             size={21}
-            color={favorite ? brand.terracotta : colors.ink}
+            colorClassName={favorite ? "accent-terracotta" : "accent-ink"}
           />
         </Pressable>
         {onMore ? (
-          <Pressable onPress={onMore} hitSlop={8} accessibilityRole="button" accessibilityLabel="More options" style={disc}>
-            <Ionicons name="ellipsis-horizontal" size={20} color={colors.ink} />
+          <Pressable onPress={onMore} hitSlop={8} accessibilityRole="button" accessibilityLabel="More options" className={disc}>
+            <Ionicons name="ellipsis-horizontal" size={20} colorClassName="accent-ink" />
           </Pressable>
         ) : null}
       </View>
@@ -549,7 +561,7 @@ function MemoryDetails({ memory }: { memory: Memory }) {
   };
   return (
     <Section title="Memory Details">
-      <View style={{ gap: spacing.sm }}>
+      <View className="gap-2">
         <DetailRow icon="calendar-outline" label="Happened in">
           <DetailValue>{seasonOf(memory.occurredAt)}</DetailValue>
         </DetailRow>
@@ -592,9 +604,9 @@ function TranscriptPanel({
   return (
     <>
       {status === "PENDING" ? (
-        <View style={styles.transcriptState}>
-          <ActivityIndicator color={colors.accentDeep} size="small" />
-          <Text style={[type.caption, { flex: 1 }]}>
+        <View className="flex-row items-center gap-3 rounded-md bg-surface-alt p-3">
+          <ActivityIndicator colorClassName="accent-accent-deep" size="small" />
+          <Text className="flex-1 type-caption">
             {memory.transcript
               ? "Still transcribing a recording — this will update when it's done."
               : "Transcribing… the words will appear here in a moment."}
@@ -602,9 +614,9 @@ function TranscriptPanel({
         </View>
       ) : null}
       {status === "FAILED" ? (
-        <View style={styles.transcriptState}>
-          <Ionicons name="alert-circle-outline" size={18} color={colors.accentDeep} />
-          <Text style={[type.caption, { flex: 1 }]}>
+        <View className="flex-row items-center gap-3 rounded-md bg-surface-alt p-3">
+          <Ionicons name="alert-circle-outline" size={18} colorClassName="accent-accent-deep" />
+          <Text className="flex-1 type-caption">
             We couldn't write the transcript for {severalClips ? "a recording" : "this recording"}.
           </Text>
           {onRetry ? (
@@ -618,15 +630,15 @@ function TranscriptPanel({
         </View>
       ) : null}
       {memory.transcript ? (
-        <Pressable onLongPress={onEdit} style={styles.transcriptCard}>
-          <Text style={styles.transcript}>{memory.transcript}</Text>
+        <Pressable onLongPress={onEdit} className="rounded-md border border-line bg-paper p-4">
+          <Text className="font-sans text-[15.5px] leading-[25px] text-ink">{memory.transcript}</Text>
         </Pressable>
       ) : null}
       {/* Typing one in by hand is always allowed; the pipeline never overwrites it. */}
       {onEdit && (memory.transcript || status !== "PENDING") ? (
-        <Pressable onPress={onEdit} style={styles.editLink} accessibilityRole="button">
-          <Ionicons name="create-outline" size={15} color={colors.accentDeep} />
-          <Text style={styles.editLinkText}>
+        <Pressable onPress={onEdit} className="mt-2 flex-row items-center gap-1.5" accessibilityRole="button">
+          <Ionicons name="create-outline" size={15} colorClassName="accent-accent-deep" />
+          <Text className="font-sans-semibold text-[14px] text-accent-deep">
             {memory.transcript ? "Edit transcript" : "Write the transcript yourself"}
           </Text>
         </Pressable>
@@ -657,13 +669,13 @@ function TranscriptEditor({
         onChangeText={onChange}
         multiline
         autoFocus
-        style={styles.editor}
+        className="min-h-[180px] rounded-md border border-line bg-surface p-4 align-top font-sans text-[15.5px] leading-[25px] text-ink"
         placeholder="What was said, in your words…"
-        placeholderTextColor={colors.muted}
+        placeholderTextColorClassName="accent-muted"
         accessibilityLabel="Transcript"
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <View style={{ flexDirection: "row", gap: spacing.md, marginTop: spacing.md }}>
+      {error ? <Text className="mt-2 type-caption text-danger">{error}</Text> : null}
+      <View className="mt-3 flex-row gap-3">
         <Button label={saving ? "Saving…" : "Save"} onPress={onSave} disabled={saving} />
         <Button label="Cancel" variant="secondary" onPress={onCancel} />
       </View>
@@ -674,9 +686,9 @@ function TranscriptEditor({
 /** The hero while Mux prepares a fresh upload: a minute or so, then the player. */
 function VideoPreparing() {
   return (
-    <View style={styles.videoFallback}>
-      <ActivityIndicator color="rgba(255,255,255,0.8)" />
-      <Text style={styles.videoFallbackText}>Preparing video…</Text>
+    <View className="flex-1 items-center justify-center gap-2 p-4">
+      <ActivityIndicator colorClassName="accent-white/80" />
+      <Text className="text-center font-sans text-[14px] text-white">Preparing video…</Text>
     </View>
   );
 }
@@ -688,15 +700,15 @@ function VideoPreparing() {
  */
 function VideoFallback({ onRetry }: { onRetry?: () => void }) {
   return (
-    <View style={styles.videoFallback}>
-      <Ionicons name="videocam-off-outline" size={30} color="rgba(255,255,255,0.7)" />
-      <Text style={styles.videoFallbackText}>
+    <View className="flex-1 items-center justify-center gap-2 p-4">
+      <Ionicons name="videocam-off-outline" size={30} colorClassName="accent-white/70" />
+      <Text className="text-center font-sans text-[14px] text-white">
         {onRetry ? "This video can't play right now." : "We couldn't prepare this video to play."}
       </Text>
       {onRetry ? (
-        <Pressable onPress={onRetry} style={styles.editLink} accessibilityRole="button">
-          <Ionicons name="refresh-outline" size={15} color="#fff" />
-          <Text style={[styles.editLinkText, { color: "#fff" }]}>Try again</Text>
+        <Pressable onPress={onRetry} className="mt-2 flex-row items-center gap-1.5" accessibilityRole="button">
+          <Ionicons name="refresh-outline" size={15} colorClassName="accent-white" />
+          <Text className="font-sans-semibold text-[14px] text-white">Try again</Text>
         </Pressable>
       ) : null}
     </View>
@@ -704,90 +716,3 @@ function VideoFallback({ onRetry }: { onRetry?: () => void }) {
 }
 
 const DISC = 40;
-
-const styles = StyleSheet.create({
-  goneScreen: { flex: 1, backgroundColor: colors.bg, justifyContent: "center" },
-  screen: { flex: 1, backgroundColor: colors.bg },
-  column: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" },
-  hero: { width: "100%", backgroundColor: colors.ink, overflow: "hidden" },
-  card: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: radius.lg + 2,
-    borderTopRightRadius: radius.lg + 2,
-    paddingHorizontal: spacing.xl,
-    paddingTop: spacing.lg + 2,
-    flexGrow: 1,
-  },
-  cardAlone: { marginTop: spacing.sm, ...shadow },
-  date: {
-    fontFamily: fonts.sansSemiBold,
-    fontSize: 13,
-    letterSpacing: 0.6,
-    textTransform: "uppercase",
-    color: colors.inkSoft,
-  },
-  titleRow: { flexDirection: "row", alignItems: "flex-start", gap: spacing.md, marginTop: 2 },
-  title: { flex: 1, fontFamily: fonts.display, fontSize: 31, lineHeight: 37, color: colors.ink },
-  titleLarge: { fontSize: 36, lineHeight: 42 },
-  pencil: { paddingTop: 8 },
-  floating: { pointerEvents: "box-none", position: "absolute", top: 0, left: 0, right: 0, alignItems: "center", paddingBottom: spacing.sm },
-  floatingSettled: {
-    backgroundColor: colors.surface,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
-  },
-  actions: {
-    pointerEvents: "box-none",
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: spacing.lg,
-  },
-  actionsBar: { alignSelf: "center", paddingVertical: spacing.sm },
-  actionsRight: { flexDirection: "row", gap: spacing.md },
-  disc: { width: DISC, height: DISC, borderRadius: DISC / 2, alignItems: "center", justifyContent: "center" },
-  discFloating: { backgroundColor: "rgba(255,255,255,0.94)", ...shadow },
-  discFlat: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  transcriptState: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  transcriptCard: {
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    backgroundColor: colors.bg,
-  },
-  transcript: { fontFamily: fonts.sans, fontSize: 15.5, lineHeight: 25, color: colors.ink },
-  editor: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    minHeight: 180,
-    textAlignVertical: "top",
-    fontFamily: fonts.sans,
-    fontSize: 15.5,
-    lineHeight: 25,
-    color: colors.ink,
-  },
-  error: { ...type.caption, color: DANGER, marginTop: spacing.sm },
-  editLink: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: spacing.sm },
-  editLinkText: { fontFamily: fonts.sansSemiBold, fontSize: 14, color: colors.accentDeep },
-  videoFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    padding: spacing.lg,
-  },
-  videoFallbackText: { fontFamily: fonts.sans, fontSize: 14, color: "#fff", textAlign: "center" },
-});
