@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import { Sparkle } from "../../src/components/journey";
 import { TabBar } from "../../src/components/tab-bar";
-import { colors } from "../../src/theme";
+import { useColor } from "../../src/theme";
 
 /**
  * Five primary destinations, Capture in the middle as a raised disc (its icon
@@ -10,12 +10,13 @@ import { colors } from "../../src/theme";
  * so the bar stays put while you browse and re-tapping Library pops to its root.
  */
 export default function TabsLayout() {
+  const paper = useColor("paper");
   return (
     <Tabs
       tabBar={({ state, descriptors, navigation, insets }) => (
         <TabBar state={state} descriptors={descriptors} navigation={navigation} insets={insets} />
       )}
-      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: colors.bg } }}
+      screenOptions={{ headerShown: false, sceneStyle: { backgroundColor: paper } }}
     >
       <Tabs.Screen
         name="index"

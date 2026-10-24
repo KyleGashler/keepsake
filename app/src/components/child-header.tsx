@@ -1,5 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import type { Href } from "expo-router";
 import { useId } from "react";
 import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } from "react-native";
@@ -7,7 +5,8 @@ import Svg, { Defs, Line, RadialGradient, Rect, Stop } from "react-native-svg";
 import { mediaUrl, type ChildSummary, type Person } from "../api";
 import { childMeta } from "../format";
 import { backTo } from "../routes";
-import { colors, fonts, spacing } from "../theme";
+import { Image, Ionicons } from "../styled";
+import { useColor } from "../theme";
 import { Sparkle } from "./journey";
 
 /**
@@ -21,26 +20,25 @@ export function ChildPortrait({
   size,
   uri,
   style,
+  className = "",
 }: {
   child: Pick<Person, "name" | "accentColor" | "initials">;
   size: number;
   /** A photo URL (relative API paths resolve); null shows the monogram. */
   uri: string | null | undefined;
   style?: StyleProp<ViewStyle>;
+  className?: string;
 }) {
   const resolved = mediaUrl(uri);
   return (
     <View
-      style={[
-        styles.portrait,
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: child.accentColor },
-        style,
-      ]}
+      className={`items-center justify-center overflow-hidden ${className}`}
+      style={[{ width: size, height: size, borderRadius: size / 2, backgroundColor: child.accentColor }, style]}
     >
       {resolved ? (
-        <Image source={{ uri: resolved }} style={StyleSheet.absoluteFill} contentFit="cover" transition={200} />
+        <Image source={{ uri: resolved }} className="absolute inset-0" contentFit="cover" transition={200} />
       ) : (
-        <Text style={[styles.monogram, { fontSize: size * 0.46, lineHeight: size * 0.6 }]}>
+        <Text className="font-display text-white text-center" style={{ fontSize: size * 0.46, lineHeight: size * 0.6 }}>
           {child.name.trim().charAt(0).toUpperCase() || child.initials}
         </Text>
       )}
@@ -55,8 +53,9 @@ export function ChildPortrait({
  */
 export function ChildCardBackdrop({ child }: { child: Pick<Person, "name" | "accentColor" | "initials"> }) {
   const id = `wash-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
+  const surfaceAlt = useColor("surface-alt");
   return (
-    <View style={[StyleSheet.absoluteFill, styles.passThrough]}>
+    <View className="absolute inset-0 pointer-events-none">
       <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
         <Defs>
           <RadialGradient id={id} cx="68%" cy="45%" rx="60%" ry="95%">
@@ -64,11 +63,11 @@ export function ChildCardBackdrop({ child }: { child: Pick<Person, "name" | "acc
             <Stop offset="1" stopColor={child.accentColor} stopOpacity={0.08} />
           </RadialGradient>
         </Defs>
-        <Rect x="0" y="0" width="100%" height="100%" fill={colors.surfaceAlt} />
+        <Rect x="0" y="0" width="100%" height="100%" fill={surfaceAlt} />
         <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${id})`} />
       </Svg>
-      <View style={styles.backdropPortrait}>
-        <ChildPortrait child={child} size={104} uri={null} style={styles.backdropRing} />
+      <View className="absolute top-0 bottom-0 right-[16%] justify-center">
+        <ChildPortrait child={child} size={104} uri={null} className="border-4 border-white/75" />
       </View>
     </View>
   );
@@ -88,16 +87,16 @@ export function BackRow({
   settingsLabel?: string;
 }) {
   return (
-    <View style={styles.backRow}>
+    <View className="flex-row items-center justify-between min-h-11 mb-3">
       <Pressable
         onPress={() => backTo(parent)}
         hitSlop={12}
         accessibilityRole="button"
         accessibilityLabel={`Back to ${label}`}
-        style={({ pressed }) => [styles.back, pressed && styles.pressed]}
+        className="flex-row items-center gap-1 -ml-1 active:opacity-70"
       >
-        <Ionicons name="chevron-back" size={22} color={colors.ink} />
-        <Text style={styles.backLabel}>{label}</Text>
+        <Ionicons name="chevron-back" size={22} colorClassName="accent-ink" />
+        <Text className="font-sans text-[17px] text-ink">{label}</Text>
       </Pressable>
       {onSettings ? (
         <Pressable
@@ -105,9 +104,9 @@ export function BackRow({
           hitSlop={10}
           accessibilityRole="button"
           accessibilityLabel={settingsLabel}
-          style={({ pressed }) => [styles.gear, pressed && styles.pressed]}
+          className="w-11 h-11 items-center justify-center -mr-2 active:opacity-70"
         >
-          <Ionicons name="settings-outline" size={27} color={colors.ink} />
+          <Ionicons name="settings-outline" size={27} colorClassName="accent-ink" />
         </Pressable>
       ) : null}
     </View>
@@ -139,14 +138,15 @@ export function ChildHeader({ child }: { child: ChildSummary }) {
     };
   });
   const meta = childMeta(child);
+  const ink = useColor("ink");
 
   return (
-    <View style={styles.childHeader}>
-      <View style={styles.portraitWrap}>
+    <View className="flex-row items-center gap-5">
+      <View style={{ width: PORTRAIT, height: PORTRAIT }}>
         <Svg
           width={PORTRAIT + FLOURISH_PAD * 2}
           height={PORTRAIT + FLOURISH_PAD * 2}
-          style={styles.flourish}
+          style={{ position: "absolute", left: -FLOURISH_PAD, top: -FLOURISH_PAD, pointerEvents: "none" }}
         >
           {dashes.map((d) => (
             <Line
@@ -155,26 +155,26 @@ export function ChildHeader({ child }: { child: ChildSummary }) {
               y1={d.y1}
               x2={d.x2}
               y2={d.y2}
-              stroke={colors.ink}
+              stroke={ink}
               strokeWidth={2}
               strokeLinecap="round"
             />
           ))}
         </Svg>
         <ChildPortrait child={child} size={PORTRAIT} uri={child.photoUrl} />
-        <Sparkle size={24} color={colors.ink} variant="outline" strokeWidth={1.8} style={styles.portraitSparkle} />
+        <Sparkle size={24} color={ink} variant="outline" strokeWidth={1.8} className="absolute -right-4 -top-[18px]" />
       </View>
-      <View style={styles.childText}>
-        <Text style={styles.childName} numberOfLines={2} accessibilityRole="header">
+      <View className="flex-1 pt-2">
+        <Text className="type-display" numberOfLines={2} accessibilityRole="header">
           {child.name}
         </Text>
         {/* Each part stays whole; a long line wraps between parts, never inside one,
             and the dot stays with the part before it so a new line never starts with one. */}
-        <View style={styles.metaRow} accessible accessibilityLabel={meta.join(", ")}>
+        <View className="flex-row flex-wrap mt-0.5" accessible accessibilityLabel={meta.join(", ")}>
           {meta.map((part, i) => (
-            <Text key={part} style={styles.childMeta}>
+            <Text key={part} className="font-sans text-[14px] leading-[20px] text-ink-soft">
               {part}
-              {i < meta.length - 1 ? <Text style={styles.metaDot}>{"  •  "}</Text> : null}
+              {i < meta.length - 1 ? <Text className="text-[11px]">{"  •  "}</Text> : null}
             </Text>
           ))}
         </View>
@@ -182,39 +182,3 @@ export function ChildHeader({ child }: { child: ChildSummary }) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  pressed: { opacity: 0.7 },
-  portrait: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
-  monogram: { fontFamily: fonts.display, color: "#FFFFFF", textAlign: "center" },
-  backdropPortrait: {
-    position: "absolute",
-    top: 0,
-    bottom: 0,
-    right: "16%",
-    justifyContent: "center",
-  },
-  backdropRing: { borderWidth: 4, borderColor: "rgba(255,255,255,0.75)" },
-
-  backRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    minHeight: 44,
-    marginBottom: spacing.md,
-  },
-  back: { flexDirection: "row", alignItems: "center", gap: 4, marginLeft: -4 },
-  backLabel: { fontFamily: fonts.sans, fontSize: 17, color: colors.ink },
-  gear: { width: 44, height: 44, alignItems: "center", justifyContent: "center", marginRight: -8 },
-
-  childHeader: { flexDirection: "row", alignItems: "center", gap: spacing.lg + 4 },
-  portraitWrap: { width: PORTRAIT, height: PORTRAIT },
-  flourish: { position: "absolute", left: -FLOURISH_PAD, top: -FLOURISH_PAD, pointerEvents: "none" },
-  passThrough: { pointerEvents: "none" },
-  portraitSparkle: { position: "absolute", right: -16, top: -18 },
-  childText: { flex: 1, paddingTop: spacing.sm },
-  childName: { fontFamily: fonts.display, fontSize: 36, lineHeight: 42, color: colors.ink },
-  metaRow: { flexDirection: "row", flexWrap: "wrap", marginTop: 2 },
-  childMeta: { fontFamily: fonts.sans, fontSize: 14, lineHeight: 20, color: colors.inkSoft },
-  metaDot: { fontSize: 11 },
-});

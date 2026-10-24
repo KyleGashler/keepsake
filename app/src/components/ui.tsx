@@ -1,22 +1,14 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router } from "expo-router";
-import type { ReactNode } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-  type StyleProp,
-  type ViewStyle,
-} from "react-native";
+import type { ComponentProps, ReactNode } from "react";
+import { ActivityIndicator, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
-import { colors, fonts, layout, MAX_WIDTH, radius, shadow, spacing, type } from "../theme";
+import { Image, Ionicons } from "../styled";
+import { layout } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
+
+type IconName = ComponentProps<typeof Ionicons>["name"];
 
 export function Screen({
   children,
@@ -28,13 +20,14 @@ export function Screen({
   padded?: boolean;
 }) {
   const insets = useSafeAreaInsets();
+  // pt-4: with the header's own pb-2, the page header's gap (after-header) above the content.
   const body = (
-    <View style={[styles.column, styles.body, padded && { paddingHorizontal: layout.gutter }]}>{children}</View>
+    <View className={`w-full max-w-page self-center pt-4 ${padded ? "px-gutter" : ""}`}>{children}</View>
   );
-  if (!scroll) return <View style={styles.screen}>{body}</View>;
+  if (!scroll) return <View className="flex-1 bg-paper">{body}</View>;
   return (
     <ScrollView
-      style={styles.screen}
+      className="flex-1 bg-paper"
       contentContainerStyle={{ paddingBottom: insets.bottom + layout.bottom }}
       showsVerticalScrollIndicator={false}
     >
@@ -69,26 +62,27 @@ export function AppHeader({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <View style={[styles.headerWrap, { paddingTop: insets.top + layout.top }]}>
-      <View style={styles.headerRow}>
-        <View style={styles.headerLeft}>
+    // pb-2: room under a pinned header's title before the page scrolls beneath it.
+    <View className="bg-paper pb-2" style={{ paddingTop: insets.top + layout.top }}>
+      <View className="w-full max-w-page self-center px-gutter flex-row items-center justify-between gap-3">
+        <View className="flex-row items-center gap-2 shrink">
           {back ? (
             <Pressable
               onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))}
               hitSlop={12}
-              style={styles.iconButton}
+              className={ICON_BUTTON}
             >
-              <Ionicons name="chevron-back" size={20} color={colors.ink} />
+              <Ionicons name="chevron-back" size={20} colorClassName="accent-ink" />
             </Pressable>
           ) : null}
           {mark ? <BrandMark size={38} /> : null}
           {wordmark ? (
             <Wordmark width={152} />
           ) : (
-            <View style={{ flexShrink: 1 }}>
-              {subtitle ? <Text style={type.label}>{subtitle}</Text> : null}
+            <View className="shrink">
+              {subtitle ? <Text className="type-label">{subtitle}</Text> : null}
               {title ? (
-                <Text style={[type.title, { marginTop: subtitle ? 2 : 0 }]} numberOfLines={1}>
+                <Text className={subtitle ? "type-title mt-0.5" : "type-title"} numberOfLines={1}>
                   {title}
                 </Text>
               ) : null}
@@ -96,15 +90,15 @@ export function AppHeader({
           )}
         </View>
         {action || globalActions ? (
-          <View style={styles.headerActions}>
+          <View className="flex-row gap-1">
             {action}
             {globalActions ? (
               <>
-                <Pressable onPress={() => router.push("/search")} hitSlop={10} style={styles.iconButton}>
-                  <Ionicons name="search" size={19} color={colors.ink} />
+                <Pressable onPress={() => router.push("/search")} hitSlop={10} className={ICON_BUTTON}>
+                  <Ionicons name="search" size={19} colorClassName="accent-ink" />
                 </Pressable>
-                <Pressable onPress={() => router.push("/family")} hitSlop={10} style={styles.iconButton}>
-                  <Ionicons name="people-outline" size={19} color={colors.ink} />
+                <Pressable onPress={() => router.push("/family")} hitSlop={10} className={ICON_BUTTON}>
+                  <Ionicons name="people-outline" size={19} colorClassName="accent-ink" />
                 </Pressable>
               </>
             ) : null}
@@ -115,19 +109,21 @@ export function AppHeader({
   );
 }
 
+const ICON_BUTTON = "w-[38px] h-[38px] rounded-full items-center justify-center bg-surface border border-line";
+
 /** A round icon button for AppHeader's `action`, the same as its search and Family Hub buttons. */
 export function HeaderButton({
   icon,
   label,
   onPress,
 }: {
-  icon: keyof typeof Ionicons.glyphMap;
+  icon: IconName;
   label: string;
   onPress: () => void;
 }) {
   return (
-    <Pressable onPress={onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={label} style={styles.iconButton}>
-      <Ionicons name={icon} size={19} color={colors.ink} />
+    <Pressable onPress={onPress} hitSlop={10} accessibilityRole="button" accessibilityLabel={label} className={ICON_BUTTON}>
+      <Ionicons name={icon} size={19} colorClassName="accent-ink" />
     </Pressable>
   );
 }
@@ -143,8 +139,8 @@ export function SectionHeader({
   first?: boolean;
 }) {
   return (
-    <View style={[styles.sectionHeader, first && { marginTop: 0 }]}>
-      <Text style={type.label}>{label}</Text>
+    <View className={`flex-row items-center justify-between mb-3 ${first ? "mt-0" : "mt-section"}`}>
+      <Text className="type-label">{label}</Text>
       {action}
     </View>
   );
@@ -159,22 +155,25 @@ export function SmallButton({
   onPress,
 }: {
   label: string;
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IconName;
   filled?: boolean;
   accessibilityLabel?: string;
   onPress: () => void;
 }) {
-  const color = filled ? colors.onPrimary : colors.ink;
   return (
     <Pressable
       onPress={onPress}
       hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? label}
-      style={({ pressed }) => [styles.smallButton, filled && styles.smallButtonFilled, pressed && { opacity: 0.7 }]}
+      className={`flex-row items-center gap-1 h-8 px-3 rounded-full border active:opacity-70 ${
+        filled ? "bg-primary border-primary" : "bg-surface border-line"
+      }`}
     >
-      {icon ? <Ionicons name={icon} size={15} color={color} /> : null}
-      <Text style={[styles.smallButtonLabel, { color }]}>{label}</Text>
+      {icon ? (
+        <Ionicons name={icon} size={15} colorClassName={filled ? "accent-on-primary" : "accent-ink"} />
+      ) : null}
+      <Text className={`font-sans-bold text-[13.5px] ${filled ? "text-on-primary" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
@@ -182,16 +181,22 @@ export function SmallButton({
 export function Card({
   children,
   style,
+  className = "",
   onPress,
 }: {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
+  className?: string;
   onPress?: () => void;
 }) {
-  const content = <View style={[styles.card, style]}>{children}</View>;
+  const content = (
+    <View className={`bg-surface rounded-lg border border-line p-4 shadow-card ${className}`} style={style}>
+      {children}
+    </View>
+  );
   if (!onPress) return content;
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => pressed && styles.pressed}>
+    <Pressable onPress={onPress} className="active:opacity-72">
       {content}
     </Pressable>
   );
@@ -200,25 +205,22 @@ export function Card({
 export function Avatar({ person, size = 56 }: { person: Person; size?: number }) {
   return (
     <View
-      style={{
-        width: size,
-        height: size,
-        borderRadius: size / 2,
-        overflow: "hidden",
-        borderWidth: 1.5,
-        borderColor: person.accentColor,
-        backgroundColor: colors.surfaceAlt,
-      }}
+      className="overflow-hidden border-[1.5px] bg-surface-alt"
+      style={{ width: size, height: size, borderRadius: size / 2, borderColor: person.accentColor }}
     >
       <Image
         source={{ uri: mediaUrl(person.avatarUrl) }}
-        style={{ width: "100%", height: "100%" }}
+        className="w-full h-full"
         contentFit="cover"
         transition={200}
       />
       {/* The avatar is a generated orb, so their initials say whose it is. */}
-      <View style={styles.initialsWrap} pointerEvents="none">
-        <Text style={[styles.initials, { fontSize: Math.round(size * 0.34) }]} allowFontScaling={false}>
+      <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
+        <Text
+          className="font-sans-bold text-cream tracking-[0.5px]"
+          style={{ fontSize: Math.round(size * 0.34) }}
+          allowFontScaling={false}
+        >
           {person.initials}
         </Text>
       </View>
@@ -228,12 +230,12 @@ export function Avatar({ person, size = 56 }: { person: Person; size?: number })
 
 export function PersonChip({ person, onPress }: { person: Person; onPress?: () => void }) {
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.personChip, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} className="w-[74px] items-center gap-1.5 active:opacity-72">
       <Avatar person={person} size={58} />
-      <Text style={styles.personName} numberOfLines={1}>
+      <Text className="text-[13px] font-semibold text-ink" numberOfLines={1}>
         {person.name}
       </Text>
-      <Text style={styles.personRelation} numberOfLines={1}>
+      <Text className="text-[11px] text-muted" numberOfLines={1}>
         {person.relation ?? ""}
       </Text>
     </Pressable>
@@ -252,25 +254,26 @@ export function MemoryTile({
   return (
     <Pressable
       onPress={() => router.push(`/memory/${memory.id}`)}
-      style={({ pressed }) => [{ width }, pressed && styles.pressed]}
+      className="active:opacity-72"
+      style={{ width }}
     >
-      <View style={[styles.tileImageWrap, { height }]}>
+      <View className="rounded-md overflow-hidden bg-surface-alt mb-2" style={{ height }}>
         <Image
           source={{ uri: mediaUrl(memory.heroUrl) }}
-          style={StyleSheet.absoluteFill}
+          className="absolute inset-0"
           contentFit="cover"
           transition={220}
         />
         {memory.hasAudio ? (
-          <View style={styles.tileBadge}>
-            <Ionicons name="mic" size={12} color={colors.surface} />
+          <View className="absolute top-2 right-2 bg-scrim/62 rounded-full p-1.5">
+            <Ionicons name="mic" size={12} colorClassName="accent-surface" />
           </View>
         ) : null}
       </View>
-      <Text style={styles.tileTitle} numberOfLines={2}>
+      <Text className="font-display text-[16px] leading-[21px] text-ink" numberOfLines={2}>
         {memory.title}
       </Text>
-      <Text style={type.caption}>{shortDate(memory.occurredAt)}</Text>
+      <Text className="type-caption">{shortDate(memory.occurredAt)}</Text>
     </Pressable>
   );
 }
@@ -279,24 +282,24 @@ export function MemoryRow({ memory }: { memory: MemoryCardType }) {
   return (
     <Pressable
       onPress={() => router.push(`/memory/${memory.id}`)}
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+      className="flex-row gap-3 items-center py-3 border-b border-line active:opacity-72"
     >
       <Image
         source={{ uri: mediaUrl(memory.heroUrl) }}
-        style={styles.rowImage}
+        className="w-[76px] h-[76px] rounded-sm bg-surface-alt"
         contentFit="cover"
         transition={200}
       />
-      <View style={{ flex: 1 }}>
-        <Text style={type.heading} numberOfLines={2}>
+      <View className="flex-1">
+        <Text className="type-heading" numberOfLines={2}>
           {memory.title}
         </Text>
-        <Text style={[type.caption, { marginTop: 2 }]}>
+        <Text className="type-caption mt-0.5">
           {shortDate(memory.occurredAt)}
           {memory.location ? ` · ${memory.location}` : ""}
         </Text>
         {memory.excerpt ? (
-          <Text style={[type.body, { marginTop: 6, fontSize: 14 }]} numberOfLines={2}>
+          <Text className="type-body mt-1.5 text-[14px]" numberOfLines={2}>
             {memory.excerpt}
           </Text>
         ) : null}
@@ -312,40 +315,39 @@ export function Button({
   icon,
   disabled,
   style,
+  className = "",
 }: {
   label: string;
   onPress?: () => void;
   variant?: "primary" | "secondary";
-  icon?: keyof typeof Ionicons.glyphMap;
+  icon?: IconName;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
+  className?: string;
 }) {
   const primary = variant === "primary";
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [
-        styles.button,
-        primary ? styles.buttonPrimary : styles.buttonSecondary,
-        disabled && { opacity: 0.45 },
-        pressed && styles.pressed,
-        style,
-      ]}
+      className={`flex-row items-center justify-center gap-2 py-[13px] px-6 rounded-full active:opacity-72 ${
+        primary ? "bg-primary" : "bg-surface border border-line"
+      } ${disabled ? "opacity-45" : ""} ${className}`}
+      style={style}
     >
       {icon ? (
-        <Ionicons name={icon} size={17} color={primary ? colors.surface : colors.ink} />
+        <Ionicons name={icon} size={17} colorClassName={primary ? "accent-surface" : "accent-ink"} />
       ) : null}
-      <Text style={[styles.buttonLabel, { color: primary ? colors.surface : colors.ink }]}>{label}</Text>
+      <Text className={`text-[15px] font-semibold ${primary ? "text-surface" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
 
 export function Loading({ label = "Gathering memories…" }: { label?: string }) {
   return (
-    <View style={styles.centered}>
-      <ActivityIndicator color={colors.primary} />
-      <Text style={[type.caption, { marginTop: spacing.md }]}>{label}</Text>
+    <View className={CENTERED}>
+      <ActivityIndicator colorClassName="accent-primary" />
+      <Text className="type-caption mt-3">{label}</Text>
     </View>
   );
 }
@@ -357,11 +359,11 @@ export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => v
   if (error instanceof ApiError) detail = `The archive couldn't answer just now (${error.status}).`;
   else if (/failed to fetch|network/i.test(error.message)) detail = "Check your connection and try again.";
   return (
-    <View style={styles.centered}>
-      <Ionicons name="cloud-offline-outline" size={26} color={colors.muted} />
-      <Text style={[type.heading, { marginTop: spacing.md }]}>Can't reach the archive</Text>
-      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>{detail}</Text>
-      {onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} style={{ marginTop: spacing.lg }} /> : null}
+    <View className={CENTERED}>
+      <Ionicons name="cloud-offline-outline" size={26} colorClassName="accent-muted" />
+      <Text className="type-heading mt-3">Can't reach the archive</Text>
+      <Text className="type-caption text-center mt-1.5">{detail}</Text>
+      {onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} className="mt-4" /> : null}
     </View>
   );
 }
@@ -382,11 +384,11 @@ export function NotFoundState({
   onBack: () => void;
 }) {
   return (
-    <View style={styles.centered} accessibilityRole="summary">
-      <Ionicons name="leaf-outline" size={26} color={colors.muted} />
-      <Text style={[type.title, { marginTop: spacing.md, textAlign: "center" }]}>{title}</Text>
-      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>{body}</Text>
-      <Button label={backLabel} variant="secondary" icon="chevron-back" onPress={onBack} style={{ marginTop: spacing.lg }} />
+    <View className={CENTERED} accessibilityRole="summary">
+      <Ionicons name="leaf-outline" size={26} colorClassName="accent-muted" />
+      <Text className="type-title mt-3 text-center">{title}</Text>
+      <Text className="type-caption text-center mt-1.5">{body}</Text>
+      <Button label={backLabel} variant="secondary" icon="chevron-back" onPress={onBack} className="mt-4" />
     </View>
   );
 }
@@ -397,24 +399,24 @@ export function NotFoundState({
  */
 export function ViewOnlyState({ onBack }: { onBack: () => void }) {
   return (
-    <View style={styles.centered} accessibilityRole="summary">
-      <Ionicons name="eye-outline" size={26} color={colors.muted} />
-      <Text style={[type.title, { marginTop: spacing.md, textAlign: "center" }]}>You can look, not add</Text>
-      <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>
+    <View className={CENTERED} accessibilityRole="summary">
+      <Ionicons name="eye-outline" size={26} colorClassName="accent-muted" />
+      <Text className="type-title mt-3 text-center">You can look, not add</Text>
+      <Text className="type-caption text-center mt-1.5">
         Your role in this family lets you see everything in the archive. An owner can let you add memories from
         Family Hub.
       </Text>
-      <Button label="Back to Home" variant="secondary" icon="chevron-back" onPress={onBack} style={{ marginTop: spacing.lg }} />
+      <Button label="Back to Home" variant="secondary" icon="chevron-back" onPress={onBack} className="mt-4" />
     </View>
   );
 }
 
 export function EmptyState({ title, body, action }: { title: string; body?: string; action?: ReactNode }) {
   return (
-    <View style={styles.empty}>
-      <Text style={type.heading}>{title}</Text>
-      {body ? <Text style={[type.caption, { textAlign: "center", marginTop: 6 }]}>{body}</Text> : null}
-      {action ? <View style={{ marginTop: spacing.lg }}>{action}</View> : null}
+    <View className="items-center py-12 px-6">
+      <Text className="type-heading">{title}</Text>
+      {body ? <Text className="type-caption text-center mt-1.5">{body}</Text> : null}
+      {action ? <View className="mt-4">{action}</View> : null}
     </View>
   );
 }
@@ -422,127 +424,11 @@ export function EmptyState({ title, body, action }: { title: string; body?: stri
 /** Marks the places where a v0 stub stands in for a real capability. */
 export function PreviewNote({ children }: { children: ReactNode }) {
   return (
-    <View style={styles.previewNote}>
-      <Ionicons name="construct-outline" size={14} color={colors.muted} />
-      <Text style={[type.caption, { flex: 1 }]}>{children}</Text>
+    <View className="flex-row gap-2 items-center bg-surface-alt rounded-md p-3 mt-4">
+      <Ionicons name="construct-outline" size={14} colorClassName="accent-muted" />
+      <Text className="type-caption flex-1">{children}</Text>
     </View>
   );
 }
 
-/** Room under a pinned header's title before the page scrolls beneath it. */
-const HEADER_BOTTOM = spacing.sm;
-
-const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.bg },
-  column: { width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" },
-  /** With the header's own bottom padding, the page header's gap above the content. */
-  body: { paddingTop: layout.afterHeader - HEADER_BOTTOM },
-  headerWrap: { backgroundColor: colors.bg, paddingBottom: HEADER_BOTTOM },
-  headerRow: {
-    width: "100%",
-    maxWidth: MAX_WIDTH,
-    alignSelf: "center",
-    paddingHorizontal: layout.gutter,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: spacing.md,
-  },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: spacing.sm, flexShrink: 1 },
-  headerActions: { flexDirection: "row", gap: spacing.xs },
-  iconButton: {
-    width: 38,
-    height: 38,
-    borderRadius: radius.pill,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  sectionHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    marginTop: layout.section,
-    marginBottom: spacing.md,
-  },
-  smallButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    height: 32,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  smallButtonFilled: { backgroundColor: colors.primary, borderColor: colors.primary },
-  smallButtonLabel: { fontFamily: fonts.sansBold, fontSize: 13.5 },
-  card: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: spacing.lg,
-    ...shadow,
-  },
-  pressed: { opacity: 0.72 },
-  initialsWrap: { position: "absolute", inset: 0, alignItems: "center", justifyContent: "center" },
-  initials: { fontFamily: fonts.sansBold, color: "#FFF7EF", letterSpacing: 0.5 },
-  personChip: { width: 74, alignItems: "center", gap: 6 },
-  personName: { fontSize: 13, fontWeight: "600", color: colors.ink },
-  personRelation: { fontSize: 11, color: colors.muted },
-  tileImageWrap: {
-    borderRadius: radius.md,
-    overflow: "hidden",
-    backgroundColor: colors.surfaceAlt,
-    marginBottom: spacing.sm,
-  },
-  tileBadge: {
-    position: "absolute",
-    top: spacing.sm,
-    right: spacing.sm,
-    backgroundColor: "rgba(47,54,46,0.62)",
-    borderRadius: radius.pill,
-    padding: 6,
-  },
-  tileTitle: { fontFamily: type.heading.fontFamily, fontSize: 16, lineHeight: 21, color: colors.ink },
-  row: {
-    flexDirection: "row",
-    gap: spacing.md,
-    alignItems: "center",
-    paddingVertical: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.line,
-  },
-  rowImage: { width: 76, height: 76, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
-  button: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.sm,
-    paddingVertical: 13,
-    paddingHorizontal: spacing.xl,
-    borderRadius: radius.pill,
-  },
-  buttonPrimary: { backgroundColor: colors.primary },
-  buttonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  buttonLabel: { fontSize: 15, fontWeight: "600" },
-  centered: { alignItems: "center", justifyContent: "center", paddingVertical: 64, paddingHorizontal: spacing.xl },
-  empty: {
-    alignItems: "center",
-    paddingVertical: 48,
-    paddingHorizontal: spacing.xl,
-  },
-  previewNote: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    alignItems: "center",
-    backgroundColor: colors.surfaceAlt,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginTop: spacing.lg,
-  },
-});
+const CENTERED = "items-center justify-center py-16 px-6";
