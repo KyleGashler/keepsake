@@ -1,12 +1,10 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiSend, type DownloadFile, type DownloadsPayload, type Memory } from "../../api";
 import { canSaveSeveral, saveFile } from "../../download";
 import { errorMessage } from "../../format";
-import { colors, fonts, radius, spacing, type } from "../../theme";
+import { Ionicons } from "../../styled";
 import { Thumb } from "./gallery";
-import { DANGER } from "./helpers";
 import { SheetHeader } from "./sheet";
 
 /** While a video is being prepared, ask again this often. */
@@ -119,13 +117,13 @@ export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () 
   return (
     <>
       <SheetHeader title="Download" action={{ label: "Done", onPress: onClose }} />
-      <Text style={styles.hint}>
+      <Text className="font-sans text-[14.5px] leading-[21px] text-ink-soft">
         Save a copy of each file to this device: photos exactly as they were uploaded, videos and recordings at the best
         quality we keep.
       </Text>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: spacing.md, marginTop: spacing.sm }}>
-        {!payload && !error ? <ActivityIndicator color={colors.primary} style={{ marginVertical: spacing.xl }} /> : null}
+      {error ? <Text className="mt-2 font-sans text-[13.5px] text-danger">{error}</Text> : null}
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="mt-2 pb-3">
+        {!payload && !error ? <ActivityIndicator colorClassName="accent-primary" className="my-6" /> : null}
         {files.map((file) => (
           <FileRow
             key={file.mediaId}
@@ -137,14 +135,14 @@ export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () 
           />
         ))}
         {payload && unavailable > 0 ? (
-          <Text style={styles.empty}>
+          <Text className="mt-3 type-caption">
             {files.length === 0
               ? "These are sample images, so there's nothing here to download."
               : `${unavailable} sample ${unavailable === 1 ? "image isn't a file" : "images aren't files"} anyone uploaded, so ${unavailable === 1 ? "it's" : "they're"} not listed.`}
           </Text>
         ) : null}
         {payload && files.length === 0 && unavailable === 0 ? (
-          <Text style={styles.empty}>No photos or recordings on this memory.</Text>
+          <Text className="mt-3 type-caption">No photos or recordings on this memory.</Text>
         ) : null}
       </ScrollView>
       {canSaveSeveral && readyCount > 1 ? (
@@ -152,10 +150,10 @@ export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () 
           onPress={() => void saveAll()}
           disabled={saving !== null}
           accessibilityRole="button"
-          style={({ pressed }) => [styles.allButton, (pressed || saving !== null) && { opacity: 0.75 }]}
+          className={`mt-3 flex-row items-center justify-center gap-2 rounded-full bg-primary py-[13px] active:opacity-75 ${saving !== null ? "opacity-75" : ""}`}
         >
-          <Ionicons name="download-outline" size={18} color={colors.onPrimary} />
-          <Text style={styles.allLabel}>
+          <Ionicons name="download-outline" size={18} colorClassName="accent-on-primary" />
+          <Text className="font-sans-bold text-[15.5px] text-on-primary">
             {saving === "all" ? "Downloading…" : `Download All ${readyCount}`}
           </Text>
         </Pressable>
@@ -178,21 +176,28 @@ function FileRow({
   onSave: () => void;
 }) {
   return (
-    <View style={styles.row}>
-      <View style={styles.thumb}>
+    <View
+      className="flex-row items-center gap-3 border-line py-2.5"
+      style={{ borderBottomWidth: StyleSheet.hairlineWidth }}
+    >
+      <View className="h-11 w-11 overflow-hidden rounded-[8px] bg-surface-alt">
         {item && item.type !== "AUDIO" ? (
           <Thumb item={item} />
         ) : (
-          <View style={styles.iconThumb}>
-            <Ionicons name={file.type === "AUDIO" ? "mic-outline" : "document-outline"} size={20} color={colors.inkSoft} />
+          <View className="flex-1 items-center justify-center">
+            <Ionicons
+              name={file.type === "AUDIO" ? "mic-outline" : "document-outline"}
+              size={20}
+              colorClassName="accent-ink-soft"
+            />
           </View>
         )}
       </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name} numberOfLines={1} ellipsizeMode="middle">
+      <View className="flex-1">
+        <Text className="font-sans text-[15.5px] text-ink" numberOfLines={1} ellipsizeMode="middle">
           {file.filename}
         </Text>
-        <Text style={[type.caption, file.status === "failed" && { color: DANGER }]}>{statusLine(file)}</Text>
+        <Text className={`type-caption ${file.status === "failed" ? "text-danger" : ""}`}>{statusLine(file)}</Text>
       </View>
       <Trailing file={file} busy={busy} disabled={disabled} onSave={onSave} />
     </View>
@@ -216,8 +221,8 @@ function Trailing({
   disabled: boolean;
   onSave: () => void;
 }) {
-  if (file.status === "preparing" || busy) return <ActivityIndicator color={colors.primary} />;
-  if (file.status === "failed") return <Ionicons name="alert-circle-outline" size={22} color={DANGER} />;
+  if (file.status === "preparing" || busy) return <ActivityIndicator colorClassName="accent-primary" />;
+  if (file.status === "failed") return <Ionicons name="alert-circle-outline" size={22} colorClassName="accent-danger" />;
   return (
     <Pressable
       onPress={onSave}
@@ -226,46 +231,9 @@ function Trailing({
       accessibilityRole="button"
       accessibilityLabel={`Download ${file.filename}`}
       accessibilityState={{ disabled }}
-      style={({ pressed }) => [styles.saveButton, disabled && { opacity: 0.4 }, pressed && { opacity: 0.6 }]}
+      className={`h-9 w-9 items-center justify-center rounded-full border border-line active:opacity-60 ${disabled ? "opacity-40" : ""}`}
     >
-      <Ionicons name="download-outline" size={18} color={colors.primary} />
+      <Ionicons name="download-outline" size={18} colorClassName="accent-primary" />
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  hint: { fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 21, color: colors.inkSoft },
-  error: { fontFamily: fonts.sans, fontSize: 13.5, color: DANGER, marginTop: spacing.sm },
-  empty: { ...type.caption, marginTop: spacing.md },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.line,
-  },
-  thumb: { width: 44, height: 44, borderRadius: 8, overflow: "hidden", backgroundColor: colors.surfaceAlt },
-  iconThumb: { flex: 1, alignItems: "center", justifyContent: "center" },
-  name: { fontFamily: fonts.sans, fontSize: 15.5, color: colors.ink },
-  saveButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  allButton: {
-    marginTop: spacing.md,
-    flexDirection: "row",
-    gap: spacing.sm,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.primary,
-    borderRadius: radius.pill,
-    paddingVertical: 13,
-  },
-  allLabel: { fontFamily: fonts.sansBold, fontSize: 15.5, color: colors.onPrimary },
-});
