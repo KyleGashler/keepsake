@@ -1,11 +1,10 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { AuthError } from "../auth";
 import { useSession } from "../auth/session-context";
 import { ROLE_LABEL } from "../roles";
+import { Ionicons } from "../styled";
 import { SUPPORT_EMAIL } from "../support";
-import { colors, fonts, radius, spacing, type } from "../theme";
 import { AuthFrame, Notice, TextLink } from "./auth-screens";
 import { BrandMark } from "./brand";
 import { ListRow } from "./journey";
@@ -24,9 +23,9 @@ import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
  */
 export function Splash() {
   return (
-    <View style={styles.splash} accessibilityLabel="Opening little by little">
+    <View className="flex-1 items-center justify-center bg-paper" accessibilityLabel="Opening little by little">
       <BrandMark size={64} />
-      <ActivityIndicator color={colors.primary} style={{ marginTop: spacing.xl }} />
+      <ActivityIndicator colorClassName="accent-primary" className="mt-6" />
     </View>
   );
 }
@@ -203,8 +202,8 @@ export function ChooseFamilyScreen() {
             title={m.familyName}
             description={ROLE_LABEL[m.role]}
             leading={
-              <View style={styles.familyDisc}>
-                <Ionicons name="people-outline" size={22} color={colors.ink} />
+              <View className="h-12 w-12 items-center justify-center rounded-full bg-accent-soft">
+                <Ionicons name="people-outline" size={22} colorClassName="accent-ink" />
               </View>
             }
             onPress={() => selectFamily(m.familyId)}
@@ -254,20 +253,20 @@ export function VerifyEmailNudge() {
   if (!user || user.emailVerified || verifyNudgeDismissed) return null;
 
   return (
-    <View style={styles.nudge} accessibilityRole="summary">
-      <View style={styles.nudgeHeader}>
-        <Ionicons name="mail-unread-outline" size={20} color={colors.accentDeep} />
-        <Text style={styles.nudgeTitle}>Verify your email</Text>
-        <Pressable onPress={dismissVerifyNudge} hitSlop={10} accessibilityLabel="Dismiss" style={styles.nudgeClose}>
-          <Ionicons name="close" size={18} color={colors.inkSoft} />
+    <View className="mb-4 gap-2 rounded-md bg-accent-soft p-4" accessibilityRole="summary">
+      <View className="flex-row items-center gap-2">
+        <Ionicons name="mail-unread-outline" size={20} colorClassName="accent-accent-deep" />
+        <Text className="flex-1 font-display text-[19px] leading-[24px] text-ink">Verify your email</Text>
+        <Pressable onPress={dismissVerifyNudge} hitSlop={10} accessibilityLabel="Dismiss" className="p-0.5">
+          <Ionicons name="close" size={18} colorClassName="accent-ink-soft" />
         </Pressable>
       </View>
-      <Text style={styles.nudgeBody}>
+      <Text className="font-sans text-[14.5px] leading-[21px] text-ink">
         We sent a link to {user.email}. You'll need it verified to join another family's archive by invitation.
       </Text>
-      {message ? <Text style={styles.nudgeStatus}>{message}</Text> : null}
-      {error ? <Text style={[styles.nudgeStatus, { color: colors.terracotta }]}>{error}</Text> : null}
-      <View style={styles.nudgeActions}>
+      {message ? <Text className="type-caption text-ink-soft">{message}</Text> : null}
+      {error ? <Text className="type-caption text-terracotta">{error}</Text> : null}
+      <View className="mt-1 flex-row gap-2">
         <NudgeButton label="I've verified" onPress={check} busy={busy === "check"} disabled={busy !== null} primary />
         <NudgeButton label="Resend" onPress={resend} busy={busy === "resend"} disabled={busy !== null} />
       </View>
@@ -288,56 +287,19 @@ function NudgeButton({
   disabled: boolean;
   primary?: boolean;
 }) {
-  const fg = primary ? colors.onPrimary : colors.ink;
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      style={({ pressed }) => [
-        styles.nudgeButton,
-        primary ? { backgroundColor: colors.primary } : styles.nudgeButtonSecondary,
-        disabled && !busy && { opacity: 0.5 },
-        pressed && { opacity: 0.7 },
-      ]}
+      className={`flex-row items-center gap-1 rounded-full px-4 py-[9px] active:opacity-70 ${
+        primary ? "bg-primary" : "border border-line bg-surface"
+      } ${disabled && !busy ? "opacity-50" : ""}`}
     >
-      {busy ? <ActivityIndicator size="small" color={fg} /> : null}
-      <Text style={[styles.nudgeButtonLabel, { color: fg }]}>{label}</Text>
+      {busy ? (
+        <ActivityIndicator size="small" colorClassName={primary ? "accent-on-primary" : "accent-ink"} />
+      ) : null}
+      <Text className={`font-sans-bold text-[14px] ${primary ? "text-on-primary" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  splash: { flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: colors.bg },
-  familyDisc: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  nudge: {
-    marginBottom: spacing.lg,
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    backgroundColor: colors.accentSoft,
-    gap: spacing.sm,
-  },
-  nudgeHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  nudgeTitle: { flex: 1, fontFamily: fonts.display, fontSize: 19, lineHeight: 24, color: colors.ink },
-  nudgeClose: { padding: 2 },
-  nudgeBody: { ...type.body, fontSize: 14.5, lineHeight: 21, color: colors.ink },
-  nudgeStatus: { ...type.caption, color: colors.inkSoft },
-  nudgeActions: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.xs },
-  nudgeButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingVertical: 9,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-  },
-  nudgeButtonSecondary: { backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.line },
-  nudgeButtonLabel: { fontFamily: fonts.sansBold, fontSize: 14 },
-});

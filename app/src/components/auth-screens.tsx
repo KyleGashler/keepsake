@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from "react";
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { auth, AuthError, DEV_DEFAULT_EMAIL } from "../auth";
 import { useSession } from "../auth/session-context";
-import { colors, fonts, spacing, type } from "../theme";
+import { spacing } from "../theme";
 import { Wordmark } from "./brand";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
@@ -15,9 +15,6 @@ import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
  * Calm and plain on purpose — paper, the wordmark, a display-serif title and
  * the sheet's form controls. Nothing here should feel like a dashboard.
  */
-
-/** Forms read best narrower than the app's 720pt content column. */
-const FORM_WIDTH = 440;
 
 export function AuthFrame({
   eyebrow,
@@ -34,36 +31,38 @@ export function AuthFrame({
 }) {
   const insets = useSafeAreaInsets();
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.root}>
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 bg-paper">
       <ScrollView
-        contentContainerStyle={[
-          styles.scroll,
-          { paddingTop: insets.top + spacing.xxl, paddingBottom: insets.bottom + spacing.xxl },
-        ]}
+        contentContainerClassName="grow justify-center px-6"
+        contentContainerStyle={{ paddingTop: insets.top + spacing.xxl, paddingBottom: insets.bottom + spacing.xxl }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.column}>
-          <Wordmark width={148} style={styles.wordmark} />
-          {eyebrow ? <Text style={[type.eyebrow, styles.eyebrow]}>{eyebrow}</Text> : null}
-          <Text style={styles.title} accessibilityRole="header">
+        {/* Forms read best narrower than the app's 720pt content column. */}
+        <View className="w-full max-w-[440px] self-center">
+          {/* Wordmark takes a style, not a className. */}
+          <Wordmark width={148} style={{ marginBottom: spacing.xxl }} />
+          {eyebrow ? <Text className="mb-1 type-eyebrow">{eyebrow}</Text> : null}
+          <Text className="font-display text-[40px] leading-[46px] tracking-[-0.5px] text-ink" accessibilityRole="header">
             {title}
           </Text>
-          {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
-          {children ? <View style={styles.body}>{children}</View> : null}
-          {footer ? <View style={styles.footer}>{footer}</View> : null}
+          {subtitle ? <Text className="mt-2 font-sans text-[16.5px] leading-[23px] text-ink-soft">{subtitle}</Text> : null}
+          {children ? <View className="mt-6 gap-4">{children}</View> : null}
+          {footer ? <View className="mt-6 items-center">{footer}</View> : null}
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
+const LINK = "font-sans-bold text-[15px] text-ink underline";
+
 /** "New to little by little? Create an account" — a sentence with a tappable end. */
 export function TextLink({ lead, label, onPress }: { lead?: string; label: string; onPress: () => void }) {
   return (
-    <Text style={styles.linkLine}>
+    <Text className="text-center font-sans text-[15px] leading-[21px] text-ink-soft">
       {lead ? `${lead} ` : ""}
-      <Text onPress={onPress} accessibilityRole="link" style={styles.link}>
+      <Text onPress={onPress} accessibilityRole="link" className={LINK}>
         {label}
       </Text>
     </Text>
@@ -163,8 +162,8 @@ function SignIn({ email, setEmail, go, notice }: StepProps & { notice: string | 
           accessibilityLabel="Password"
         />
       </Field>
-      <Pressable onPress={() => go("forgot")} hitSlop={8} style={styles.inlineLink} accessibilityRole="link">
-        <Text style={styles.link}>Forgot your password?</Text>
+      <Pressable onPress={() => go("forgot")} hitSlop={8} className="-mt-1 self-start" accessibilityRole="link">
+        <Text className={LINK}>Forgot your password?</Text>
       </Pressable>
       <SheetError message={error} />
       <SheetButton label="Sign in" onPress={submit} busy={busy} disabled={!ready} />
@@ -326,37 +325,8 @@ function DevSignIn({
 /** A quiet panel for something the person should know but didn't do wrong. */
 export function Notice({ children }: { children: ReactNode }) {
   return (
-    <View style={styles.notice}>
-      <Text style={styles.noticeText}>{children}</Text>
+    <View className="rounded-[12px] bg-accent-soft p-3">
+      <Text className="font-sans text-[14.5px] leading-[20px] text-ink">{children}</Text>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.bg },
-  scroll: { flexGrow: 1, justifyContent: "center", paddingHorizontal: spacing.xl },
-  column: { width: "100%", maxWidth: FORM_WIDTH, alignSelf: "center" },
-  wordmark: { marginBottom: spacing.xxl },
-  eyebrow: { marginBottom: spacing.xs },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 40,
-    lineHeight: 46,
-    letterSpacing: -0.5,
-    color: colors.ink,
-  },
-  subtitle: {
-    fontFamily: fonts.sans,
-    fontSize: 16.5,
-    lineHeight: 23,
-    color: colors.inkSoft,
-    marginTop: spacing.sm,
-  },
-  body: { marginTop: spacing.xl, gap: spacing.lg },
-  footer: { marginTop: spacing.xl, alignItems: "center" },
-  linkLine: { fontFamily: fonts.sans, fontSize: 15, lineHeight: 21, color: colors.inkSoft, textAlign: "center" },
-  link: { fontFamily: fonts.sansBold, fontSize: 15, color: colors.ink, textDecorationLine: "underline" },
-  inlineLink: { alignSelf: "flex-start", marginTop: -spacing.xs },
-  notice: { backgroundColor: colors.accentSoft, borderRadius: 12, padding: spacing.md },
-  noticeText: { fontFamily: fonts.sans, fontSize: 14.5, lineHeight: 20, color: colors.ink },
-});
