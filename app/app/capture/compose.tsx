@@ -1,5 +1,3 @@
-import { Ionicons } from "@expo/vector-icons";
-import { Image } from "expo-image";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -7,7 +5,6 @@ import {
   Platform,
   Pressable,
   ScrollView,
-  StyleSheet,
   Text,
   TextInput,
   View,
@@ -29,7 +26,10 @@ import { AppHeader, Button, Loading, Screen, ViewOnlyState } from "../../src/com
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
 import { duration, errorMessage } from "../../src/format";
-import { colors, radius, spacing, type } from "../../src/theme";
+import { Image, Ionicons } from "../../src/styled";
+
+/** Every text field's box; each sets its own text size (the story's is larger). */
+const INPUT = "rounded-md border border-line bg-surface px-4 py-[13px] text-ink";
 
 const PILLARS: PillarKey[] = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"];
 
@@ -193,21 +193,21 @@ function ComposeScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
+      className="flex-1"
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <AppHeader back subtitle="Capture" title="New memory" globalActions={false} />
       <Screen>
-        <View style={styles.form}>
+        <View className="gap-6">
           {params.prompt ? (
-            <View style={styles.promptEcho}>
-              <Ionicons name="sparkles-outline" size={15} color={colors.accentDeep} />
-              <Text style={[type.caption, { flex: 1, color: colors.inkSoft }]}>{params.prompt}</Text>
+            <View className="flex-row items-center gap-2 rounded-md bg-accent-soft p-3">
+              <Ionicons name="sparkles-outline" size={15} colorClassName="accent-accent-deep" />
+              <Text className="flex-1 type-caption text-ink-soft">{params.prompt}</Text>
             </View>
           ) : null}
 
           {recordings.length ? (
-            <View style={{ gap: spacing.sm }}>
+            <View className="gap-2">
               {recordings.map((asset, i) => (
                 <AudioClip
                   key={asset.uri}
@@ -221,8 +221,8 @@ function ComposeScreen() {
           {audioMode && !recordings.length ? (
             // Arrived without a clip (a deep link, or a reload that dropped the
             // in-memory draft): offer the recorder rather than an empty form.
-            <View style={styles.recordPrompt}>
-              <Text style={[type.body, { flex: 1 }]}>No recording attached yet.</Text>
+            <View className="flex-row items-center gap-3 rounded-md border border-line bg-surface p-3 pl-4">
+              <Text className="flex-1 type-body">No recording attached yet.</Text>
               <Button
                 label="Record"
                 icon="mic-outline"
@@ -239,8 +239,8 @@ function ComposeScreen() {
             </View>
           ) : null}
           {missingVideo ? (
-            <View style={styles.recordPrompt}>
-              <Text style={[type.body, { flex: 1 }]}>No video attached yet.</Text>
+            <View className="flex-row items-center gap-3 rounded-md border border-line bg-surface p-3 pl-4">
+              <Text className="flex-1 type-body">No video attached yet.</Text>
               <Button
                 label="Record"
                 icon="videocam-outline"
@@ -259,12 +259,17 @@ function ComposeScreen() {
 
           {visuals.length ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <View className="flex-row gap-2">
                 {visuals.map((asset) =>
                   asset.mime.startsWith("video/") ? (
                     <VideoThumb key={asset.uri} asset={asset} />
                   ) : (
-                    <Image key={asset.uri} source={{ uri: asset.uri }} style={styles.thumb} contentFit="cover" />
+                    <Image
+                      key={asset.uri}
+                      source={{ uri: asset.uri }}
+                      className="h-24 w-24 rounded-sm bg-surface-alt"
+                      contentFit="cover"
+                    />
                   ),
                 )}
               </View>
@@ -272,19 +277,19 @@ function ComposeScreen() {
           ) : null}
           {audioMode || hasVideo ? (
             // Close under the media it's about, not a field's distance away.
-            <Text style={[type.caption, { marginTop: -spacing.lg }]}>
+            <Text className="-mt-4 type-caption">
               The transcript will be written automatically after you save.
             </Text>
           ) : null}
-          {oversizedMessage ? <Text style={styles.error}>{oversizedMessage}</Text> : null}
+          {oversizedMessage ? <Text className="type-caption text-error">{oversizedMessage}</Text> : null}
 
           <Field label="Title">
             <TextInput
               value={title}
               onChangeText={setTitle}
               placeholder="The morning we found out"
-              placeholderTextColor={colors.muted}
-              style={styles.input}
+              placeholderTextColorClassName="accent-muted"
+              className={`${INPUT} text-[15.5px]`}
             />
           </Field>
 
@@ -293,35 +298,35 @@ function ComposeScreen() {
               value={story}
               onChangeText={setStory}
               placeholder="What happened, and why it mattered…"
-              placeholderTextColor={colors.muted}
+              placeholderTextColorClassName="accent-muted"
               multiline
-              style={[styles.input, styles.multiline, { fontFamily: type.story.fontFamily, fontSize: 16 }]}
+              className={`${INPUT} min-h-[130px] align-top font-sans text-[16px] leading-[24px]`}
             />
           </Field>
 
-          <View style={{ flexDirection: "row", gap: spacing.md }}>
-            <Field label="Date" style={{ flex: 1 }}>
+          <View className="flex-row gap-3">
+            <Field label="Date" className="flex-1">
               <TextInput
                 value={date}
                 onChangeText={setDate}
                 placeholder="YYYY-MM-DD"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
+                placeholderTextColorClassName="accent-muted"
+                className={`${INPUT} text-[15.5px]`}
               />
             </Field>
-            <Field label="Place" style={{ flex: 1.4 }}>
+            <Field label="Place" className="flex-[1.4]">
               <TextInput
                 value={location}
                 onChangeText={setLocation}
                 placeholder="Home"
-                placeholderTextColor={colors.muted}
-                style={styles.input}
+                placeholderTextColorClassName="accent-muted"
+                className={`${INPUT} text-[15.5px]`}
               />
             </Field>
           </View>
 
           <Field label="Who's in it">
-            <View style={styles.chipWrap}>
+            <View className="flex-row flex-wrap gap-2">
               {people.map((person) => (
                 <Chip
                   key={person.id}
@@ -334,7 +339,7 @@ function ComposeScreen() {
           </Field>
 
           <Field label="Saved by">
-            <View style={styles.chipWrap}>
+            <View className="flex-row flex-wrap gap-2">
               {people
                 .filter((p) => p.role !== "CHILD")
                 .map((person) => (
@@ -349,12 +354,12 @@ function ComposeScreen() {
           </Field>
 
           <Field label="Where it belongs">
-            <View style={[styles.chipWrap, { marginBottom: spacing.sm }]}>
+            <View className="mb-2 flex-row flex-wrap gap-2">
               {PILLARS.map((key) => (
                 <Chip key={key} label={PILLAR_LABELS[key]} selected={pillar === key} onPress={() => setPillar(key)} />
               ))}
             </View>
-            <View style={styles.chipWrap}>
+            <View className="flex-row flex-wrap gap-2">
               {collections.map((collection) => (
                 <Chip
                   key={collection.id}
@@ -367,13 +372,13 @@ function ComposeScreen() {
               ))}
             </View>
             {chosen.length ? (
-              <Text style={[type.caption, { marginTop: spacing.sm }]}>
+              <Text className="mt-2 type-caption">
                 Filed in {chosen.map((c) => c.name).join(", ")}
               </Text>
             ) : null}
           </Field>
 
-          {error ? <Text style={styles.error}>{error}</Text> : null}
+          {error ? <Text className="type-caption text-error">{error}</Text> : null}
 
           <Button
             label={saving ? (progress ?? "Preserving…") : "Preserve this memory"}
@@ -395,8 +400,8 @@ function ComposeScreen() {
 function VideoThumb({ asset }: { asset: DraftAsset }) {
   const [failed, setFailed] = useState(false);
   return (
-    <View style={[styles.thumb, styles.videoThumb]}>
-      <Ionicons name="videocam-outline" size={26} color={colors.muted} />
+    <View className="h-24 w-24 items-center justify-center overflow-hidden rounded-sm bg-surface-alt">
+      <Ionicons name="videocam-outline" size={26} colorClassName="accent-muted" />
       {failed ? null : (
         <VideoClip
           uri={asset.uri}
@@ -404,12 +409,14 @@ function VideoThumb({ asset }: { asset: DraftAsset }) {
           muted
           contentFit="cover"
           onError={() => setFailed(true)}
-          style={StyleSheet.absoluteFill}
+          className="absolute inset-0"
         />
       )}
-      <View style={styles.videoBadge}>
-        <Ionicons name="play" size={10} color={colors.surface} />
-        {asset.durationS ? <Text style={styles.videoBadgeText}>{duration(asset.durationS)}</Text> : null}
+      <View className="absolute bottom-1.5 left-1.5 flex-row items-center gap-[3px] rounded-full bg-ink/55 px-1.5 py-0.5">
+        <Ionicons name="play" size={10} colorClassName="accent-surface" />
+        {asset.durationS ? (
+          <Text className="text-[11px] font-semibold text-surface">{duration(asset.durationS)}</Text>
+        ) : null}
       </View>
     </View>
   );
@@ -418,15 +425,15 @@ function VideoThumb({ asset }: { asset: DraftAsset }) {
 function Field({
   label,
   children,
-  style,
+  className,
 }: {
   label: string;
   children: React.ReactNode;
-  style?: object;
+  className?: string;
 }) {
   return (
-    <View style={style}>
-      <Text style={[type.label, { marginBottom: spacing.sm }]}>{label}</Text>
+    <View className={className}>
+      <Text className="mb-2 type-label">{label}</Text>
       {children}
     </View>
   );
@@ -444,69 +451,11 @@ function Chip({
   return (
     <Pressable
       onPress={onPress}
-      style={[styles.chip, selected && { backgroundColor: colors.accentDeep, borderColor: colors.accentDeep }]}
+      className={`rounded-full border px-4 py-2 ${
+        selected ? "border-accent-deep bg-accent-deep" : "border-line bg-surface"
+      }`}
     >
-      <Text style={[styles.chipLabel, selected && { color: colors.surface }]}>{label}</Text>
+      <Text className={`text-[13.5px] ${selected ? "text-surface" : "text-ink"}`}>{label}</Text>
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  form: { gap: spacing.xl },
-  promptEcho: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    alignItems: "center",
-    backgroundColor: colors.accentSoft,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  recordPrompt: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    paddingLeft: spacing.lg,
-  },
-  thumb: { width: 96, height: 96, borderRadius: radius.sm, backgroundColor: colors.surfaceAlt },
-  videoThumb: { overflow: "hidden", alignItems: "center", justifyContent: "center" },
-  videoBadge: {
-    position: "absolute",
-    left: 6,
-    bottom: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 3,
-    backgroundColor: colors.overlay,
-    borderRadius: radius.pill,
-    paddingVertical: 2,
-    paddingHorizontal: 6,
-  },
-  videoBadgeText: { color: colors.surface, fontSize: 11, fontWeight: "600" },
-  input: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.lg,
-    paddingVertical: 13,
-    fontSize: 15.5,
-    color: colors.ink,
-  },
-  multiline: { minHeight: 130, textAlignVertical: "top", lineHeight: 24 },
-  chipWrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    paddingVertical: 8,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.surface,
-  },
-  chipLabel: { fontSize: 13.5, color: colors.ink },
-  error: { ...type.caption, color: "#9C4A38" },
-});

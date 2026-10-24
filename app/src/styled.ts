@@ -1,5 +1,6 @@
 import { Ionicons as BaseIonicons } from "@expo/vector-icons";
 import { Image as BaseImage } from "expo-image";
+import { VideoView as BaseVideoView } from "expo-video";
 import { withUniwind } from "uniwind";
 
 /*
@@ -10,3 +11,4 @@ import { withUniwind } from "uniwind";
  */
 export const Ionicons = withUniwind(BaseIonicons);
 export const Image = withUniwind(BaseImage);
+export const VideoView = withUniwind(BaseVideoView);

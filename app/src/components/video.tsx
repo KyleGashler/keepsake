@@ -1,8 +1,9 @@
 import { useEventListener } from "expo";
-import { useVideoPlayer, VideoView } from "expo-video";
+import { useVideoPlayer } from "expo-video";
 import { useState } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
 import { videoSource } from "../playback";
+import { VideoView } from "../styled";
 
 /** What the player learned about a clip once it opened it. */
 export type VideoMeta = { durationS?: number; width?: number; height?: number };
@@ -22,6 +23,7 @@ export type VideoClipProps = {
   onLoad?: (meta: VideoMeta) => void;
   /** The clip can't be played here — a codec this device lacks, or a bad URL. */
   onError?: () => void;
+  className?: string;
   style?: StyleProp<ViewStyle>;
 };
 
@@ -41,6 +43,7 @@ export function VideoClip({
   contentFit = "contain",
   onLoad,
   onError,
+  className,
   style,
 }: VideoClipProps) {
   // Pin the source for the life of the view. A signed playback URL changes on
@@ -79,6 +82,7 @@ export function VideoClip({
       contentFit={contentFit}
       fullscreenOptions={{ enable: controls }}
       allowsPictureInPicture={false}
+      className={className}
       style={style}
     />
   );

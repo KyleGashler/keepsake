@@ -1,13 +1,12 @@
-import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, Text, View } from "react-native";
 import { ShootingStar } from "../../src/components/brand";
 import { AppHeader, Button, Screen, ViewOnlyState } from "../../src/components/ui";
 import { useCanContribute } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
-import { colors, radius, spacing, type } from "../../src/theme";
+import { Ionicons } from "../../src/styled";
 
 /**
  * Capture should disappear into the background: pick how the moment wants to be
@@ -126,35 +125,42 @@ function CaptureScreen() {
       <AppHeader subtitle="Capture" title="Preserve a moment" />
       <Screen>
         {/* Whimsical shape 4/6 — shooting star, for the moment that's going past. */}
-        <View style={styles.intro}>
+        <View className="mb-4 flex-row items-center gap-3">
           <ShootingStar size={46} />
-          <Text style={[type.body, { flex: 1 }]}>
+          <Text className="flex-1 type-body">
             However it wants to be remembered — a photo, a voice, or a few sentences.
           </Text>
         </View>
 
-        <View style={{ gap: spacing.md }}>
+        <View className="gap-3">
           {OPTIONS.map((option) => {
             const open = option.key === "camera" && momentOpen;
             return (
-              <View key={option.key} style={[styles.option, open && styles.optionOpen]}>
+              <View
+                key={option.key}
+                className={`rounded-lg border bg-surface p-4 ${open ? "border-accent" : "border-line"}`}
+              >
                 <Pressable
                   onPress={() => choose(option.key)}
                   disabled={busy !== null}
                   accessibilityState={option.key === "camera" ? { expanded: open } : undefined}
-                  style={({ pressed }) => [styles.optionRow, pressed && { opacity: 0.75 }]}
+                  className="flex-row items-center gap-4 active:opacity-75"
                 >
-                  <View style={styles.optionIcon}>
-                    <Ionicons name={option.icon} size={22} color={colors.accentDeep} />
+                  <View className="h-[46px] w-[46px] items-center justify-center rounded-full bg-accent-soft">
+                    <Ionicons name={option.icon} size={22} colorClassName="accent-accent-deep" />
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={type.heading}>{option.title}</Text>
-                    <Text style={[type.caption, { marginTop: 2 }]}>{option.body}</Text>
+                  <View className="flex-1">
+                    <Text className="type-heading">{option.title}</Text>
+                    <Text className="mt-0.5 type-caption">{option.body}</Text>
                   </View>
-                  <Ionicons name={open ? "chevron-down" : "chevron-forward"} size={18} color={colors.muted} />
+                  <Ionicons
+                    name={open ? "chevron-down" : "chevron-forward"}
+                    size={18}
+                    colorClassName="accent-muted"
+                  />
                 </Pressable>
                 {open ? (
-                  <View style={styles.momentChoices}>
+                  <View className="mt-4 flex-row gap-3">
                     <Button
                       label={busy === "photo" ? "Opening…" : "Photo"}
                       icon="camera-outline"
@@ -181,30 +187,3 @@ function CaptureScreen() {
     </>
   );
 }
-
-const styles = StyleSheet.create({
-  intro: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  option: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: spacing.lg,
-  },
-  optionOpen: { borderColor: colors.accent },
-  optionRow: { flexDirection: "row", alignItems: "center", gap: spacing.lg },
-  momentChoices: { flexDirection: "row", gap: spacing.md, marginTop: spacing.lg },
-  optionIcon: {
-    width: 46,
-    height: 46,
-    borderRadius: radius.pill,
-    backgroundColor: colors.accentSoft,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});
