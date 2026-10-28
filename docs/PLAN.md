@@ -172,6 +172,114 @@ verify-email nudge with resend in Family Hub to point people at.
 **Accept:** upload a photo, watch tiles reorder by true colour; worker survives
 a thrown handler.
 
+**As built (2026-10-27), second half — `media.derive`:** photos only. Since
+the Mux pivot, video and audio posters, durations and renditions come from Mux,
+so the ffmpeg poster and audio-duration items are dropped.
+- **Jobs.** `media.derive { familyId, mediaId }` (`jobs/media-derive.ts`)
+  reads the original (never writes it), renders THUMB (400 px long edge) and
+  DISPLAY (1600 px) as sRGB JPEGs with metadata stripped (no GPS), and writes
+  them through the new `StorageProvider.writeDerivative` (refuses `original.*`
+  keys) at `<familyId>/<uploadId>/thumb.jpg` and `display.jpg`. Then it upserts
+  the `Derivative` rows and `Media.capturedAt` plus the upright width/height
+  (finalize's header measurement ignores EXIF rotation). It ends by calling
+  `memory.refresh { familyId, memoryId }` (`jobs/memory-refresh.ts`), which
+  computes the palette from the hero's THUMB (k-means in Lab, k=5,
+  deterministic, near-identical groups merged: `palette` hex swatches,
+  `paletteHue` = HSV hue of the biggest-and-most-colourful group, `brightness`
+  = mean L*), and the date (below). Bytes sharp can't read →
+  `PermanentJobError`; storage/DB errors retry (default 5 attempts).
+- **Where it's enqueued — deviation.** Not at finalize: A5's finalize
+  deliberately creates no Media row, so there's nothing to derive yet. It's
+  enqueued in `POST /memories`' transaction, next to the Media rows.
+  `memory.refresh` is enqueued (deduped per memory) by reorder and by
+  removing a photo, the two ways the hero changes. There is no "add media to an
+  existing memory" route yet; one would call `enqueueDerive`. The refresh only
+  writes colours if the hero is still the one it read, checked under the Memory
+  row lock that reorder also takes. A memory whose hero is a video, or with no
+  photo, gets its generated stand-in's values back. Video heroes get no palette
+  from their Mux poster: left for later.
+- **EXIF date.** New `Memory.occurredAtSource` (`DEFAULT | EXIF | HUMAN`).
+  `POST /memories` without `occurredAt` → DEFAULT; with one, or any PATCH of
+  the date → HUMAN. While not HUMAN, the memory's date is the earliest
+  `capturedAt` among its photos (DateTimeOriginal, else DateTimeDigitized; never
+  Image.DateTime, which editors rewrite), stored as that calendar day at
+  12:00 UTC because EXIF has no zone. The write has `occurredAtSource != HUMAN`
+  in its WHERE clause, so a person's edit made mid-job always wins. Compose now
+  omits `occurredAt` when the memory has a photo and the date field wasn't
+  touched, with a one-line hint. Existing rows migrate as HUMAN, because a
+  default date can't be told from a chosen one, so the backfill fills
+  `capturedAt` but moves no dates.
+- **DTOs.** Card `heroUrl` and Mosaic tile `url` = DISPLAY. New card
+  `thumbUrl`, media `thumbUrl` = THUMB. Photo `url` on the memory page =
+  DISPLAY, plus a new `originalUrl`. Downloads (A17) still sign the original.
+  Each falls back to the original until the rendition exists. Mosaic tiles also
+  carry `palette`. Client: types in `api.ts`; `thumbUrl` used by the memory
+  gallery tile, `MemoryRow` and `MemoryEntry`; compose's date. No fetch or hook
+  code touched.
+- **Mosaic** sorts by `paletteHue` ascending and then brightness descending.
+  A memory whose swatches are all near-grey (chroma < 12) goes last, light to
+  dark, so black-and-white photos don't scatter by noise hue. Memories without
+  a derived photo sort by their stand-in's hue, as before.
+- **Purge.** Already carried `Derivative.storageKey`s. It now also names each
+  original's rendition keys, which are derived from the original's key, rows
+  or not. That way a derive still running when a delete lands can't leave
+  orphans. If the derive finds its Media row gone when it goes to write rows,
+  it hands the files it just wrote to `media.purge`.
+- **Decision: HEIC.** Verified: sharp 0.35.5's prebuilt libvips 8.18.7
+  bundles libheif with aom (AVIF) only. A HEVC HEIC's metadata and EXIF read
+  fine, but decoding fails ("Support for this compression format has not been
+  built in: HEVC (… libde265)"). The app does upload HEIC: native iOS
+  library picks go through expo-image-picker's PHPicker path, which returns
+  the HEIC data as-is for `public.heic` (camera captures and the web picker on
+  iOS Safari give JPEG; a desktop browser picking a `.heic` file sends HEIC).
+  Fallback: **`heic-decode` 2.1** (ISC, a 100-line wrapper) over
+  **`libheif-js` 1.23.5** (LGPL-3.0; libheif + libde265 compiled to WASM,
+  ~1.5 MB of wasm, no native build). It's imported lazily, only for
+  `format=heif, compression=hevc`, and decodes to RGBA for sharp. It takes
+  ~0.3 s for 12 MP on an M-series Mac and ~0.7 s under amd64 emulation.
+  libheif applies the HEIF rotation itself. Rejected: a custom libvips build
+  with libde265 (we'd own a native toolchain in the Fly image, plus HEVC
+  patent exposure from shipping the decoder in our binary) and converting on
+  the client (expo-image-picker has no option to force JPEG on the
+  `current` representation path, and web can't). Known limit: libheif-wasm
+  outputs pixels in the file's colour space untagged, so a Display-P3 HEIC's
+  renditions read slightly flatter than the original. The WASM heap also
+  stays at its high-water mark (~200 MB after a 48 MP photo) for the life of
+  the process.
+- **Dependencies:** `sharp` (decode/resize/encode, prebuilt for
+  linux-musl x64 and arm64), `heic-decode` (HEVC HEIC, see above),
+  `exif-reader` (MIT, zero deps, parses the EXIF block sharp hands back).
+- **Docker/Fly:** no Dockerfile change. `npm install` on `node:22-alpine`
+  from the macOS-generated lockfile installs `@img/sharp-linuxmusl-x64`.
+  Verified by building the server stage for `linux/amd64` and running a JPEG
+  and a HEIC through it. The local compose stack needs
+  `docker compose up -d --build --renew-anon-volumes api` for the new
+  dependencies.
+- **Verified** against a scratch DB (`little-by-little-db-1`, dev auth) on
+  local storage and on a RustFS S3 emulator:
+  - Upload → THUMB and DISPLAY in storage, originals byte-identical (sha256),
+    Derivative rows, `capturedAt`.
+  - A no-date memory took its EXIF day; a dated one stayed HUMAN, and a PATCHed
+    date survived a forced refresh.
+  - Mosaic moved the red photos from their seed hue to 0 and the blue to 230.
+  - Reorder moved the palette to the new hero, and removal moved it back.
+  - Removal purged the original and both renditions. On S3, deleting a memory
+    purged every version.
+  - An undecodable PNG failed permanently while the next job succeeded. An
+    unreadable original (EACCES) retried with backoff and then succeeded.
+  - EXIF orientation 6 came out upright.
+  - The backfill script, with `--wait` and no API running, derived
+    everything.
+  - Not verified: a real iPhone HEIC from the phone. A `sips`-made HEVC HEIC
+    stood in.
+- **Prod steps:** migration `20261027120000_a6_derivatives` (applied on
+  boot); `fly deploy`; then the backfill, `fly ssh console -C "sh -c 'cd /app
+  && node dist/scripts/derive-backfill.js --dry-run'"` and again with
+  `--wait` instead of `--dry-run`. `--wait` runs a worker in the SSH session,
+  because the machine auto-suspends without HTTP traffic. No IAM or bucket
+  policy change: the API's `s3:PutObject` already covers every key, and the
+  create-only policy covers `original.*` only.
+
 #### A7. CRUD completeness
 **Depends:** A3.
 > **Decision (2026-10-23): hard delete, no trash or restore.** Deleting a

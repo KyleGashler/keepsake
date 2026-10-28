@@ -52,7 +52,7 @@ export function MemoryEntry({ memory, collection, onPress, isLast }: EntryProps)
         <View className="my-0.5 w-[3px] self-stretch rounded-[2px] opacity-85" style={{ backgroundColor: collection.color }} />
       ) : (
         <Image
-          source={{ uri: mediaUrl(memory.heroUrl) }}
+          source={{ uri: mediaUrl(memory.thumbUrl ?? memory.heroUrl) }}
           className="h-21 w-21 rounded-md bg-surface-alt"
           contentFit="cover"
           transition={200}

@@ -408,8 +408,13 @@ export type MemoryCard = {
   title: string;
   occurredAt: string;
   location: string | null;
-  /** An image, always: the first photo, a video's Mux poster (never the video), or a generated stand-in. */
+  /**
+   * An image, always: the first photo (its 1600 px rendition once the server
+   * has made it), a video's Mux poster (never the video), or a generated stand-in.
+   */
   heroUrl: string;
+  /** The same picture for a small slot (a list row): a photo's 400 px rendition. Older servers omit it. */
+  thumbUrl?: string;
   excerpt: string | null;
   mediaCount: number;
   hasAudio: boolean;
@@ -436,10 +441,15 @@ export type MediaItem = {
   id: string;
   type: MediaType;
   /**
-   * Photo: a read URL. Video: a signed Mux HLS playlist (`….m3u8?token=…`).
-   * Audio: a signed Mux `audio.m4a`. Null for a clip until it's READY.
+   * Photo: its 1600 px rendition (the original until that's made). Video: a
+   * signed Mux HLS playlist (`….m3u8?token=…`). Audio: a signed Mux
+   * `audio.m4a`. Null for a clip until it's READY.
    */
   url: string | null;
+  /** Photo: its 400 px rendition, for a gallery tile. Video: the poster. */
+  thumbUrl?: string | null;
+  /** Photo: the file as uploaded (full size; may be a HEIC a browser can't draw). */
+  originalUrl?: string | null;
   /**
    * Audio and video only. Photos may leave it out (or say READY); read it
    * through `mediaStatus`.
@@ -680,6 +690,8 @@ export type MosaicTile = {
   isVideo: boolean;
   hasAudio: boolean;
   paletteHue: number;
+  /** The hero photo's colours as `#rrggbb`, most of the picture first; empty until analysed. */
+  palette?: string[];
   span: "single" | "wide" | "tall";
 };
 

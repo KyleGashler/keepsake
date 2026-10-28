@@ -3,6 +3,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
+import { enqueueDerive } from "../jobs/media-derive.js";
+import { kickRefresh } from "../jobs/memory-refresh.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { linkPair, memoryDetail } from "../lib/memory-detail.js";
@@ -201,6 +203,8 @@ memoriesRouter.post("/memories", requireContributor, async (req, res) => {
         story: input.story ?? null,
         transcript: input.transcript ?? null,
         occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
+        // No date sent: the photos' EXIF may give one (A6, memory.refresh).
+        occurredAtSource: input.occurredAt ? "HUMAN" : "DEFAULT",
         location: input.location ?? null,
         authorId: input.authorId ?? null,
         heroSeed,
@@ -256,7 +260,11 @@ memoriesRouter.post("/memories", requireContributor, async (req, res) => {
     // is where its status, duration and transcript arrive (`locked` was read
     // under the lock, so it's current).
     for (const asset of locked) await settleLinkedMedia(tx, asset);
-    return tx.memory.findUniqueOrThrow({ where: { id: created.id }, include });
+    const saved = await tx.memory.findUniqueOrThrow({ where: { id: created.id }, include });
+    // Renditions, EXIF date and palette for each uploaded photo (A6). In the
+    // transaction, so a job exists exactly when its Media row does.
+    await enqueueDerive(jobQueue(), tx, family.id, saved.media);
+    return saved;
   });
 
   const author = memory.author?.name ?? "Someone";
@@ -312,7 +320,8 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
     }
     return tx.memory.update({
       where: { id: existing.id },
-      data: { ...rest, ...(occurredAt ? { occurredAt: new Date(occurredAt) } : {}) },
+      // A date someone sets is theirs: no job moves it after this.
+      data: { ...rest, ...(occurredAt ? { occurredAt: new Date(occurredAt), occurredAtSource: "HUMAN" as const } : {}) },
       include,
     });
   });
@@ -364,6 +373,8 @@ memoriesRouter.delete("/memories/:id/media/:mediaId", requireContributor, async 
       await tx.media.delete({ where: { id: media.id } });
       await rewriteTranscript();
     });
+    // It may have been the hero, or the photo that dated the memory.
+    await kickRefresh(jobQueue(), familyId, memory.id, tx);
     return true;
   });
   if (!removed) return res.status(404).json({ error: "Media not found" });
@@ -404,6 +415,8 @@ memoriesRouter.put("/memories/:id/media/order", requireContributor, async (req, 
     }
     // The machine transcript follows the clips' order.
     await rewriteTranscript();
+    // A new first photo is a new hero: Mosaic's palette follows it.
+    await kickRefresh(jobQueue(), familyId, memory.id, tx);
     return true;
   });
   if (!ok) {

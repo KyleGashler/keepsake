@@ -39,6 +39,18 @@ export interface JobPayloads {
      */
     wholeFamily?: boolean;
   };
+  /**
+   * Render one photo's THUMB and DISPLAY JPEGs beside its original, read its
+   * EXIF capture date, then refresh its memory (A6). Enqueued with the Media
+   * row (POST /memories); safe to run again.
+   */
+  "media.derive": { familyId: string; mediaId: string };
+  /**
+   * Re-read what a memory takes from its photos: the palette from its hero,
+   * its date from their EXIF unless a person set one. Enqueued when the hero
+   * may have changed (reorder, removal); `media.derive` does the same inline.
+   */
+  "memory.refresh": { familyId: string; memoryId: string };
 }
 
 export type JobType = keyof JobPayloads;
@@ -58,6 +70,8 @@ export const jobPayloadSchemas: { [T in JobType]: z.ZodType<JobPayloads[T]> } = 
     reason: z.string(),
     wholeFamily: z.boolean().optional(),
   }),
+  "media.derive": z.object({ familyId: z.string(), mediaId: z.string() }),
+  "memory.refresh": z.object({ familyId: z.string(), memoryId: z.string() }),
 };
 
 export interface EnqueueOptions {

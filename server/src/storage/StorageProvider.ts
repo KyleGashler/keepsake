@@ -99,6 +99,14 @@ export interface StorageProvider {
   stream: (key: string, range?: ByteRange) => Promise<Readable>;
 
   /**
+   * Store a derivative the server rendered itself (A6: a photo's THUMB and
+   * DISPLAY JPEGs), replacing any earlier rendering at that key. Refuses an
+   * original's key: originals arrive only through `createUploadTarget`, and
+   * are never written over.
+   */
+  writeDerivative: (key: string, body: Buffer, contentType: string) => Promise<void>;
+
+  /**
    * Derivatives only. Original media is sacred: the normal paths of this
    * codebase never delete one, and implementations refuse if asked. The one
    * way an original goes is `purgeForFamilyDelete`.
@@ -156,13 +164,33 @@ export const UPLOAD_URL_TTL_SECONDS = 60 * 60;
 export const READ_URL_TTL_SECONDS = 3600;
 
 /**
- * Keys are `<familyId>/<mediaId>/original.<ext>` for originals and
- * `<familyId>/<mediaId>/<kind>.<ext>` for the derivatives A6 will add. The
- * family prefix is what lets a route prove a key belongs to the caller before
- * it ever reaches storage.
+ * Keys are `<familyId>/<uploadId>/original.<ext>` for originals and
+ * `<familyId>/<uploadId>/<kind>.jpg` for their derivatives (A6). The family
+ * prefix is what lets a route prove a key belongs to the caller before it
+ * ever reaches storage.
  */
 export function originalKey(familyId: string, mediaId: string, ext: string) {
   return `${familyId}/${mediaId}/original${ext}`;
+}
+
+/** The renditions `media.derive` makes of a photo (the Prisma enum's photo half). */
+export type PhotoDerivativeKind = "THUMB" | "DISPLAY";
+export const PHOTO_DERIVATIVE_KINDS: readonly PhotoDerivativeKind[] = ["THUMB", "DISPLAY"];
+
+/**
+ * Where a photo's derivative lives: beside its original, named for its kind.
+ * Fixed by the original's key alone, so a purge can name a derivative's key
+ * whether or not its `Derivative` row was ever written (lib/purge.ts).
+ */
+export function derivativeKey(original: string, kind: PhotoDerivativeKind) {
+  if (!isOriginalKey(original)) throw new StorageKeyError("Derivatives are named from an original's key");
+  return `${original.slice(0, original.lastIndexOf("/"))}/${kind.toLowerCase()}.jpg`;
+}
+
+/** The guard behind every `writeDerivative()`: never an original's key. */
+export function assertDerivativeWritable(key: string) {
+  assertSafeKey(key);
+  if (isOriginalKey(key)) throw new StorageKeyError("Refusing to write over an original");
 }
 
 /** The size and key checks every provider makes before authorising an upload. */

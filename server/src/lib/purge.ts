@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import type { JobPayloads, JobQueue } from "../jobs/JobQueue.js";
 import { lockAssets } from "../media-host/assets.js";
-import { UPLOAD_URL_TTL_SECONDS } from "../storage/StorageProvider.js";
+import { PHOTO_DERIVATIVE_KINDS, UPLOAD_URL_TTL_SECONDS, derivativeKey, isOriginalKey } from "../storage/StorageProvider.js";
 
 /**
  * Hard delete, and what it leaves to clean up (A7: no trash, no restore).
@@ -93,7 +93,7 @@ export async function deleteAndPurge(
   }
 
   const storageKeys = unique([
-    ...media.flatMap((m) => [m.storageKey, ...m.derivatives.map((d) => d.storageKey)]),
+    ...media.flatMap((m) => [m.storageKey, ...renditionKeys(m.storageKey), ...m.derivatives.map((d) => d.storageKey)]),
     ...(input.extraKeys ?? []),
   ]);
   if (storageKeys.length === 0 && muxAssets.length === 0) return null;
@@ -167,6 +167,15 @@ export async function deleteFamilyAndPurge(
     { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS, runAt: new Date(Date.now() + LATE_UPLOAD_SWEEP_MS) },
   );
   return true;
+}
+
+/**
+ * Where an original's renditions are, or will be (A6): named from its key,
+ * so a `media.derive` still running when the rows go can't leave files no
+ * row ever pointed at. Purging a key with nothing there is a no-op.
+ */
+function renditionKeys(key: string | null) {
+  return key && isOriginalKey(key) ? PHOTO_DERIVATIVE_KINDS.map((kind) => derivativeKey(key, kind)) : [];
 }
 
 function unique(values: (string | null | undefined)[]): string[] {
