@@ -3,11 +3,12 @@ import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
 import { ensureChildCollections } from "../lib/child-collections.js";
-import { childSummary } from "../lib/children.js";
+import { enqueueImageDerive } from "../jobs/image-derive.js";
+import { childSummary, profilePhotoUrls } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
-import { deleteAndPurge } from "../lib/purge.js";
+import { deleteAndPurge, purgeRenditionsOf } from "../lib/purge.js";
 import { mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
-import { imageKeyError, imageKeyProblem, signedImageUrl } from "../lib/upload-keys.js";
+import { imageKeyError, imageKeyProblem } from "../lib/upload-keys.js";
 
 export const peopleRouter = Router();
 
@@ -119,8 +120,10 @@ const editPerson = z.object({
 
 /**
  * Edit a person: name, relation, birthday and profile photo.
- * Absent fields are left alone; null clears a nullable one. Clearing a photo
- * only drops the pointer — the uploaded original is kept.
+ * Absent fields are left alone; null clears a nullable one. A new photo
+ * queues `image.derive` for its renditions. Replacing or clearing one
+ * purges the old photo's renditions but only drops the pointer to its
+ * original — the uploaded original is kept.
  */
 peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
@@ -142,18 +145,34 @@ peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
     }
   }
 
-  const person = await prisma.person.update({
-    where: { id: existing.id },
-    data: {
-      ...(name === undefined ? {} : { name }),
-      ...(relation === undefined ? {} : { relation: relation || null }),
-      ...(birthDate === undefined ? {} : { birthDate: birthDate ? new Date(birthDate) : null }),
-      ...(photoKey === undefined ? {} : { photoKey }),
-    },
+  const person = await prisma.$transaction(async (tx) => {
+    // Locked, so two edits racing can't both think they replaced the same
+    // photo and leave the other's renditions behind.
+    const [before] = await tx.$queryRaw<{ photoKey: string | null; photoDerivedKey: string | null }[]>`
+      SELECT "photoKey", "photoDerivedKey" FROM "Person" WHERE id = ${existing.id} FOR UPDATE`;
+    const replaced = photoKey !== undefined && before !== undefined && before.photoKey !== photoKey;
+    const updated = await tx.person.update({
+      where: { id: existing.id },
+      data: {
+        ...(name === undefined ? {} : { name }),
+        ...(relation === undefined ? {} : { relation: relation || null }),
+        ...(birthDate === undefined ? {} : { birthDate: birthDate ? new Date(birthDate) : null }),
+        ...(replaced ? { photoKey, photoDerivedKey: null } : {}),
+      },
+    });
+    if (replaced) {
+      await purgeRenditionsOf(tx, jobQueue(), { familyId: family.id, key: before.photoKey, reason: "replaced profile photo" });
+    }
+    // Also when the same photo is sent again without renditions yet: a
+    // derive that gave up gets another go.
+    if (updated.photoKey && updated.photoDerivedKey !== updated.photoKey && photoKey) {
+      await enqueueImageDerive(jobQueue(), tx, family.id, updated.photoKey);
+    }
+    return updated;
   });
 
   res.json({
-    person: { ...personDto(person), photoUrl: person.photoKey ? await signedImageUrl(person.photoKey) : null },
+    person: { ...personDto(person), ...(await profilePhotoUrls(person)) },
     child: person.role === "CHILD" ? await childSummary(family.id, person) : null,
   });
 });
@@ -177,7 +196,8 @@ class PersonIsMember extends Error {}
  * Arrival Stories) — the memories filed there stay in the archive, only the
  * filing goes — and their place in every memory's "who was there". Memories
  * they wrote keep existing without an author. Pending invites naming them
- * are withdrawn. Their profile photo is purged by `media.purge`.
+ * are withdrawn. Their profile photo and its renditions are purged by
+ * `media.purge`.
  */
 peopleRouter.delete("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;

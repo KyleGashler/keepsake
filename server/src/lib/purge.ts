@@ -45,8 +45,8 @@ const purgeMediaSelect = {
  *
  * - `media`: the Media rows the delete will take with it (directly, or by
  *   cascade from their memory). Read before `remove` runs.
- * - `extraKeys`: other storage keys that become unreferenced — a deleted
- *   person's profile photo.
+ * - `extraKeys`: other originals that become unreferenced — a deleted
+ *   person's profile photo. Their renditions are purged with them.
  * - `remove`: the delete itself.
  *
  * Lock order matches every other writer (MuxAsset rows, then Memory/Media),
@@ -94,7 +94,7 @@ export async function deleteAndPurge(
 
   const storageKeys = unique([
     ...media.flatMap((m) => [m.storageKey, ...renditionKeys(m.storageKey), ...m.derivatives.map((d) => d.storageKey)]),
-    ...(input.extraKeys ?? []),
+    ...(input.extraKeys ?? []).flatMap((k) => [k, ...renditionKeys(k ?? null)]),
   ]);
   if (storageKeys.length === 0 && muxAssets.length === 0) return null;
 
@@ -170,11 +170,32 @@ export async function deleteFamilyAndPurge(
 }
 
 /**
- * Where an original's renditions are, or will be (A6): named from its key,
- * so a `media.derive` still running when the rows go can't leave files no
- * row ever pointed at. Purging a key with nothing there is a no-op.
+ * A profile photo or pillar cover was replaced or removed: purge the old
+ * picture's renditions, in the caller's transaction. The original stays —
+ * dropping the pointer isn't a family deleting the upload. `media.purge`
+ * keeps the renditions if another row still shows the same upload.
  */
-function renditionKeys(key: string | null) {
+export async function purgeRenditionsOf(
+  tx: Prisma.TransactionClient,
+  queue: JobQueue,
+  input: { familyId: string; key: string | null | undefined; reason: string },
+) {
+  const storageKeys = renditionKeys(input.key ?? null);
+  if (storageKeys.length === 0) return;
+  await queue.enqueue(
+    "media.purge",
+    { familyId: input.familyId, storageKeys, muxAssets: [], reason: input.reason },
+    { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS },
+  );
+}
+
+/**
+ * Where an original's renditions are, or will be (A6): named from its key,
+ * so a `media.derive` or `image.derive` still running when the rows go can't
+ * leave files no row ever pointed at. Purging a key with nothing there is a
+ * no-op.
+ */
+export function renditionKeys(key: string | null) {
   return key && isOriginalKey(key) ? PHOTO_DERIVATIVE_KINDS.map((kind) => derivativeKey(key, kind)) : [];
 }
 

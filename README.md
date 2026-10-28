@@ -426,6 +426,14 @@ DTOs use the renditions: card `heroUrl` and Mosaic tiles are DISPLAY, card
 is DISPLAY and `originalUrl` is the file as uploaded. Until the job has run
 (a few seconds) each falls back to the original.
 
+A child's profile photo and a Library pillar cover aren't Media rows, so
+setting one queues `image.derive` instead ([server/src/jobs/image-derive.ts](server/src/jobs/image-derive.ts)):
+the same two renditions beside the same original, no palette or date. A
+child's `photoUrl` is DISPLAY (the children list's cards), `photoThumbUrl` is
+THUMB (portraits), and a pillar's `coverUrl` is DISPLAY, each the original
+until the job has run. Replacing or removing a photo or cover purges the old
+one's renditions and keeps its original; deleting the child purges both.
+
 **HEIC.** sharp's prebuilt libvips reads HEIF containers but can't decode
 HEVC, which is what iPhone photos are, so HEIC pixels go through libheif
 compiled to WebAssembly (`heic-decode`), loaded only when a HEIC turns up.

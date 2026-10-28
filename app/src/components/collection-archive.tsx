@@ -310,7 +310,7 @@ function Identity({
   return (
     <View className="mt-4 flex-row items-center gap-2">
       {/* Their photo, or their monogram — the same face Child Profiles shows, not the generated avatar. */}
-      <ChildPortrait child={child} size={30} uri={child.photoUrl} />
+      <ChildPortrait child={child} size={30} uri={child.photoThumbUrl} />
       <Text className="shrink font-sans text-[15px] text-ink-soft" numberOfLines={1}>
         <Text className="font-sans-bold text-ink">{child.name}</Text>
         {[age, memories].filter(Boolean).map((part) => ` · ${part}`).join("")}

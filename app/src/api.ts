@@ -556,7 +556,10 @@ export type LibraryPayload = { pillars: LibraryPillar[] };
  * distinct memories in any collection of theirs.
  */
 export type ChildSummary = Person & {
+  /** Their profile photo at card size; null when they have none. */
   photoUrl: string | null;
+  /** The same photo at portrait size (≤400 px). */
+  photoThumbUrl: string | null;
   collectionCount: number;
   memoryCount: number;
 };

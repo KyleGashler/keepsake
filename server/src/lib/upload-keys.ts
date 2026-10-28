@@ -1,5 +1,5 @@
 import { contentTypeForKey, mediaTypeFor } from "./mime.js";
-import { READ_URL_TTL_SECONDS, StorageKeyError, assertSafeKey, storage } from "../storage/index.js";
+import { READ_URL_TTL_SECONDS, StorageKeyError, assertSafeKey, derivativeKey, storage, type PhotoDerivativeKind } from "../storage/index.js";
 import { isOriginalKey } from "../storage/StorageProvider.js";
 
 /**
@@ -51,4 +51,15 @@ export function imageKeyError(problem: ImageKeyProblem) {
 /** A stored picture's read URL, signed fresh per response. */
 export function signedImageUrl(key: string) {
   return storage().getReadUrl(key, READ_URL_TTL_SECONDS);
+}
+
+/**
+ * A profile photo's or cover's read URL at the size asked for: its
+ * rendition once `image.derive` has made renditions of this very key
+ * (`derivedKey === key`), else the original — the same fallback memory
+ * photos have. Null when there's no picture.
+ */
+export function signedPictureUrl(key: string | null, derivedKey: string | null, kind: PhotoDerivativeKind) {
+  if (!key) return null;
+  return signedImageUrl(derivedKey === key && isOriginalKey(key) ? derivativeKey(key, kind) : key);
 }
