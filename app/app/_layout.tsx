@@ -5,6 +5,7 @@ import { DMSerifDisplay_400Regular } from "@expo-google-fonts/dm-serif-display/4
 import { NunitoSans_400Regular } from "@expo-google-fonts/nunito-sans/400Regular";
 import { NunitoSans_600SemiBold } from "@expo-google-fonts/nunito-sans/600SemiBold";
 import { NunitoSans_700Bold } from "@expo-google-fonts/nunito-sans/700Bold";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { SplashScreen, Stack, usePathname } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -25,6 +26,7 @@ import { AUTH_ACTION_PATH } from "../src/auth";
 import { AuthActionScreen } from "../src/components/auth-action-screen";
 import { SignedOutFlow } from "../src/components/auth-screens";
 import { JoinScreen } from "../src/components/join-screen";
+import { queryClient } from "../src/query";
 import { JOIN_PATH_PREFIX } from "../src/roles";
 import { useColor } from "../src/theme";
 
@@ -64,7 +66,10 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: paper }}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <SessionProvider>{fontsReady ? <Gate /> : null}</SessionProvider>
+        {/* Above the session, which reads and forgets through it. */}
+        <QueryClientProvider client={queryClient}>
+          <SessionProvider>{fontsReady ? <Gate /> : null}</SessionProvider>
+        </QueryClientProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

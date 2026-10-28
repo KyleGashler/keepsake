@@ -1,9 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { apiSend, type DownloadFile, type DownloadsPayload, type Memory } from "../../api";
+import { useFamilyId } from "../../auth/family-store";
 import { canSaveSeveral, saveFile } from "../../download";
 import { errorMessage } from "../../format";
+import { familyKey } from "../../query";
 import { Ionicons } from "../../styled";
+import { InlineError } from "../ui";
 import { Thumb } from "./gallery";
 import { SheetHeader } from "./sheet";
 
@@ -36,7 +40,20 @@ function timeZone(): string | undefined {
  * for a few minutes and this sheet keeps asking until it's ready.
  */
 export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () => void }) {
-  const [payload, setPayload] = useState<DownloadsPayload | null>(null);
+  const familyId = useFamilyId();
+  // A POST, because asking is what starts a video's copy being prepared; it's
+  // still a read — the same answer until something is ready — so it's a
+  // query: polled while anything is preparing, and never cached past the
+  // sheet (the URLs in it lapse).
+  const downloads = useQuery({
+    queryKey: [...familyKey(familyId, `/api/memories/${memory.id}`), "downloads"],
+    queryFn: () =>
+      apiSend<DownloadsPayload>(`/api/memories/${memory.id}/downloads`, "POST", { timeZone: timeZone() }),
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) => (query.state.data?.files.some((f) => f.status === "preparing") ? POLL_MS : false),
+  });
+  const payload = downloads.data ?? null;
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const live = useRef(true);
@@ -47,38 +64,10 @@ export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () 
     };
   }, []);
 
-  const load = useCallback(async () => {
-    try {
-      const next = await apiSend<DownloadsPayload>(`/api/memories/${memory.id}/downloads`, "POST", {
-        timeZone: timeZone(),
-      });
-      if (live.current) {
-        setPayload(next);
-        setError(null);
-      }
-      return next;
-    } catch (err) {
-      if (live.current) setError(errorMessage(err, "Couldn't get the files ready. Try again."));
-      return null;
-    }
-  }, [memory.id]);
-
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- load only sets state once its request settles
-    void load();
-  }, [load]);
-
-  const preparing = payload?.files.some((f) => f.status === "preparing") ?? false;
-  useEffect(() => {
-    if (!preparing) return;
-    const timer = setInterval(() => void load(), POLL_MS);
-    return () => clearInterval(timer);
-  }, [preparing, load]);
-
   /** The file with a URL good for a while yet, asking again if it's about to lapse. */
   async function fresh(file: DownloadFile): Promise<DownloadFile | null> {
     if (stillFresh(file)) return file;
-    const next = await load();
+    const next = (await downloads.refetch()).data;
     const again = next?.files.find((f) => f.mediaId === file.mediaId);
     return again?.status === "ready" && again.url ? again : null;
   }
@@ -122,8 +111,13 @@ export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () 
         quality we keep.
       </Text>
       {error ? <Text className="mt-2 font-sans text-[13.5px] text-danger">{error}</Text> : null}
+      {downloads.error && !downloads.isFetching ? (
+        <InlineError error={downloads.error} onRetry={() => void downloads.refetch()} />
+      ) : null}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="mt-2 pb-3">
-        {!payload && !error ? <ActivityIndicator colorClassName="accent-primary" className="my-6" /> : null}
+        {downloads.isPending && !downloads.error ? (
+          <ActivityIndicator colorClassName="accent-primary" className="my-6" />
+        ) : null}
         {files.map((file) => (
           <FileRow
             key={file.mediaId}

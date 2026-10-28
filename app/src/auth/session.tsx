@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ApiError,
@@ -9,6 +10,7 @@ import {
   type AcceptedInvite,
   type MePayload,
 } from "../api";
+import { forgetEverything, forgetFamiliesExcept, forgetFamily, queryClient } from "../query";
 import { leaveFor } from "../routes";
 import { auth, type AuthUser } from ".";
 import { getFamilyId, rememberedFamilyId, setFamilyId, useFamilyId } from "./family-store";
@@ -50,10 +52,20 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     const load = ++latestLoad.current;
     if (!quiet) setAccount({ status: "loading" });
     try {
-      const me = await apiGet<MePayload>("/api/me");
+      // Always asked afresh: who someone is and which families are theirs
+      // decides what every other query may show.
+      const me = await queryClient.fetchQuery({
+        queryKey: ["account", "me"],
+        queryFn: () => apiGet<MePayload>("/api/me"),
+        staleTime: 0,
+        retry: false,
+      });
       const remembered = getFamilyId() ?? (await rememberedFamilyId());
       if (load !== latestLoad.current) return;
       const ids = me.memberships.map((m) => m.familyId);
+      // A family they've left, been removed from, or that was deleted:
+      // nothing cached for it stays.
+      forgetFamiliesExcept(ids);
       // One family: no question to ask. Several: the last choice, if it's
       // still one of theirs. Otherwise the picker (or create screen) asks.
       if (ids.length === 1) setFamilyId(ids[0]);
@@ -82,6 +94,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const email = next?.email ?? null;
         if (email === signedInAs.current) return;
         signedInAs.current = email;
+        // Nothing fetched for one person is shown to the next (or kept after
+        // signing out).
+        forgetEverything();
         if (email) {
           void loadAccount();
         } else {
@@ -122,6 +137,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setAccount({ status: "loaded", me: { ...me, memberships: rest } });
         if (getFamilyId() === goneId) setFamilyId(rest[0]?.familyId ?? null);
       }
+      forgetFamily(goneId);
       await loadAccount({ quiet: true, pickFirst: true });
     },
     [loadAccount],
@@ -131,12 +147,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     onFamilyLost((lostId) => void familyGone(lostId));
   }, [familyGone]);
 
+  // The account's own writes. None changes a family's cached data in place:
+  // a new or joined family is a new key, and deleting the account signs out,
+  // which forgets everything.
+  const { mutateAsync: deleteOnServer } = useMutation({ mutationFn: () => apiSend("/api/me", "DELETE") });
+  const { mutateAsync: postFamily } = useMutation({
+    mutationFn: (body: { name: string; displayName?: string }) =>
+      apiSend<{ family: { id: string } }>("/api/families", "POST", body),
+  });
+  const { mutateAsync: postAccept } = useMutation({
+    mutationFn: (token: string) => apiSend<AcceptedInvite>(`/api/invites/${encodeURIComponent(token)}/accept`, "POST"),
+  });
+
   const deleteAccount = useCallback(async (password?: string) => {
     setNotice(null);
     await auth.deleteAccount({
       password,
       deleteOnServer: async () => {
-        await apiSend("/api/me", "DELETE");
+        await deleteOnServer();
         // Gone on the server. Until the provider has signed out, a request
         // would quietly make a new account for this identity: send none,
         // and leave the screens that would.
@@ -144,7 +172,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         leaveFor(() => undefined);
       },
     });
-  }, []);
+  }, [deleteOnServer]);
 
   const signOut = useCallback(async () => {
     setNotice(null);
@@ -153,21 +181,18 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const createFamily = useCallback(
     async (name: string, displayName?: string) => {
-      const res = await apiSend<{ family: { id: string } }>("/api/families", "POST", {
-        name,
-        ...(displayName ? { displayName } : {}),
-      });
+      const res = await postFamily({ name, ...(displayName ? { displayName } : {}) });
       await loadAccount({ quiet: true });
       setFamilyId(res.family.id);
     },
-    [loadAccount],
+    [loadAccount, postFamily],
   );
 
   const acceptInvite = useCallback(
     async (token: string) => {
       let joined: string;
       try {
-        const res = await apiSend<AcceptedInvite>(`/api/invites/${encodeURIComponent(token)}/accept`, "POST");
+        const res = await postAccept(token);
         joined = res.membership.familyId;
       } catch (err) {
         // Already in that family (this link, or another way): nothing to
@@ -179,7 +204,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       await loadAccount({ quiet: true });
       setFamilyId(joined);
     },
-    [loadAccount],
+    [loadAccount, postAccept],
   );
 
   const confirmVerified = useCallback(async () => {

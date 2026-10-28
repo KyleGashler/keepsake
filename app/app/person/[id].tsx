@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
-import { isNotFound, useApi, type PersonDetail } from "../../src/api";
+import { isNotFound, type PersonDetail } from "../../src/api";
 import { useCanContribute } from "../../src/auth/session-context";
 import { DreamCloud } from "../../src/components/brand";
 import { EditPersonSheet } from "../../src/components/person-sheets";
@@ -19,7 +19,8 @@ import {
   SectionHeader,
 } from "../../src/components/ui";
 import { ageFrom } from "../../src/format";
-import { deletePersonAction, deletePersonMessage } from "../../src/people";
+import { deletePersonMessage, useDeletePersonAction } from "../../src/people";
+import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
 
 /**
@@ -30,19 +31,33 @@ import { goBackOr, openInLibrary, routes } from "../../src/routes";
  */
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, error, loading, refetch } = useApi<PersonDetail>(`/api/people/${id}`);
+  const query = useApiQuery<PersonDetail>(`/api/people/${id}`);
+  const { data, error } = query;
+  useRefreshOnFocus(query);
+  const deletePersonAction = useDeletePersonAction();
   const canContribute = useCanContribute();
   const [menu, setMenu] = useState(false);
   const [editing, setEditing] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  if (isNotFound(error)) {
-    return <NotFoundState title="This person isn't in the archive anymore" backLabel="Go back" onBack={() => goBackOr("/")} />;
+  // Each state keeps the header, so there's always a way back.
+  if (isNotFound(error) || !data) {
+    let body = <Loading />;
+    if (isNotFound(error)) {
+      body = (
+        <NotFoundState title="This person isn't in the archive anymore" backLabel="Go back" onBack={() => goBackOr("/")} />
+      );
+    } else if (error) {
+      body = <ErrorState error={error} onRetry={() => void query.refetch()} retrying={query.isFetching} />;
+    }
+    return (
+      <>
+        <AppHeader back title="" />
+        <Screen>{body}</Screen>
+      </>
+    );
   }
-  if (error && !data) return <ErrorState error={error} onRetry={refetch} />;
-  if (loading && !data) return <Loading />;
-  if (!data) return null;
 
   const person = data.person;
   const age = ageFrom(person.birthDate);
@@ -91,7 +106,11 @@ export default function PersonScreen() {
 
         <SectionHeader label="Memories" />
         {data.memories.length === 0 ? (
-          <EmptyState title="No memories yet" body={`Nothing has been filed with ${person.name} in it.`} />
+          <EmptyState
+            icon="images-outline"
+            title="No memories yet"
+            body={`When a memory has ${person.name} in it, it gathers here.`}
+          />
         ) : (
           data.memories.map((memory) => <MemoryRow key={memory.id} memory={memory} />)
         )}
@@ -134,7 +153,7 @@ export default function PersonScreen() {
           ),
         ]}
       />
-      {editing ? <EditPersonSheet person={person} onClose={() => setEditing(false)} onSaved={() => void refetch()} /> : null}
+      {editing ? <EditPersonSheet person={person} onClose={() => setEditing(false)} /> : null}
     </>
   );
 }

@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { File as FsFile, UploadType } from "expo-file-system";
 import { auth } from "./auth";
-import { getFamilyId, useFamilyId } from "./auth/family-store";
+import { getFamilyId } from "./auth/family-store";
 
 /**
  * Every call to the API carries the signed-in person's token and the family
@@ -128,8 +127,9 @@ export function holdRequests(hold: boolean) {
  * Only for `API_URL` paths. Upload targets (presigned S3, Mux, the local
  * provider's tokened URL) are signed in their URL and must get nothing extra.
  *
- * `familyId` defaults to the current choice; `useApi` passes the one it
- * rendered with, so a response can't land under a family it wasn't asked for.
+ * `familyId` defaults to the current choice; a query (src/query.ts) passes
+ * the one it rendered with, so a response can't land under a family it
+ * wasn't asked for.
  */
 export async function apiFetch(
   path: string,
@@ -160,7 +160,7 @@ async function isFamilyRefusal(res: Response) {
 
 export async function apiGet<T>(path: string, familyId?: string | null): Promise<T> {
   const res = await apiFetch(path, {}, familyId);
-  if (!res.ok) throw new ApiError(res.status, `${res.status} ${res.statusText} — ${path}`);
+  if (!res.ok) throw await errorFrom(res);
   return res.json();
 }
 
@@ -310,55 +310,6 @@ export async function uploadFile(
 async function finalizeUpload(key: string) {
   const { media } = await apiSend<{ media: FinalizedMedia }>("/api/media/finalize", "POST", { key });
   return media;
-}
-
-/** Small stand-in for a data layer; swap for React Query when caching matters. */
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- T is the caller's word for the response's shape
-export function useApi<T>(path: string | null) {
-  // A different family is a different answer to the same path.
-  const familyId = useFamilyId();
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState<Error | null>(null);
-  const [loading, setLoading] = useState(true);
-  // A new path is loading from the render that brings it, not one render later.
-  const [shownPath, setShownPath] = useState(path);
-  if (path !== shownPath) {
-    setShownPath(path);
-    if (path) setLoading(true);
-  }
-
-  // Only the newest request may land. With the path changing quickly (a
-  // debounced search), an older, slower response would otherwise overwrite
-  // the newer one; a refresh superseded by a new path is dropped the same way.
-  const latestRequest = useRef(0);
-  const fetchPath = useCallback(async () => {
-    const request = ++latestRequest.current;
-    if (!path) return;
-    try {
-      const next = await apiGet<T>(path, familyId);
-      if (request !== latestRequest.current) return;
-      setData(next);
-      setError(null);
-    } catch (err) {
-      if (request !== latestRequest.current) return;
-      setError(err instanceof Error ? err : new Error(String(err)));
-    } finally {
-      if (request === latestRequest.current) setLoading(false);
-    }
-  }, [path, familyId]);
-
-  const load = useCallback(async () => {
-    if (!path) return;
-    setLoading(true);
-    await fetchPath();
-  }, [path, fetchPath]);
-
-  useEffect(() => {
-    // oxlint-disable-next-line react/set-state-in-effect -- fetchPath only sets state once its request settles
-    void fetchPath();
-  }, [fetchPath]);
-
-  return { data, error, loading, refetch: load };
 }
 
 // ---- Shapes returned by the API -------------------------------------------

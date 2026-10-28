@@ -1,3 +1,4 @@
+import { useMutation } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import {
@@ -12,7 +13,6 @@ import {
 import {
   apiSend,
   uploadFile,
-  useApi,
   type Collection,
   type Memory,
   type PillarKey,
@@ -22,10 +22,11 @@ import {
 } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
 import { VideoClip } from "../../src/components/video";
-import { AppHeader, Button, Loading, Screen, ViewOnlyState } from "../../src/components/ui";
+import { AppHeader, Button, ErrorState, Loading, Screen, ViewOnlyState } from "../../src/components/ui";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
 import { duration, errorMessage } from "../../src/format";
+import { MEMORY_VIEWS, invalidate, useApiQuery } from "../../src/query";
 import { Image, Ionicons } from "../../src/styled";
 
 /** Every text field's box; each sets its own text size (the story's is larger). */
@@ -74,9 +75,17 @@ export default function ComposeRoute() {
 
 function ComposeScreen() {
   const params = useLocalSearchParams<{ prompt?: string; collectionId?: string; mode?: string }>();
-  const { data: peopleData } = useApi<{ people: Person[] }>("/api/people");
-  const { data: collectionsData } = useApi<{ collections: Collection[] }>("/api/collections");
-  const { data: limits } = useApi<UploadLimits>("/api/media/limits");
+  const peopleQuery = useApiQuery<{ people: Person[] }>("/api/people");
+  const collectionsQuery = useApiQuery<{ collections: Collection[] }>("/api/collections");
+  // The ceiling is the server's configuration; it doesn't move under a session.
+  const { data: limits } = useApiQuery<UploadLimits>("/api/media/limits", { staleTime: Infinity });
+  const peopleData = peopleQuery.data;
+  const collectionsData = collectionsQuery.data;
+  // A new memory shows up everywhere memories do.
+  const createMemory = useMutation({
+    mutationFn: (body: Record<string, unknown>) => apiSend<{ memory: Memory }>("/api/memories", "POST", body),
+    onSuccess: () => invalidate(MEMORY_VIEWS),
+  });
   const session = useSession();
 
   // Media picked in Capture is handed over once, on mount.
@@ -174,7 +183,7 @@ function ComposeScreen() {
       }
       setProgress(assets.length ? "Preserving…" : null);
 
-      const res = await apiSend<{ memory: Memory }>("/api/memories", "POST", {
+      const res = await createMemory.mutateAsync({
         title: title.trim(),
         story: story.trim() || undefined,
         occurredAt: photoDated ? undefined : toIso(date),
@@ -194,7 +203,7 @@ function ComposeScreen() {
     }
   }
 
-  if (!peopleData || !collectionsData) return <Loading label="Opening the archive…" />;
+  if (!peopleData || !collectionsData) return <ComposeUnavailable queries={[peopleQuery, collectionsQuery]} />;
 
   return (
     <KeyboardAvoidingView
@@ -339,6 +348,9 @@ function ComposeScreen() {
           ) : null}
 
           <Field label="Who's in it">
+            {people.length === 0 ? (
+              <Text className="type-caption">No one is in the archive yet. Add people from Home to say who was there.</Text>
+            ) : null}
             <View className="flex-row flex-wrap gap-2">
               {people.map((person) => (
                 <Chip
@@ -372,6 +384,13 @@ function ComposeScreen() {
                 <Chip key={key} label={PILLAR_LABELS[key]} selected={pillar === key} onPress={() => setPillar(key)} />
               ))}
             </View>
+            {collections.length === 0 ? (
+              <Text className="type-caption">
+                {pillar === "FAMILY_LIFE"
+                  ? "No Family Life collections yet. The memory is kept in the archive either way."
+                  : "No collections here yet — they come with each child. The memory is kept in the archive either way."}
+              </Text>
+            ) : null}
             <View className="flex-row flex-wrap gap-2">
               {collections.map((collection) => (
                 <Chip
@@ -402,6 +421,34 @@ function ComposeScreen() {
         </View>
       </Screen>
     </KeyboardAvoidingView>
+  );
+}
+
+/**
+ * Compose needs the family's people and collections to offer; until both are
+ * in, it says it's opening — or, if either didn't load, why not, with a retry.
+ */
+function ComposeUnavailable({
+  queries,
+}: {
+  queries: { error: Error | null; isFetching: boolean; refetch: () => Promise<unknown> }[];
+}) {
+  const failed = queries.find((q) => q.error)?.error;
+  return (
+    <>
+      <AppHeader back subtitle="Capture" title="New memory" globalActions={false} />
+      {failed ? (
+        <ErrorState
+          error={failed}
+          onRetry={() => {
+            for (const q of queries) if (q.error) void q.refetch();
+          }}
+          retrying={queries.some((q) => q.isFetching)}
+        />
+      ) : (
+        <Loading label="Opening the archive…" />
+      )}
+    </>
   );
 }
 

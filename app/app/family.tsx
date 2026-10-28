@@ -1,11 +1,11 @@
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState, type ReactNode } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   ApiError,
   apiSend,
   isForbiddenRole,
-  useApi,
   type FamilyMember,
   type FamilyPayload,
   type FamilyPerson,
@@ -24,12 +24,14 @@ import {
   Avatar,
   ErrorState,
   Loading,
+  QueryError,
   PreviewNote,
   Screen,
   SectionHeader,
   SmallButton,
 } from "../src/components/ui";
 import { friendlyError, monthDay } from "../src/format";
+import { invalidate, useApiQuery, useRefreshOnFocus } from "../src/query";
 import { leaveFor } from "../src/routes";
 import { INVITE_ROLES, ROLE_DESCRIPTION, ROLE_LABEL } from "../src/roles";
 import { canCopy, copyLink, shareLink } from "../src/share-link";
@@ -53,22 +55,27 @@ const SETTINGS = [
  * rest anyway (`403 forbidden_role`).
  */
 export default function FamilyHubScreen() {
-  const { data, error, loading, refetch } = useApi<FamilyPayload>("/api/family");
-  // Back from a person's page (edited, deleted, just added): show what's true
-  // now. Only on a return — the first focus is the mount, already fetched.
-  const refetchRef = useRef(refetch);
-  useEffect(() => {
-    refetchRef.current = refetch;
-  }, [refetch]);
-  const focusedBefore = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      if (focusedBefore.current) void refetchRef.current();
-      focusedBefore.current = true;
-    }, []),
-  );
+  const query = useApiQuery<FamilyPayload>("/api/family");
+  const { data, error } = query;
+  // Back from a person's page: their edits mark this stale as they save.
+  useRefreshOnFocus(query);
   const isOwner = data?.role === "OWNER";
-  const pending = useApi<{ invites: Invite[] }>(isOwner ? "/api/family/invites" : null);
+  const pending = useApiQuery<{ invites: Invite[] }>(isOwner ? "/api/family/invites" : null);
+  // Members and invites are Family Hub's; an invite also ticks Home's Getting Started.
+  const membership = useMutation({
+    mutationFn: ({ member, role }: { member: FamilyMember; role: MembershipRole | null }) =>
+      role
+        ? apiSend(`/api/family/members/${member.userId}`, "PATCH", { role })
+        : apiSend(`/api/family/members/${member.userId}`, "DELETE"),
+    // Not after leaving: the family isn't theirs to read any more, and the
+    // account reload that follows forgets it.
+    onSettled: (_res, err, { member, role }) =>
+      err || !(member.isYou && role === null) ? invalidate(["family"]) : undefined,
+  });
+  const withdrawal = useMutation({
+    mutationFn: (invite: Invite) => apiSend(`/api/family/invites/${invite.id}`, "DELETE"),
+    onSettled: () => invalidate(["family", "home"]),
+  });
   const session = useSession();
   const [switching, setSwitching] = useState(false);
   const [inviting, setInviting] = useState<{ personId?: string } | null>(null);
@@ -86,17 +93,11 @@ export default function FamilyHubScreen() {
   const [deleting, setDeleting] = useState<"family" | "account" | null>(null);
   const [notice, setNotice] = useState<HubNotice | null>(null);
 
-  if (error) return <ErrorState error={error} onRetry={refetch} />;
-  if (loading && !data) return <Loading label="Opening Family Hub…" />;
-  if (!data) return null;
+  if (!data) return <HubUnavailable error={error} retrying={query.isFetching} onRetry={() => void query.refetch()} />;
 
   const invitable = data.people.filter((p) => p.invitable);
   // Adding (and, on their page, editing or deleting) people is contributors' work.
   const canContribute = data.role !== "VIEWER";
-  const refreshAll = async () => {
-    await Promise.all([refetch(), isOwner ? pending.refetch() : Promise.resolve()]);
-  };
-
   /** Do `work`, say what went wrong if it did (under `section`); true when it worked. */
   const attempt = async (section: HubNotice["section"], work: () => Promise<unknown>, fallback: string) => {
     setNotice(null);
@@ -112,32 +113,26 @@ export default function FamilyHubScreen() {
   const setRole = async (member: FamilyMember, role: MembershipRole) => {
     const ok = await attempt(
       "members",
-      () => apiSend(`/api/family/members/${member.userId}`, "PATCH", { role }),
+      () => membership.mutateAsync({ member, role }),
       "Couldn't change their role just now.",
     );
     // Your own role changed: what the app lets you do changes with it.
     if (ok && member.isYou) await session.refreshAccount();
-    await refreshAll();
   };
 
   const remove = async (member: FamilyMember) => {
     const ok = await attempt(
       "members",
-      () => apiSend(`/api/family/members/${member.userId}`, "DELETE"),
+      () => membership.mutateAsync({ member, role: null }),
       "Couldn't remove them just now.",
     );
-    // You left (another owner remains): this family is no longer yours to look at.
-    if (ok && member.isYou) return leaveFor(() => void session.refreshAccount());
-    await refreshAll();
+    // You left (another owner remains): this family is no longer yours to
+    // look at. Reloading the account forgets what was cached for it.
+    if (ok && member.isYou) leaveFor(() => void session.refreshAccount());
   };
 
   const withdraw = async (invite: Invite) => {
-    await attempt(
-      "invites",
-      () => apiSend(`/api/family/invites/${invite.id}`, "DELETE"),
-      "Couldn't withdraw it just now.",
-    );
-    await refreshAll();
+    await attempt("invites", () => withdrawal.mutateAsync(invite), "Couldn't withdraw it just now.");
   };
 
   const passOn = async (invite: Invite) => {
@@ -179,6 +174,7 @@ export default function FamilyHubScreen() {
       <AppHeader back mark subtitle="Family Hub" title={data.family.name} globalActions={false} />
       <Screen>
         <VerifyEmailNudge />
+        <QueryError query={query} />
 
         <View className="flex-row gap-2">
           <Stat value={data.stats.memoryCount} label="Memories" />
@@ -211,6 +207,7 @@ export default function FamilyHubScreen() {
           </Text>
         ) : null}
 
+        {isOwner ? <QueryError query={pending} /> : null}
         {isOwner && pending.data?.invites.length ? (
           <>
             <SectionHeader label="Waiting to join" />
@@ -345,10 +342,7 @@ export default function FamilyHubScreen() {
         {addingPerson ? (
           <AddPersonSheet
             onClose={() => setAddingPerson(false)}
-            onAdded={(person) => {
-              void refetch();
-              router.push(`/person/${person.id}`);
-            }}
+            onAdded={(person) => router.push(`/person/${person.id}`)}
           />
         ) : null}
 
@@ -373,9 +367,24 @@ export default function FamilyHubScreen() {
             people={invitable}
             initialPersonId={openInvite.personId}
             onClose={closeInvite}
-            onCreated={() => void refreshAll()}
           />
         ) : null}
+      </Screen>
+    </>
+  );
+}
+
+/** Loading, or couldn't load — with the header, so there's always a way out of the modal. */
+function HubUnavailable({ error, retrying, onRetry }: { error: Error | null; retrying: boolean; onRetry: () => void }) {
+  return (
+    <>
+      <AppHeader back mark subtitle="Family Hub" globalActions={false} />
+      <Screen>
+        {error ? (
+          <ErrorState error={error} onRetry={onRetry} retrying={retrying} />
+        ) : (
+          <Loading label="Opening Family Hub…" />
+        )}
       </Screen>
     </>
   );
@@ -638,14 +647,17 @@ function InviteSheet({
   people,
   initialPersonId,
   onClose,
-  onCreated,
 }: {
   familyName: string;
   people: FamilyPerson[];
   initialPersonId?: string;
   onClose: () => void;
-  onCreated: () => void;
 }) {
+  const makeInvite = useMutation({
+    mutationFn: (body: InviteCreate) => apiSend<{ invite: Invite; emailed: boolean }>("/api/family/invites", "POST", body),
+    // The waiting list, and Home's "Invite family to join".
+    onSuccess: () => invalidate(["family", "home"]),
+  });
   // "new" is someone not in the archive yet; otherwise a Person's id.
   const [who, setWho] = useState<string>(initialPersonId ?? "new");
   const [name, setName] = useState("");
@@ -664,8 +676,7 @@ function InviteSheet({
     else if (name.trim()) body.name = name.trim();
     if (email.trim()) body.email = email.trim();
     try {
-      setCreated(await apiSend<{ invite: Invite; emailed: boolean }>("/api/family/invites", "POST", body));
-      onCreated();
+      setCreated(await makeInvite.mutateAsync(body));
     } catch (err) {
       setError(hubError(err, "Couldn't make the invite just now. Check the email address and try again."));
     } finally {

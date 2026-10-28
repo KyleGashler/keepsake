@@ -332,6 +332,66 @@ Replace `useApi` with TanStack Query; inject bearer + `x-family-id`; global
 **Accept:** cold start → sign-in → browse → capture works on web and device.
 
 #### A8b. Data layer: TanStack Query, error and empty states
+> **As built (2026-10-27)** — branch `task/A8b-tanstack-query`.
+>
+> - **Dependency:** `@tanstack/react-query` 5.104.5, pinned. `useApi` had
+>   grown its own request ordering, focus refetching and per-screen polling,
+>   with no shared cache, so a write couldn't refresh the other screens that
+>   show the same thing. One `QueryClientProvider` in `app/_layout.tsx`, above
+>   the session.
+> - **`app/src/query.ts`** is the data layer. `useApiQuery(path)` keys a GET
+>   by its path under the family that asked —
+>   `["family", familyId, "collections", id, { year }]` — and sends that
+>   family's `x-family-id` even if the choice changes mid-flight. Person-level
+>   reads (`/api/me/deletion`, an invite preview) live under `["account"]`.
+>   `keepPrevious` holds the last answer while a search or filter loads, never
+>   across families. `useRefreshOnFocus` replaces every screen's "refetch on
+>   return" (only when stale; `staleTime` is 30s, writes invalidate at once).
+>   Retries: twice, for network errors and 5xx only. App foreground counts as
+>   focus on native.
+> - **Writes** are `useMutation`s that call `invalidate(resources)` with one
+>   of four named sets (`MEMORY_VIEWS`, `FILING_VIEWS`, `COLLECTION_VIEWS`,
+>   `PEOPLE_VIEWS`) or a narrower list. Every memory route answers with the
+>   memory, so `memorySaved` puts it straight into the page's cache and
+>   invalidates the rest without fetching it twice; a favourite is optimistic
+>   and touches only its own page; a link refreshes both memories. Deleting
+>   something marks its page stale *without* refetching it (`gone()`), so the
+>   screen backing out doesn't flash "not found".
+> - **Polling** is `refetchInterval` read off the data: the memory page every
+>   3s while a clip is PROCESSING or a transcript PENDING; the download sheet
+>   (a POST that is really a read, so it's a query with `gcTime: 0`) every 10s
+>   while a file is preparing.
+> - **Cache and accounts:** `forgetEverything()` whenever the signed-in
+>   person changes (sign-out, account deletion's sign-out, a different
+>   sign-in); `forgetFamily()` in `familyGone` (deleted here, deleted by
+>   another owner, or a `403 forbidden`); and every `/me` load drops cached
+>   data for families no longer in its memberships (leaving, removal). `/me`
+>   itself is `queryClient.fetchQuery` with `staleTime: 0`; the session's
+>   account writes (create family, accept invite, delete account) are
+>   mutations. `apiFetch` is unchanged as the one place for the bearer,
+>   `x-family-id`, 401 → sign-out and 403 → family lost. `useApi` is gone;
+>   `apiGet` now throws `ApiError` with the body's code, like `apiSend`.
+>   Uploads (`uploadFile`, `pickAndUploadImage`) stay plain calls — bytes,
+>   not cached data — run inside the mutation that uses them.
+> - **States:** `ui.tsx` has one shape for every whole-screen state
+>   (`StatePanel`: mark in a soft disc, serif title, line, action).
+>   `EmptyState` sits on the warm `surface-alt` panel with the honey sparkle
+>   or an icon; `ErrorState` says what went wrong in words and its retry shows
+>   "Trying…"; `InlineError` / `QueryError` are the in-place versions for
+>   sheets, sections and failed refreshes under data. New empties: Mosaic,
+>   a pillar with no collections, a child with no collections, search, compose
+>   (no people / no collections in a pillar). New error states: search, the
+>   pillar's children and collections, compose, every picker sheet, the
+>   download sheet, pending invites, and refresh failures on Family Hub and a
+>   collection. Family Hub, a person and a memory keep their header (a way
+>   back) in loading, error and not-found.
+> - **Verified** on web against a scratch DB: library → child → collection
+>   (filters, file memories, delete), memory (favourite, edit, link picker,
+>   collections, delete), compose, search, Family Hub (add and delete a
+>   person, delete a family), family switching both ways (no frame of the
+>   other family's data), sign-out/in, empty states in a fresh family, error
+>   states and retry with the API stopped.
+
 **Depends:** A8 (auth half).
 **Do:** replace `useApi` / `apiGet` / `apiSend` callers with TanStack Query
 (query keys include the family id, so a family switch is a cache miss, not a
@@ -1069,7 +1129,8 @@ B1 and the auth half of A8 landed together. What was decided:
   page is deployed.
 - **TanStack Query is out of scope** — split off as A8b. `useApi` / `apiGet` /
   `apiSend` stay, behind one `apiFetch` that adds the bearer and
-  `x-family-id` and signs out on 401.
+  `x-family-id` and signs out on 401. (A8b has since landed: `useApi` is gone,
+  and every read and write goes through `src/query.ts` — see A8b.)
 
 ---
 
@@ -1094,7 +1155,7 @@ A12 ── B8, B11
 2. **Next:** A3, A5, A10. ✅ Done.
    B2 adapter runs alongside Wave 3 (built against a local S3 emulator; AWS account only needed for the cutover).
 3. **Then:** A4, A6, A7, A8 in parallel. B1 adapter after A3 + A8.
-   A8 (auth half) + B1 ✅ Done 2026-10-22; A8b (TanStack Query, error/empty states) remains.
+   A8 (auth half) + B1 ✅ Done 2026-10-22; A8b (TanStack Query, error/empty states) ✅ Done 2026-10-27.
 4. **Then:** A9, A13, A16; B4–B11 as their A-side lands.
 
 ## Handoff template for a sub-agent

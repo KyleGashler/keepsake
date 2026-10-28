@@ -1,8 +1,8 @@
-import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { router } from "expo-router";
+import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { mediaUrl, useApi, type HomePayload } from "../../src/api";
+import { mediaUrl, type HomePayload } from "../../src/api";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { Twinkle } from "../../src/components/brand";
 import { Column, PageHeader, Sparkle } from "../../src/components/journey";
@@ -20,6 +20,7 @@ import {
   SmallButton,
 } from "../../src/components/ui";
 import { count, relativeTime } from "../../src/format";
+import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { Image, Ionicons, type IoniconName } from "../../src/styled";
 import { layout, useColor } from "../../src/theme";
 
@@ -29,15 +30,12 @@ import { layout, useColor } from "../../src/theme";
  * Deliberately not a dashboard.
  */
 export default function HomeScreen() {
-  const { data, error, loading, refetch } = useApi<HomePayload>("/api/home");
+  const home = useApiQuery<HomePayload>("/api/home");
+  const { data, error } = home;
   const insets = useSafeAreaInsets();
-
-  // New memories should be here the moment you come back from Capture.
-  useFocusEffect(
-    useCallback(() => {
-      void refetch();
-    }, [refetch]),
-  );
+  // A new memory is here the moment you come back from Capture (it's marked
+  // stale when saved); someone else's, once this has had time to go stale.
+  useRefreshOnFocus(home);
 
   return (
     <ScrollView
@@ -55,9 +53,9 @@ export default function HomeScreen() {
           onSettings={() => router.push("/family")}
           onSearch={() => router.push("/search")}
         />
-        {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
-        {loading && !data ? <Loading /> : null}
-        {data ? <HomeBody data={data} onChanged={() => void refetch()} /> : null}
+        {error && !data ? <ErrorState error={error} onRetry={() => void home.refetch()} retrying={home.isFetching} /> : null}
+        {home.isPending && !error ? <Loading /> : null}
+        {data ? <HomeBody data={data} /> : null}
       </Column>
     </ScrollView>
   );
@@ -78,7 +76,7 @@ function openInvite() {
 /** Below this many people, Your People offers empty places to fill. */
 const SMALL_FAMILY = 4;
 
-function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => void }) {
+function HomeBody({ data }: { data: HomePayload }) {
   const canContribute = useCanContribute();
   const isOwner = useSession().family?.role === "OWNER";
   const [adding, setAdding] = useState<"person" | "child" | null>(null);
@@ -212,10 +210,10 @@ function HomeBody({ data, onChanged }: { data: HomePayload; onChanged: () => voi
       ) : null}
 
       {adding === "person" ? (
-        <AddPersonSheet onClose={() => setAdding(null)} onAdded={onChanged} />
+        <AddPersonSheet onClose={() => setAdding(null)} />
       ) : null}
       {adding === "child" ? (
-        <AddChildSheet onClose={() => setAdding(null)} onAdded={onChanged} />
+        <AddChildSheet onClose={() => setAdding(null)} />
       ) : null}
     </>
   );

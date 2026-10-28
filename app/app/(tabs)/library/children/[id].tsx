@@ -1,15 +1,16 @@
-import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useState } from "react";
+import { router, useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isNotFound, useApi, type ChildPayload } from "../../../../src/api";
+import { isNotFound, type ChildPayload } from "../../../../src/api";
 import { useCanContribute } from "../../../../src/auth/session-context";
 import { BackRow, ChildHeader } from "../../../../src/components/child-header";
 import { Column, IconDisc, ListRow, SearchField } from "../../../../src/components/journey";
 import { CreateCollectionSheet, EditChildSheet } from "../../../../src/components/library-sheets";
-import { afterSheetCloses, deletePersonAction, deletePersonMessage } from "../../../../src/people";
+import { afterSheetCloses, deletePersonMessage, useDeletePersonAction } from "../../../../src/people";
+import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
 import { ActionSheet } from "../../../../src/components/sheet";
-import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
+import { EmptyState, ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { possessive } from "../../../../src/format";
 import { backTo, routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
@@ -22,7 +23,9 @@ import { layout } from "../../../../src/theme";
  */
 export default function ChildCollectionsScreen() {
   const { id: childId } = useLocalSearchParams<{ id: string }>();
-  const { data, error, loading, refetch } = useApi<ChildPayload>(`/api/children/${childId}`);
+  const childQuery = useApiQuery<ChildPayload>(`/api/children/${childId}`);
+  const { data, error } = childQuery;
+  const deletePersonAction = useDeletePersonAction();
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -32,11 +35,7 @@ export default function ChildCollectionsScreen() {
   const canContribute = useCanContribute();
 
   // Counts move when memories are added or filed deeper in the stack.
-  useFocusEffect(
-    useCallback(() => {
-      void refetch();
-    }, [refetch]),
-  );
+  useRefreshOnFocus(childQuery);
 
   const needle = query.trim().toLowerCase();
   const all = data?.collections ?? [];
@@ -72,8 +71,10 @@ export default function ChildCollectionsScreen() {
             onBack={() => backTo(routes.children)}
           />
         ) : null}
-        {!gone && error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
-        {loading && !data ? <Loading /> : null}
+        {!gone && error && !data ? (
+          <ErrorState error={error} onRetry={() => void childQuery.refetch()} retrying={childQuery.isFetching} />
+        ) : null}
+        {childQuery.isPending && !error ? <Loading /> : null}
         {child ? (
           <>
             <ChildHeader child={child} />
@@ -107,6 +108,13 @@ export default function ChildCollectionsScreen() {
                   onPress={() => router.push(routes.collection(collection.id))}
                 />
               ))}
+              {!needle && all.length === 0 ? (
+                <EmptyState
+                  icon="albums-outline"
+                  title="No collections yet"
+                  body={`Make one for a part of ${possessive(child.name)} story — a hobby, a phase, the things they say.`}
+                />
+              ) : null}
               {needle && collections.length === 0 ? (
                 <Text className="py-4 font-sans text-[15px] text-muted">
                   No collections match “{query.trim()}”.
@@ -140,17 +148,13 @@ export default function ChildCollectionsScreen() {
         <CreateCollectionSheet
           child={child}
           onClose={() => setCreating(false)}
-          onCreated={() => {
-            setQuery("");
-            void refetch();
-          }}
+          onCreated={() => setQuery("")}
         />
       ) : null}
       {editing && child ? (
         <EditChildSheet
           child={child}
           onClose={() => setEditing(false)}
-          onSaved={() => void refetch()}
           onDelete={() => {
             setEditing(false);
             afterSheetCloses(() => setConfirmingDelete(true));

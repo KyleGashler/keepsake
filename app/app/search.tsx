@@ -1,19 +1,17 @@
 import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Pressable, Text, TextInput, View } from "react-native";
-import {
-  apiGet,
-  type Collection,
-  type MemoryCard,
-  type Person,
-} from "../src/api";
-import { AppHeader, Avatar, EmptyState, MemoryRow, Screen } from "../src/components/ui";
+import type { Collection, MemoryCard, Person } from "../src/api";
+import { AppHeader, Avatar, EmptyState, ErrorState, InlineError, MemoryRow, Screen } from "../src/components/ui";
+import { useApiQuery } from "../src/query";
 import { openInLibrary, routes } from "../src/routes";
 import { Ionicons } from "../src/styled";
+import { useSettled } from "../src/use-settled";
 
 type Results = { q: string; memories: MemoryCard[]; people: Person[]; collections: Collection[]; total: number };
 
 const SUGGESTIONS = ["moon", "Grandma", "first", "Bear Lake", "laugh"];
+
 
 /**
  * One search across the whole archive — memories, transcripts, people, places.
@@ -21,31 +19,16 @@ const SUGGESTIONS = ["moon", "Grandma", "first", "Bear Lake", "laugh"];
  */
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<Results | null>(null);
-  const [searching, setSearching] = useState(false);
-
-  const changeQuery = (next: string) => {
-    setQuery(next);
-    if (next.trim().length < 2) setResults(null);
-  };
-
-  useEffect(() => {
-    if (query.trim().length < 2) return;
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const data = await apiGet<Results>(`/api/search?q=${encodeURIComponent(query.trim())}`);
-        if (!cancelled) setResults(data);
-      } finally {
-        if (!cancelled) setSearching(false);
-      }
-    }, 220);
-    return () => {
-      cancelled = true;
-      clearTimeout(timer);
-    };
-  }, [query]);
+  // The server hears about it once typing pauses; a cleared box stops at once.
+  const settled = useSettled(query.trim(), 220);
+  const term = query.trim().length >= 2 && settled.length >= 2 ? settled : null;
+  const search = useApiQuery<Results>(term ? `/api/search?q=${encodeURIComponent(term)}` : null, {
+    // The last results stay up while the next ones load.
+    keepPrevious: true,
+  });
+  const results = term ? (search.data ?? null) : null;
+  const searching = search.isFetching;
+  const changeQuery = setQuery;
 
   return (
     <>
@@ -69,7 +52,19 @@ export default function SearchScreen() {
           ) : null}
         </View>
 
-        {!results ? (
+        {term && search.error && !search.data ? (
+          <ErrorState
+            title="Search isn't answering"
+            error={search.error}
+            onRetry={() => void search.refetch()}
+            retrying={search.isFetching}
+          />
+        ) : null}
+        {term && search.error && search.data && !search.isFetching ? (
+          <InlineError error={search.error} onRetry={() => void search.refetch()} />
+        ) : null}
+
+        {!results && !(term && search.error) ? (
           <View className="mt-6">
             <Text className="type-label">Try</Text>
             <View className="mt-3 flex-row flex-wrap gap-2">
@@ -84,8 +79,9 @@ export default function SearchScreen() {
 
         {results && results.total === 0 ? (
           <EmptyState
+            icon="search-outline"
             title={searching ? "Looking…" : "Nothing found"}
-            body={searching ? undefined : `No memories match "${results.q}" yet.`}
+            body={searching ? undefined : `Nothing in the archive matches “${results.q}” yet. Try a name, a place, or a word someone said.`}
           />
         ) : null}
 

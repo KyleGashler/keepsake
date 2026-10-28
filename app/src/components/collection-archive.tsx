@@ -1,4 +1,5 @@
 import { router, type Href } from "expo-router";
+import { useMutation } from "@tanstack/react-query";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -12,6 +13,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiSend, type ChildSummary, type CollectionArchivePayload, type MemoryCard, type PillarKey } from "../api";
 import { useCanContribute } from "../auth/session-context";
 import { childAge, count, possessive, refusalMessage } from "../format";
+import { COLLECTION_VIEWS, gone, invalidate } from "../query";
 import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, routes } from "../routes";
 import { Ionicons, type IoniconName } from "../styled";
@@ -21,6 +23,7 @@ import { FileMemoriesSheet } from "./file-memories-sheet";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
 import { EditCollectionSheet } from "./library-sheets";
 import { ActionSheet, type SheetAction } from "./sheet";
+import { InlineError } from "./ui";
 
 const PILLAR_NAMES: Record<PillarKey, string> = {
   ARRIVAL_STORIES: "Arrival Stories",
@@ -49,16 +52,18 @@ export function CollectionArchive({
   data,
   filters,
   onFiltersChange,
-  onChanged,
   loading = false,
+  error = null,
+  onRetry,
 }: {
   data: CollectionArchivePayload;
   filters: ArchiveFilters;
   onFiltersChange: (filters: ArchiveFilters) => void;
-  /** The collection or what's filed in it changed: load it again. */
-  onChanged: () => void;
-  /** A fetch for new filters (or a refresh) is in flight. */
+  /** A fetch for new filters is in flight; what's shown is the last answer. */
   loading?: boolean;
+  /** The last refresh failed; what's shown is the answer before it. */
+  error?: Error | null;
+  onRetry?: () => void;
 }) {
   const insets = useSafeAreaInsets();
   const { collection, years, memories } = data;
@@ -107,15 +112,15 @@ export function CollectionArchive({
     { label: "Choose its memories", icon: "albums-outline", onPress: () => setSheet("file") },
     { label: "Delete collection", icon: "trash-outline", destructive: true, onPress: () => setSheet("delete") },
   ];
-  const remove = async () => {
-    try {
-      await apiSend(`/api/collections/${collection.id}`, "DELETE");
-    } catch (err) {
-      setNotice(refusalMessage(err, "Couldn't delete it just now. Please try again."));
-      return;
-    }
-    backTo(backParent);
-  };
+  const deleteCollection = useMutation({
+    mutationFn: () => apiSend(`/api/collections/${collection.id}`, "DELETE"),
+    onSuccess: () => invalidate(COLLECTION_VIEWS, [gone(`/api/collections/${collection.id}`)]),
+  });
+  const remove = () =>
+    deleteCollection.mutate(undefined, {
+      onSuccess: () => backTo(backParent),
+      onError: (err) => setNotice(refusalMessage(err, "Couldn't delete it just now. Please try again.")),
+    });
 
   return (
     <ScrollView
@@ -140,6 +145,7 @@ export function CollectionArchive({
           ) : null}
           <Identity child={child} pillar={collection.pillar} memoryCount={collection.memoryCount} />
           {notice ? <Text className="mt-3 font-sans text-[14px] text-terracotta">{notice}</Text> : null}
+          {error ? <InlineError error={error} onRetry={onRetry} /> : null}
         </View>
 
         {isEmpty ? (
@@ -205,18 +211,15 @@ export function CollectionArchive({
         subtitle={
           deleteCollectionMessage(collection.memoryCount)
         }
-        actions={[{ label: "Delete collection", icon: "trash-outline", destructive: true, onPress: () => void remove() }]}
+        actions={[{ label: "Delete collection", icon: "trash-outline", destructive: true, onPress: remove }]}
       />
       {sheet === "edit" ? (
-        <EditCollectionSheet collection={collection} onClose={() => setSheet(null)} onSaved={onChanged} />
+        <EditCollectionSheet collection={collection} onClose={() => setSheet(null)} />
       ) : null}
       {sheet === "file" ? (
         <FileMemoriesSheet
           collection={collection}
-          onClose={(changed) => {
-            setSheet(null);
-            if (changed) onChanged();
-          }}
+          onClose={() => setSheet(null)}
         />
       ) : null}
     </ScrollView>

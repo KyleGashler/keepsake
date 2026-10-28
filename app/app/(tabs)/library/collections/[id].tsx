@@ -1,11 +1,12 @@
-import { useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useLocalSearchParams } from "expo-router";
+import { useState } from "react";
 import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { isNotFound, useApi, type CollectionArchivePayload } from "../../../../src/api";
+import { isNotFound, type CollectionArchivePayload } from "../../../../src/api";
 import { archivePath, NO_FILTERS, type ArchiveFilters } from "../../../../src/archive";
 import { CollectionArchive } from "../../../../src/components/collection-archive";
 import { ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
+import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
 import { goBackOr, routes } from "../../../../src/routes";
 
 /**
@@ -17,28 +18,14 @@ export default function CollectionScreen() {
   const { id: collectionId } = useLocalSearchParams<{ id: string }>();
   const [filters, setFilters] = useState<ArchiveFilters>(NO_FILTERS);
   const path = archivePath(collectionId, filters);
-  const { data, error, loading, refetch } = useApi<CollectionArchivePayload>(path);
+  // New filters keep the last list up (dimmed) until their answer is in.
+  const query = useApiQuery<CollectionArchivePayload>(path, { keepPrevious: true });
+  const { data, error } = query;
   const insets = useSafeAreaInsets();
 
-  // What's on screen was fetched for `shownPath`. The list dims only while new
-  // filters load, not for a quiet refresh on return.
-  const [shownPath, setShownPath] = useState(path);
-  if (!loading && shownPath !== path) setShownPath(path);
-
-  // Back from a memory (edited, moved, deleted) or from Capture: refresh in
-  // place. Only on a return — the first focus is the mount, which useApi has
-  // already fetched for, and a filter change fetches through the new path.
-  const refetchRef = useRef(refetch);
-  useEffect(() => {
-    refetchRef.current = refetch;
-  }, [refetch]);
-  const focusedBefore = useRef(false);
-  useFocusEffect(
-    useCallback(() => {
-      if (focusedBefore.current) void refetchRef.current();
-      focusedBefore.current = true;
-    }, []),
-  );
+  // Back from a memory (edited, moved, deleted) or from Capture: those writes
+  // mark this stale and it refreshes in place; this catches everyone else's.
+  useRefreshOnFocus(query);
 
   // Checked before `data`: a collection removed while a memory was open
   // 404s on the refresh back here, and the stale list shouldn't stay up.
@@ -57,7 +44,11 @@ export default function CollectionScreen() {
   if (!data) {
     return (
       <View className="flex-1 justify-center bg-paper">
-        {error ? <ErrorState error={error} onRetry={refetch} /> : <Loading />}
+        {error ? (
+          <ErrorState error={error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+        ) : (
+          <Loading />
+        )}
       </View>
     );
   }
@@ -67,8 +58,10 @@ export default function CollectionScreen() {
       data={data}
       filters={filters}
       onFiltersChange={setFilters}
-      onChanged={() => void refetch()}
-      loading={shownPath !== path}
+      loading={query.isPlaceholderData}
+      // Hidden while a retry is in flight, so the line doesn't sit there unchanged.
+      error={query.isFetching ? null : error}
+      onRetry={() => void query.refetch()}
     />
   );
 }

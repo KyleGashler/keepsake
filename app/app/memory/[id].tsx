@@ -1,5 +1,6 @@
+import { useMutation } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -16,7 +17,6 @@ import {
   isNotFound,
   mediaStatus,
   mediaUrl,
-  useApi,
   type MediaItem,
   type Memory,
   type MemoryCollection,
@@ -41,6 +41,7 @@ import { WaveformPlayer } from "../../src/components/memory/waveform";
 import { Button, ErrorState, Loading, NotFoundState } from "../../src/components/ui";
 import { useCanContribute } from "../../src/auth/session-context";
 import { errorMessage, seasonOf, shortDate } from "../../src/format";
+import { memoryKey, memorySaved, queryClient, useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
 import { Image, Ionicons } from "../../src/styled";
 import { layout, MAX_WIDTH } from "../../src/theme";
@@ -61,50 +62,61 @@ const CARD_OVERLAP = 24;
  */
 export default function MemoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data, error, loading, refetch } = useApi<{ memory: Memory }>(`/api/memories/${id}`);
+  // Mux prepares each clip, and then its transcript, in the background after
+  // upload; keep looking until both settle so the player and the words appear
+  // without a refresh.
+  const query = useApiQuery<{ memory: Memory }>(`/api/memories/${id}`, {
+    refetchInterval: (data) => (data && isSettling(data.memory) ? POLL_MS : false),
+  });
+  const { data, error, refetch } = query;
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
 
   const [chosenView, setView] = useState<WordsView | null>(null);
   const [editingTranscript, setEditingTranscript] = useState(false);
   const [transcriptDraft, setTranscriptDraft] = useState("");
-  const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [retrying, setRetrying] = useState(false);
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [viewerAt, setViewerAt] = useState<number | null>(null);
   const [videoFailed, setVideoFailed] = useState(false);
   // Bumped by "Try again" so the hero builds a new player on a fresh URL.
   const [videoAttempt, setVideoAttempt] = useState(0);
   const [pastHero, setPastHero] = useState(false);
-  // Optimistic: the heart fills on tap, and goes back if the server says no.
-  const [favorite, setFavorite] = useState<boolean | null>(null);
   // A VIEWER reads (and keeps favourites, which are their own); every way
   // into editing the memory is left out for them.
   const canContribute = useCanContribute();
 
   // Coming back from a related memory (or one deleted from there) shows
   // what's true now. The hero pauses while you're away.
+  useRefreshOnFocus(query);
   const [focused, setFocused] = useState(true);
   useFocusEffect(
     useCallback(() => {
       setFocused(true);
-      void refetch();
       return () => setFocused(false);
-    }, [refetch]),
+    }, []),
   );
 
-  // Mux prepares each clip, and then its transcript, in the background after
-  // upload; keep looking until both settle so the player and the words appear
-  // without a refresh.
+  // Optimistic: the heart fills on tap, and goes back if the server says no.
+  // A favourite is the person's own, shown only on this page.
+  const favorite = useMutation({
+    mutationFn: (next: boolean) => apiSend(`/api/memories/${id}/favorite`, next ? "PUT" : "DELETE"),
+    onMutate: (next) => setFavoriteHere(id, next),
+    onError: (_err, next) => setFavoriteHere(id, !next),
+  });
+  const transcript = useMutation({
+    mutationFn: (text: string) => apiSend<{ memory: Memory }>(`/api/memories/${id}`, "PATCH", { transcript: text }),
+    // Transcripts are searched; nothing else shows them.
+    onSuccess: (res) => memorySaved(res.memory, ["search"]),
+  });
+  const retryTranscript = useMutation({
+    mutationFn: (mediaIds: string[]) =>
+      Promise.allSettled(mediaIds.map((m) => apiSend(`/api/memories/${id}/media/${m}/transcribe`, "POST", {}))),
+    // Whatever didn't re-queue still shows as failed once this looks again.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: memoryKey(id), exact: true }),
+  });
+
   const transcriptStatus = data?.memory.transcriptStatus ?? null;
-  const preparing = data?.memory.media.some((m) => mediaStatus(m) === "PROCESSING") ?? false;
-  const settling = transcriptStatus === "PENDING" || preparing;
-  useEffect(() => {
-    if (!settling) return;
-    const timer = setInterval(() => void refetch(), POLL_MS);
-    return () => clearInterval(timer);
-  }, [settling, refetch]);
 
   // Deleted (here, or by someone else while this was open), from another
   // family, or a stale link. Checked before `data` so a refresh that finds it
@@ -121,9 +133,20 @@ export default function MemoryScreen() {
     );
   }
   // A failed poll shouldn't blank a page that's already showing the memory.
-  if (error && !data) return <ErrorState error={error} onRetry={refetch} />;
-  if (loading && !data) return <Loading />;
-  if (!data) return null;
+  if (!data) {
+    return (
+      <View className="flex-1 bg-paper" style={{ paddingTop: insets.top }}>
+        <TopActions floating={false} onBack={back} />
+        <View className="flex-1 justify-center">
+          {error ? (
+            <ErrorState error={error} onRetry={() => void refetch()} retrying={query.isFetching} />
+          ) : (
+            <Loading />
+          )}
+        </View>
+      </View>
+    );
+  }
 
   const memory = data.memory;
   const visuals = memory.media.filter((m) => m.type === "PHOTO" || m.type === "VIDEO");
@@ -135,18 +158,12 @@ export default function MemoryScreen() {
   const hasStory = Boolean(memory.story?.trim());
   const hasWords = Boolean(memory.transcript) || transcriptStatus !== null;
   const view = wordsView(hasStory, hasWords, chosenView);
-  const isFavorite = favorite ?? memory.isFavorite;
+  const isFavorite = memory.isFavorite;
   const pageWidth = Math.min(windowWidth, MAX_WIDTH);
   const heroHeight = Math.round(Math.min(pageWidth * 0.86, 440));
 
-  async function toggleFavorite() {
-    const next = !isFavorite;
-    setFavorite(next);
-    try {
-      await apiSend(`/api/memories/${memory.id}/favorite`, next ? "PUT" : "DELETE");
-    } catch {
-      setFavorite(!next);
-    }
+  function toggleFavorite() {
+    favorite.mutate(!isFavorite);
   }
 
   function startTranscriptEdit() {
@@ -155,33 +172,16 @@ export default function MemoryScreen() {
     setEditingTranscript(true);
   }
 
-  async function saveTranscript() {
-    setSaving(true);
+  function saveTranscript() {
     setSaveError(null);
-    try {
-      await apiSend(`/api/memories/${memory.id}`, "PATCH", { transcript: transcriptDraft });
-      await refetch();
-      setEditingTranscript(false);
-    } catch (err) {
-      setSaveError(errorMessage(err));
-    } finally {
-      setSaving(false);
-    }
+    transcript.mutate(transcriptDraft, {
+      onSuccess: () => setEditingTranscript(false),
+      onError: (err) => setSaveError(errorMessage(err)),
+    });
   }
 
-  async function retryTranscripts() {
-    setRetrying(true);
-    try {
-      const failed = memory.media.filter((m) => m.transcriptStatus === "FAILED");
-      await Promise.all(
-        failed.map((m) => apiSend(`/api/memories/${memory.id}/media/${m.id}/transcribe`, "POST", {})),
-      );
-    } catch {
-      // Whatever didn't re-queue still shows as failed after the refetch.
-    } finally {
-      await refetch();
-      setRetrying(false);
-    }
+  function retryTranscripts() {
+    retryTranscript.mutate(memory.media.filter((m) => m.transcriptStatus === "FAILED").map((m) => m.id));
   }
 
   const can = editHandlers(canContribute, {
@@ -319,7 +319,7 @@ export default function MemoryScreen() {
                   <TranscriptEditor
                     value={transcriptDraft}
                     onChange={setTranscriptDraft}
-                    saving={saving}
+                    saving={transcript.isPending}
                     error={saveError}
                     onSave={saveTranscript}
                     onCancel={() => setEditingTranscript(false)}
@@ -329,7 +329,7 @@ export default function MemoryScreen() {
                     memory={memory}
                     status={transcriptStatus}
                     severalClips={clips.length > 1}
-                    retrying={retrying}
+                    retrying={retryTranscript.isPending}
                     onRetry={can.retry}
                     onEdit={can.editTranscript}
                   />
@@ -396,13 +396,24 @@ export default function MemoryScreen() {
         canContribute={canContribute}
         kind={sheet}
         onKind={setSheet}
-        onChanged={refetch}
         onDeleted={() => {
           setSheet(null);
           back();
         }}
       />
     </View>
+  );
+}
+
+/** Whether Mux is still preparing a clip, or a transcript is still being written. */
+function isSettling(memory: Memory) {
+  return memory.transcriptStatus === "PENDING" || memory.media.some((m) => mediaStatus(m) === "PROCESSING");
+}
+
+/** The heart on this memory's page, filled or not, ahead of (or instead of) the server's word. */
+function setFavoriteHere(memoryId: string, isFavorite: boolean) {
+  queryClient.setQueryData<{ memory: Memory }>(memoryKey(memoryId), (old) =>
+    old ? { memory: { ...old.memory, isFavorite } } : old,
   );
 }
 
@@ -506,9 +517,10 @@ function TopActions({
   onMore,
 }: {
   floating: boolean;
-  favorite: boolean;
+  favorite?: boolean;
   onBack: () => void;
-  onFavorite: () => void;
+  /** Absent until there's a memory to favourite. */
+  onFavorite?: () => void;
   /** Absent for a VIEWER when there's nothing to download: every other option changes the memory. */
   onMore?: () => void;
 }) {
@@ -524,20 +536,22 @@ function TopActions({
         <Ionicons name="chevron-back" size={22} colorClassName="accent-ink" className="-ml-0.5" />
       </Pressable>
       <View className="flex-row gap-3">
-        <Pressable
-          onPress={onFavorite}
-          hitSlop={8}
-          accessibilityRole="button"
-          accessibilityLabel={favorite ? "Remove from favourites" : "Favourite this memory"}
-          accessibilityState={{ selected: favorite }}
-          className={disc}
-        >
-          <Ionicons
-            name={favorite ? "heart" : "heart-outline"}
-            size={21}
-            colorClassName={favorite ? "accent-terracotta" : "accent-ink"}
-          />
-        </Pressable>
+        {onFavorite ? (
+          <Pressable
+            onPress={onFavorite}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={favorite ? "Remove from favourites" : "Favourite this memory"}
+            accessibilityState={{ selected: favorite }}
+            className={disc}
+          >
+            <Ionicons
+              name={favorite ? "heart" : "heart-outline"}
+              size={21}
+              colorClassName={favorite ? "accent-terracotta" : "accent-ink"}
+            />
+          </Pressable>
+        ) : null}
         {onMore ? (
           <Pressable onPress={onMore} hitSlop={8} accessibilityRole="button" accessibilityLabel="More options" className={disc}>
             <Ionicons name="ellipsis-horizontal" size={20} colorClassName="accent-ink" />
@@ -554,7 +568,7 @@ function MemoryDetails({ memory }: { memory: Memory }) {
   // Filed under two children ("Day-to-Day Moments" twice)? Say whose is whose.
   const names = collections.map((c) => c.name);
   const ambiguous = names.some((n, i) => names.indexOf(n) !== i);
-  const { data: people } = useApi<{ people: Person[] }>(ambiguous ? "/api/people" : null);
+  const { data: people } = useApiQuery<{ people: Person[] }>(ambiguous ? "/api/people" : null);
   const label = (c: MemoryCollection) => {
     const owner = ambiguous ? people?.people.find((p) => p.id === c.personId)?.name : undefined;
     return owner ? `${c.name} · ${owner}` : c.name;

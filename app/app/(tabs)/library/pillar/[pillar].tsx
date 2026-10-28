@@ -2,16 +2,11 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  useApi,
-  type ChildrenPayload,
-  type Collection,
-  type LibraryPayload,
-  type PillarKey,
-} from "../../../../src/api";
+import type { ChildrenPayload, Collection, LibraryPayload, PillarKey } from "../../../../src/api";
 import { Column, IconDisc, ListRow, PageHeader } from "../../../../src/components/journey";
-import { Avatar, EmptyState, ErrorState, Loading } from "../../../../src/components/ui";
+import { Avatar, EmptyState, ErrorState, InlineError, Loading } from "../../../../src/components/ui";
 import { count } from "../../../../src/format";
+import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
 import { routes } from "../../../../src/routes";
 import { layout } from "../../../../src/theme";
 
@@ -23,9 +18,9 @@ import { layout } from "../../../../src/theme";
 export default function PillarScreen() {
   const { pillar } = useLocalSearchParams<{ pillar: PillarKey }>();
   const insets = useSafeAreaInsets();
-  const library = useApi<LibraryPayload>("/api/library");
+  const library = useApiQuery<LibraryPayload>("/api/library");
   const selectsChild = pillar === "ARRIVAL_STORIES";
-  const children = useApi<ChildrenPayload>(selectsChild ? "/api/children" : null);
+  const children = useApiQuery<ChildrenPayload>(selectsChild ? "/api/children" : null);
   const [picked, setPicked] = useState<string | null>(null);
 
   const meta = library.data?.pillars.find((p) => p.key === pillar);
@@ -34,12 +29,25 @@ export default function PillarScreen() {
   // Arrival Stories waits for a child to be chosen; Family Life loads straight away.
   const ready = !selectsChild || personId !== null;
 
-  const collections = useApi<{ collections: Collection[] }>(
+  const collections = useApiQuery<{ collections: Collection[] }>(
     ready ? `/api/collections?pillar=${pillar}${personId ? `&personId=${personId}` : ""}` : null,
+    // Switching child keeps the last list up until the next one is in.
+    { keepPrevious: true },
   );
+  // Counts move when memories are filed deeper in the stack.
+  useRefreshOnFocus(collections);
 
-  if (library.error) return <ErrorState error={library.error} onRetry={library.refetch} />;
-  if (!meta) return <Loading />;
+  if (!meta) {
+    return (
+      <View className="flex-1 justify-center bg-paper">
+        {library.error ? (
+          <ErrorState error={library.error} onRetry={() => void library.refetch()} retrying={library.isFetching} />
+        ) : (
+          <Loading />
+        )}
+      </View>
+    );
+  }
 
   const list = collections.data?.collections ?? [];
 
@@ -79,10 +87,34 @@ export default function PillarScreen() {
           </ScrollView>
         ) : null}
 
-        {selectsChild && children.data && kids.length === 0 ? (
-          <EmptyState title="No children yet" body="Arrival stories begin when a child joins the family." />
+        {children.error && !children.data ? (
+          <ErrorState error={children.error} onRetry={() => void children.refetch()} retrying={children.isFetching} />
         ) : null}
-        {collections.loading && !collections.data && ready ? <Loading label="Opening collections…" /> : null}
+        {selectsChild && children.data && kids.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            title="No children yet"
+            body="Arrival stories begin when a child joins the family. Add one from Child Profiles."
+          />
+        ) : null}
+        {collections.error && !collections.data ? (
+          <ErrorState
+            error={collections.error}
+            onRetry={() => void collections.refetch()}
+            retrying={collections.isFetching}
+          />
+        ) : null}
+        {collections.error && collections.data ? (
+          <InlineError error={collections.error} onRetry={() => void collections.refetch()} retrying={collections.isFetching} />
+        ) : null}
+        {collections.isPending && ready && !collections.error ? <Loading label="Opening collections…" /> : null}
+        {collections.data && list.length === 0 ? (
+          <EmptyState
+            icon="albums-outline"
+            title="No collections here yet"
+            body={`${meta.name} collections appear here as the family makes them.`}
+          />
+        ) : null}
         <View>
           {list.map((collection, i) => (
             <ListRow

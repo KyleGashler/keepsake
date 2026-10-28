@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   apiSend,
-  useApi,
   type Collection,
   type MediaItem,
   type Memory,
@@ -12,14 +12,26 @@ import {
 } from "../../api";
 import { confirmAction } from "../../confirm";
 import { duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
+import {
+  FILING_VIEWS,
+  MEMORY_VIEWS,
+  memoryDeleted,
+  memoryKey,
+  memorySaved,
+  queryClient,
+  useApiQuery,
+  type Resource,
+} from "../../query";
 import { Ionicons, type IoniconName } from "../../styled";
 import { IconDisc, SearchField } from "../journey";
 import { fieldBox, fieldMultiline, fieldText } from "./field-styles";
 import { Thumb } from "./gallery";
 import { CardArt } from "./parts";
+import { InlineError } from "../ui";
 import { FieldLabel, Sheet, SheetHeader, SheetRow } from "./sheet";
 import { DateField } from "./date-field";
 import { DownloadList } from "./download-sheet";
+import { useSettled } from "../../use-settled";
 
 /** A sheet's quiet explanation under its header. */
 const HINT = "font-sans text-[14.5px] leading-[21px] text-ink-soft";
@@ -45,7 +57,6 @@ export function MemorySheets({
   canContribute,
   kind,
   onKind,
-  onChanged,
   onDeleted,
 }: {
   memory: Memory;
@@ -53,8 +64,6 @@ export function MemorySheets({
   canContribute: boolean;
   kind: SheetKind | null;
   onKind: (next: SheetKind | null) => void;
-  /** Something was saved; load the memory again. */
-  onChanged: () => Promise<void> | void;
   onDeleted: () => void;
 }) {
   const close = () => onKind(null);
@@ -65,11 +74,11 @@ export function MemorySheets({
         <OptionsMenu hasMedia={memory.media.length > 0} canContribute={canContribute} onPick={onKind} />
       ) : null}
       {kind === "download" ? <DownloadList memory={memory} onClose={close} /> : null}
-      {kind === "media" ? <MediaArranger memory={memory} onClose={close} onSaved={onChanged} /> : null}
-      {kind === "edit" ? <EditForm memory={memory} onClose={close} onSaved={onChanged} /> : null}
-      {kind === "collections" ? <CollectionPicker memory={memory} onClose={close} onSaved={onChanged} /> : null}
-      {kind === "link" ? <LinkPicker memory={memory} onClose={close} onSaved={onChanged} /> : null}
-      {kind === "date" ? <MoveDate memory={memory} onClose={close} onSaved={onChanged} /> : null}
+      {kind === "media" ? <MediaArranger memory={memory} onClose={close} /> : null}
+      {kind === "edit" ? <EditForm memory={memory} onClose={close} /> : null}
+      {kind === "collections" ? <CollectionPicker memory={memory} onClose={close} /> : null}
+      {kind === "link" ? <LinkPicker memory={memory} onClose={close} /> : null}
+      {kind === "date" ? <MoveDate memory={memory} onClose={close} /> : null}
       {kind === "delete" ? <ConfirmDelete memory={memory} onClose={close} onDeleted={onDeleted} /> : null}
     </Sheet>
   );
@@ -110,30 +119,37 @@ function OptionsMenu({
   );
 }
 
-/** Send a PATCH and reload; returns an error message, or null when it worked. */
-async function patch(memory: Memory, body: MemoryPatch, onSaved: () => Promise<void> | void) {
-  try {
-    await apiSend(`/api/memories/${memory.id}`, "PATCH", body);
-    await onSaved();
-    return null;
-  } catch (err) {
-    return errorMessage(err, "That didn't save. Try again.");
-  }
+/**
+ * A write to this memory. Every memory route answers with the memory as it
+ * is now, so the page shows that at once; `touched` is where else it shows.
+ */
+function useMemoryWrite<V>(request: (vars: V) => Promise<{ memory: Memory }>, touched: Resource[]) {
+  return useMutation({ mutationFn: request, onSuccess: (res) => memorySaved(res.memory, touched) });
+}
+
+/** PATCH the memory; resolves to an error message, or null when it worked. */
+function usePatch(memory: Memory, touched: Resource[]) {
+  const { mutateAsync } = useMemoryWrite(
+    (body: MemoryPatch) => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}`, "PATCH", body),
+    touched,
+  );
+  return async function save(body: MemoryPatch) {
+    try {
+      await mutateAsync(body);
+      return null;
+    } catch (err) {
+      return errorMessage(err, "That didn't save. Try again.");
+    }
+  };
 }
 
 // ---------------------------------------------------------------------------
 // Edit
 // ---------------------------------------------------------------------------
 
-function EditForm({
-  memory,
-  onClose,
-  onSaved,
-}: {
-  memory: Memory;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
-}) {
+function EditForm({ memory, onClose }: { memory: Memory; onClose: () => void }) {
+  // Title, story, place and date show wherever the memory does.
+  const patch = usePatch(memory, MEMORY_VIEWS);
   const [title, setTitle] = useState(memory.title);
   const [day, setDay] = useState(isoDay(memory.occurredAt));
   const [story, setStory] = useState(memory.story ?? "");
@@ -154,7 +170,7 @@ function EditForm({
       location: location.trim() || null,
       ...(occurredAt !== memory.occurredAt ? { occurredAt } : {}),
     };
-    const failed = await patch(memory, body, onSaved);
+    const failed = await patch(body);
     setSaving(false);
     if (failed) setError(failed);
     else onClose();
@@ -234,25 +250,18 @@ const MEDIA_NOUN: Record<MediaItem["type"], string> = { PHOTO: "photo", VIDEO: "
  * or remove it for good. Arrows rather than dragging, so it works the same
  * with a finger, a mouse and a screen reader. Each change saves at once.
  */
-function MediaArranger({
-  memory,
-  onClose,
-  onSaved,
-}: {
-  memory: Memory;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
-}) {
+function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const items = memory.media;
+  // The first photo is the memory's face everywhere, and the counts move.
+  const write = useMemoryWrite((request: () => Promise<{ memory: Memory }>) => request(), MEMORY_VIEWS);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function run(id: string, request: () => Promise<unknown>) {
+  async function run(id: string, request: () => Promise<{ memory: Memory }>) {
     setBusy(id);
     setError(null);
     try {
-      await request();
-      await onSaved();
+      await write.mutateAsync(request);
     } catch (err) {
       setError(refusalMessage(err, "That didn't save. Try again."));
     } finally {
@@ -264,7 +273,7 @@ function MediaArranger({
     const ids = items.map((m) => m.id);
     const [moved] = ids.splice(index, 1);
     ids.splice(index + by, 0, moved);
-    void run(moved, () => apiSend(`/api/memories/${memory.id}/media/order`, "PUT", { mediaIds: ids }));
+    void run(moved, () => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/media/order`, "PUT", { mediaIds: ids }));
   }
 
   async function remove(item: MediaItem) {
@@ -275,7 +284,7 @@ function MediaArranger({
       confirmLabel: "Remove",
     });
     if (!ok) return;
-    await run(item.id, () => apiSend(`/api/memories/${memory.id}/media/${item.id}`, "DELETE"));
+    await run(item.id, () => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/media/${item.id}`, "DELETE"));
   }
 
   return (
@@ -413,16 +422,10 @@ function groupCollections(collections: Collection[], filedIn: Set<string>): Grou
   });
 }
 
-function CollectionPicker({
-  memory,
-  onClose,
-  onSaved,
-}: {
-  memory: Memory;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
-}) {
-  const { data, error, loading } = useApi<{ collections: Collection[] }>("/api/collections");
+function CollectionPicker({ memory, onClose }: { memory: Memory; onClose: () => void }) {
+  const collectionsQuery = useApiQuery<{ collections: Collection[] }>("/api/collections");
+  const { data, error } = collectionsQuery;
+  const patch = usePatch(memory, FILING_VIEWS);
   const original = useMemo(() => new Set(memory.collections.map((c) => c.id)), [memory.collections]);
   const [chosen, setChosen] = useState<Set<string>>(() => new Set(original));
   const [query, setQuery] = useState("");
@@ -454,7 +457,7 @@ function CollectionPicker({
     setSaveError(null);
     // Keep the existing order and add the new ones after it.
     const ids = [...memory.collections.map((c) => c.id).filter((id) => chosen.has(id)), ...[...chosen].filter((id) => !original.has(id))];
-    const failed = await patch(memory, { collectionIds: ids }, onSaved);
+    const failed = await patch({ collectionIds: ids });
     setSaving(false);
     if (failed) setSaveError(failed);
     else onClose();
@@ -473,8 +476,10 @@ function CollectionPicker({
       <SearchField value={query} onChangeText={setQuery} placeholder="Find a collection" className="mt-3" style={{ height: 46 }} />
       {saveError ? <Text className={ERROR}>{saveError}</Text> : null}
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="pb-4">
-        {loading && !data ? <ActivityIndicator colorClassName="accent-primary" className="mt-6" /> : null}
-        {error && !data ? <Text className={ERROR}>Couldn't load collections. {error.message}</Text> : null}
+        {collectionsQuery.isPending && !error ? <ActivityIndicator colorClassName="accent-primary" className="mt-6" /> : null}
+        {error && !data ? (
+          <InlineError error={error} onRetry={() => void collectionsQuery.refetch()} retrying={collectionsQuery.isFetching} />
+        ) : null}
         {groups.map((group) => (
           <View key={group.key} className="mt-4">
             <Text className="type-label">{group.title}</Text>
@@ -514,44 +519,39 @@ function CollectionPicker({
 // Links
 // ---------------------------------------------------------------------------
 
-/** `text`, once it has stopped changing for `ms`. */
-function useSettled(text: string, ms: number) {
-  const [settled, setSettled] = useState(text);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(text), ms);
-    return () => clearTimeout(timer);
-  }, [text, ms]);
-  return settled;
-}
 
-function LinkPicker({
-  memory,
-  onClose,
-  onSaved,
-}: {
-  memory: Memory;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
-}) {
+function LinkPicker({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const q = useSettled(query.trim(), 250);
   const searching = q.length >= 2;
-  const { data, loading } = useApi<{ memories: MemoryCard[] }>(
+  const results = useApiQuery<{ memories: MemoryCard[] }>(
     searching ? `/api/search?q=${encodeURIComponent(q)}` : "/api/memories?limit=40",
+    { keepPrevious: true },
   );
+  const { data } = results;
+  // A link shows on both memories' pages, and nowhere else.
+  const write = useMutation({
+    mutationFn: ({ linkedId, linked }: { linkedId: string; linked: boolean }) =>
+      linked
+        ? apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/links`, "POST", { linkedId })
+        : apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/links/${linkedId}`, "DELETE"),
+    onSuccess: (res, { linkedId }) => {
+      void memorySaved(res.memory, []);
+      return queryClient.invalidateQueries({ queryKey: memoryKey(linkedId), exact: true });
+    },
+  });
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const linkedSet = new Set(memory.linkedIds);
-  const linked = memory.related.filter((m) => linkedSet.has(m.id));
+  const linkedNow = memory.related.filter((m) => linkedSet.has(m.id));
   const candidates = (data?.memories ?? []).filter((m) => m.id !== memory.id && !linkedSet.has(m.id));
 
-  async function run(id: string, request: () => Promise<unknown>) {
+  async function run(id: string, linked: boolean) {
     setBusy(id);
     setError(null);
     try {
-      await request();
-      await onSaved();
+      await write.mutateAsync({ linkedId: id, linked });
     } catch (err) {
       setError(errorMessage(err, "That didn't save. Try again."));
     } finally {
@@ -559,10 +559,8 @@ function LinkPicker({
     }
   }
 
-  const link = (id: string) =>
-    run(id, () => apiSend(`/api/memories/${memory.id}/links`, "POST", { linkedId: id }));
-  const unlink = (id: string) =>
-    run(id, () => apiSend(`/api/memories/${memory.id}/links/${id}`, "DELETE"));
+  const link = (id: string) => run(id, true);
+  const unlink = (id: string) => run(id, false);
 
   return (
     <>
@@ -570,10 +568,10 @@ function LinkPicker({
       <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" className="mt-3" style={{ height: 46 }} />
       {error ? <Text className={ERROR}>{error}</Text> : null}
       <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerClassName="pb-4">
-        {linked.length ? (
+        {linkedNow.length ? (
           <View className="mt-4">
             <Text className="type-label">Linked</Text>
-            {linked.map((m) => (
+            {linkedNow.map((m) => (
               <MemoryPickRow
                 key={m.id}
                 memory={m}
@@ -587,7 +585,10 @@ function LinkPicker({
         ) : null}
         <View className="mt-4">
           <Text className="type-label">{searching ? "Matches" : "Recent memories"}</Text>
-          {loading && !data ? <ActivityIndicator colorClassName="accent-primary" className="mt-4" /> : null}
+          {results.isPending && !results.error ? <ActivityIndicator colorClassName="accent-primary" className="mt-4" /> : null}
+          {results.error && !data ? (
+            <InlineError error={results.error} onRetry={() => void results.refetch()} retrying={results.isFetching} />
+          ) : null}
           {candidates.map((m) => (
             <MemoryPickRow
               key={m.id}
@@ -647,15 +648,9 @@ function MemoryPickRow({
 // Date
 // ---------------------------------------------------------------------------
 
-function MoveDate({
-  memory,
-  onClose,
-  onSaved,
-}: {
-  memory: Memory;
-  onClose: () => void;
-  onSaved: () => Promise<void> | void;
-}) {
+function MoveDate({ memory, onClose }: { memory: Memory; onClose: () => void }) {
+  // A date orders every list the memory is in.
+  const patch = usePatch(memory, MEMORY_VIEWS);
   const [day, setDay] = useState(isoDay(memory.occurredAt));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -666,7 +661,7 @@ function MoveDate({
     if (occurredAt === memory.occurredAt) return onClose();
     setSaving(true);
     setError(null);
-    const failed = await patch(memory, { occurredAt }, onSaved);
+    const failed = await patch({ occurredAt });
     setSaving(false);
     if (failed) setError(failed);
     else onClose();
@@ -695,19 +690,20 @@ function MoveDate({
 // ---------------------------------------------------------------------------
 
 function ConfirmDelete({ memory, onClose, onDeleted }: { memory: Memory; onClose: () => void; onDeleted: () => void }) {
-  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const deletion = useMutation({
+    mutationFn: () => apiSend(`/api/memories/${memory.id}`, "DELETE"),
+    onSuccess: () => memoryDeleted(memory.id),
+  });
+  // Still "Deleting…" after it worked, while the page goes away.
+  const deleting = deletion.isPending || deletion.isSuccess;
 
-  async function remove() {
-    setDeleting(true);
+  function remove() {
     setError(null);
-    try {
-      await apiSend(`/api/memories/${memory.id}`, "DELETE");
-      onDeleted();
-    } catch (err) {
-      setError(errorMessage(err, "That didn't work. Try again."));
-      setDeleting(false);
-    }
+    deletion.mutate(undefined, {
+      onSuccess: onDeleted,
+      onError: (err) => setError(errorMessage(err, "That didn't work. Try again.")),
+    });
   }
 
   return (

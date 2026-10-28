@@ -3,7 +3,8 @@ import { File as FsFile } from "expo-file-system";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { useApi, type UploadLimits } from "../../src/api";
+import type { UploadLimits } from "../../src/api";
+import { useApiQuery } from "../../src/query";
 import type { VideoMeta } from "../../src/components/video";
 import { confirmDiscard } from "../../src/confirm";
 import {
@@ -34,7 +35,8 @@ const MIN_RECORDING_MS = 1000;
  */
 export default function VideoScreen() {
   const params = useLocalSearchParams<{ prompt?: string; collectionId?: string }>();
-  const { data: limits, error: limitsError } = useApi<UploadLimits>("/api/media/limits");
+  // Without an answer, the recorder falls back to a safe budget rather than refusing.
+  const { data: limits, error: limitsError } = useApiQuery<UploadLimits>("/api/media/limits", { staleTime: Infinity });
   const maxBytes = limits?.maxUploadBytes ?? (limitsError ? FALLBACK_MAX_UPLOAD_BYTES : null);
   const budget = maxBytes
     ? recordingBudget(maxBytes, NATIVE_VIDEO.videoBitrate + NATIVE_VIDEO.audioAllowance)
