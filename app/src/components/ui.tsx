@@ -2,11 +2,12 @@ import { router } from "expo-router";
 import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, Text, View, type StyleProp, type ViewStyle } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ApiError, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
+import { ApiError, isForbiddenRole, mediaUrl, type MemoryCard as MemoryCardType, type Person } from "../api";
 import { shortDate } from "../format";
 import { Image, Ionicons, type IoniconName } from "../styled";
 import { layout } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
+import { Sparkle } from "./journey";
 
 
 export function Screen({
@@ -351,20 +352,126 @@ export function Loading({ label = "Gathering memories…" }: { label?: string })
   );
 }
 
-export function ErrorState({ error, onRetry }: { error: Error; onRetry?: () => void }) {
-  // The API's own message names a status and a request path — useful in a
-  // log, not on a family's screen.
-  let detail = error.message;
-  if (error instanceof ApiError) detail = `The archive couldn't answer just now (${error.status}).`;
-  else if (/failed to fetch|network/i.test(error.message)) detail = "Check your connection and try again.";
+/**
+ * The shape every whole-screen state shares — error, not found, view only,
+ * empty: a mark in a soft disc, a serif title, a line of explanation, and one
+ * thing to do about it.
+ */
+function StatePanel({
+  mark,
+  title,
+  body,
+  action,
+  panel = false,
+  role,
+}: {
+  mark: ReactNode;
+  title: string;
+  body?: string;
+  action?: ReactNode;
+  /** On a warm panel (empty states), rather than straight on the page. */
+  panel?: boolean;
+  role?: "alert" | "summary";
+}) {
   return (
-    <View className={CENTERED}>
-      <Ionicons name="cloud-offline-outline" size={26} colorClassName="accent-muted" />
-      <Text className="type-heading mt-3">Can't reach the archive</Text>
-      <Text className="type-caption text-center mt-1.5">{detail}</Text>
-      {onRetry ? <Button label="Try again" variant="secondary" onPress={onRetry} className="mt-4" /> : null}
+    <View
+      className={`items-center px-6 ${panel ? "my-2 rounded-lg bg-surface-alt py-9" : "justify-center py-16"}`}
+      accessibilityRole={role}
+    >
+      <View
+        className={`h-14 w-14 items-center justify-center rounded-full ${panel ? "bg-surface" : "bg-surface-alt"}`}
+      >
+        {mark}
+      </View>
+      <Text className="type-title mt-4 text-center">{title}</Text>
+      {body ? <Text className="type-body mt-1.5 max-w-[340px] text-center text-ink-soft">{body}</Text> : null}
+      {action ? <View className="mt-5">{action}</View> : null}
     </View>
   );
+}
+
+/** What went wrong, for a family rather than a log. */
+function describeError(error: Error) {
+  // The API's own message names a status and a request path — useful in a
+  // log, not on a family's screen.
+  if (isForbiddenRole(error)) return error.message;
+  if (error instanceof ApiError) return `The archive couldn't answer just now (${error.status}). Please try again.`;
+  if (/failed to fetch|network|load failed/i.test(error.message)) return "Check your connection and try again.";
+  return error.message || "Something went wrong. Please try again.";
+}
+
+/**
+ * A screen's data didn't load. `retrying` while the retry is in flight, so
+ * the button says so instead of seeming to do nothing.
+ */
+export function ErrorState({
+  error,
+  onRetry,
+  retrying = false,
+  title = "Can't reach the archive",
+}: {
+  error: Error;
+  onRetry?: () => void;
+  retrying?: boolean;
+  title?: string;
+}) {
+  return (
+    <StatePanel
+      role="alert"
+      mark={<Ionicons name="cloud-offline-outline" size={26} colorClassName="accent-muted" />}
+      title={title}
+      body={describeError(error)}
+      action={
+        onRetry ? (
+          <Button
+            label={retrying ? "Trying…" : "Try again"}
+            icon="refresh"
+            variant="secondary"
+            onPress={onRetry}
+            disabled={retrying}
+          />
+        ) : undefined
+      }
+    />
+  );
+}
+
+/**
+ * Part of a screen or sheet didn't load — a list in a picker, a section
+ * under a page that did. One line and a retry, in place.
+ */
+export function InlineError({
+  error,
+  onRetry,
+  retrying = false,
+}: {
+  error: Error;
+  onRetry?: () => void;
+  retrying?: boolean;
+}) {
+  return (
+    <View className="my-3 flex-row items-center gap-3 rounded-md bg-surface-alt p-3" accessibilityRole="alert">
+      <Ionicons name="cloud-offline-outline" size={18} colorClassName="accent-muted" />
+      <Text className="type-caption flex-1">{describeError(error)}</Text>
+      {onRetry ? (
+        <SmallButton label={retrying ? "Trying…" : "Try again"} icon="refresh" onPress={onRetry} />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * A query whose last fetch failed: in place, with a retry — and nothing while
+ * it's trying again. For a section that has nothing else to show, or a
+ * refresh that failed under data still on screen.
+ */
+export function QueryError({
+  query,
+}: {
+  query: { error: Error | null; isFetching: boolean; refetch: () => Promise<unknown> };
+}) {
+  if (!query.error || query.isFetching) return null;
+  return <InlineError error={query.error} onRetry={() => void query.refetch()} />;
 }
 
 /**
@@ -383,12 +490,13 @@ export function NotFoundState({
   onBack: () => void;
 }) {
   return (
-    <View className={CENTERED} accessibilityRole="summary">
-      <Ionicons name="leaf-outline" size={26} colorClassName="accent-muted" />
-      <Text className="type-title mt-3 text-center">{title}</Text>
-      <Text className="type-caption text-center mt-1.5">{body}</Text>
-      <Button label={backLabel} variant="secondary" icon="chevron-back" onPress={onBack} className="mt-4" />
-    </View>
+    <StatePanel
+      role="summary"
+      mark={<Ionicons name="leaf-outline" size={26} colorClassName="accent-muted" />}
+      title={title}
+      body={body}
+      action={<Button label={backLabel} variant="secondary" icon="chevron-back" onPress={onBack} />}
+    />
   );
 }
 
@@ -398,25 +506,41 @@ export function NotFoundState({
  */
 export function ViewOnlyState({ onBack }: { onBack: () => void }) {
   return (
-    <View className={CENTERED} accessibilityRole="summary">
-      <Ionicons name="eye-outline" size={26} colorClassName="accent-muted" />
-      <Text className="type-title mt-3 text-center">You can look, not add</Text>
-      <Text className="type-caption text-center mt-1.5">
-        Your role in this family lets you see everything in the archive. An owner can let you add memories from
-        Family Hub.
-      </Text>
-      <Button label="Back to Home" variant="secondary" icon="chevron-back" onPress={onBack} className="mt-4" />
-    </View>
+    <StatePanel
+      role="summary"
+      mark={<Ionicons name="eye-outline" size={26} colorClassName="accent-muted" />}
+      title="You can look, not add"
+      body="Your role in this family lets you see everything in the archive. An owner can let you add memories from Family Hub."
+      action={<Button label="Back to Home" variant="secondary" icon="chevron-back" onPress={onBack} />}
+    />
   );
 }
 
-export function EmptyState({ title, body, action }: { title: string; body?: string; action?: ReactNode }) {
+/**
+ * Nothing here yet — an invitation, not a dead end. On the warm panel the
+ * first-memory and first-child invitations use, with the honey sparkle unless
+ * an icon says more.
+ */
+export function EmptyState({
+  title,
+  body,
+  icon,
+  action,
+}: {
+  title: string;
+  body?: string;
+  icon?: IoniconName;
+  action?: ReactNode;
+}) {
   return (
-    <View className="items-center py-12 px-6">
-      <Text className="type-heading">{title}</Text>
-      {body ? <Text className="type-caption text-center mt-1.5">{body}</Text> : null}
-      {action ? <View className="mt-4">{action}</View> : null}
-    </View>
+    <StatePanel
+      panel
+      role="summary"
+      mark={icon ? <Ionicons name={icon} size={24} colorClassName="accent-accent-deep" /> : <Sparkle size={26} variant="filled" />}
+      title={title}
+      body={body}
+      action={action}
+    />
   );
 }
 

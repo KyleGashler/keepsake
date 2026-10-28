@@ -1,15 +1,17 @@
-import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { router } from "expo-router";
+import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiSend, useApi, type LibraryPayload, type LibraryPillar, type PillarKey } from "../../../src/api";
+import { apiSend, type LibraryPayload, type LibraryPillar, type PillarKey } from "../../../src/api";
 import { useCanContribute } from "../../../src/auth/session-context";
 import { Column, PageHeader, PhotoCard } from "../../../src/components/journey";
 import { FamilyPill } from "../../../src/components/family-switcher";
 import { ActionSheet, SheetError } from "../../../src/components/sheet";
-import { ErrorState, Loading } from "../../../src/components/ui";
+import { Button, EmptyState, ErrorState, Loading } from "../../../src/components/ui";
 import { pickAndUploadImage } from "../../../src/pick-image";
 import { friendlyError } from "../../../src/format";
+import { invalidate, useApiQuery, useRefreshOnFocus } from "../../../src/query";
 import { routes } from "../../../src/routes";
 import { layout } from "../../../src/theme";
 
@@ -25,18 +27,22 @@ function open(pillar: LibraryPillar) {
  * family has chosen one, offers to go back to the default.
  */
 export default function LibraryScreen() {
-  const { data, error, loading, refetch } = useApi<LibraryPayload>("/api/library");
+  const library = useApiQuery<LibraryPayload>("/api/library");
+  const { data, error } = library;
+  useRefreshOnFocus(library);
+  // A cover is the Library's alone.
+  const cover = useMutation({
+    mutationFn: ({ pillar, key }: { pillar: PillarKey; key: string | null }) =>
+      key
+        ? apiSend(`/api/library/pillars/${pillar}/cover`, "PUT", { key })
+        : apiSend(`/api/library/pillars/${pillar}/cover`, "DELETE"),
+    onSuccess: () => invalidate(["library"]),
+  });
   const insets = useSafeAreaInsets();
   const [busy, setBusy] = useState<PillarKey | null>(null);
   const [menuFor, setMenuFor] = useState<LibraryPillar | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const canContribute = useCanContribute();
-
-  useFocusEffect(
-    useCallback(() => {
-      void refetch();
-    }, [refetch]),
-  );
 
   const pillars = data?.pillars ?? [];
 
@@ -45,8 +51,7 @@ export default function LibraryScreen() {
     try {
       const picked = await pickAndUploadImage(() => setBusy(pillar.key));
       if (!picked) return;
-      await apiSend(`/api/library/pillars/${pillar.key}/cover`, "PUT", { key: picked.media.key });
-      await refetch();
+      await cover.mutateAsync({ pillar: pillar.key, key: picked.media.key });
     } catch (err) {
       setProblem(friendlyError(err, `The new ${pillar.name} cover didn't save. Please try again.`));
     } finally {
@@ -58,8 +63,7 @@ export default function LibraryScreen() {
     setProblem(null);
     setBusy(pillar.key);
     try {
-      await apiSend(`/api/library/pillars/${pillar.key}/cover`, "DELETE");
-      await refetch();
+      await cover.mutateAsync({ pillar: pillar.key, key: null });
     } catch (err) {
       setProblem(friendlyError(err, "Couldn't reset the cover just now. Please try again."));
     } finally {
@@ -90,8 +94,18 @@ export default function LibraryScreen() {
           onSettings={() => router.push("/family")}
           onSearch={() => router.push("/search")}
         />
-        {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
-        {loading && !data ? <Loading /> : null}
+        {error && !data ? (
+          <ErrorState error={error} onRetry={() => void library.refetch()} retrying={library.isFetching} />
+        ) : null}
+        {library.isPending && !error ? <Loading /> : null}
+        {data && pillars.length === 0 ? (
+          <EmptyState
+            icon="library-outline"
+            title="Nothing on the shelves yet"
+            body="The Library's pillars didn't come through. They're usually here — try again in a moment."
+            action={<Button label="Try again" icon="refresh" variant="secondary" onPress={() => void library.refetch()} />}
+          />
+        ) : null}
         {problem ? (
           <View className="mb-3">
             <SheetError message={problem} />

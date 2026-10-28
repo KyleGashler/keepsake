@@ -1,14 +1,15 @@
-import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { router } from "expo-router";
+import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useApi, type ChildrenPayload } from "../../../../src/api";
+import type { ChildrenPayload } from "../../../../src/api";
 import { useCanContribute } from "../../../../src/auth/session-context";
 import { ChildCardBackdrop } from "../../../../src/components/child-header";
 import { Column, PageHeader, PhotoCard, Sparkle } from "../../../../src/components/journey";
 import { AddChildSheet } from "../../../../src/components/library-sheets";
 import { ErrorState, Loading } from "../../../../src/components/ui";
 import { childAge } from "../../../../src/format";
+import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
 import { routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
 import { layout } from "../../../../src/theme";
@@ -19,17 +20,15 @@ import { layout } from "../../../../src/theme";
  * their own colour. With no children yet, the page is an invitation.
  */
 export default function ChildProfilesScreen() {
-  const { data, error, loading, refetch } = useApi<ChildrenPayload>("/api/children");
+  const query = useApiQuery<ChildrenPayload>("/api/children");
+  const { data, error } = query;
   const insets = useSafeAreaInsets();
   const [adding, setAdding] = useState(false);
   const canContribute = useCanContribute();
 
-  // Fresh photos and names after an edit deeper in the stack.
-  useFocusEffect(
-    useCallback(() => {
-      void refetch();
-    }, [refetch]),
-  );
+  // Edits deeper in the stack mark this stale as they save; this catches
+  // the rest of the family's.
+  useRefreshOnFocus(query);
 
   const children = data?.children ?? [];
 
@@ -47,8 +46,10 @@ export default function ChildProfilesScreen() {
           sparkleAtEnd
           subtitle="Every child's story, captured little by little."
         />
-        {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
-        {loading && !data ? <Loading /> : null}
+        {error && !data ? (
+          <ErrorState error={error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+        ) : null}
+        {query.isPending && !error ? <Loading /> : null}
 
         {data && children.length === 0 ? (
           <View className="items-center gap-3 rounded-lg bg-surface-alt px-4 py-9">
@@ -103,7 +104,7 @@ export default function ChildProfilesScreen() {
         ) : null}
       </Column>
 
-      {adding ? <AddChildSheet onClose={() => setAdding(false)} onAdded={() => void refetch()} /> : null}
+      {adding ? <AddChildSheet onClose={() => setAdding(false)} /> : null}
     </ScrollView>
   );
 }

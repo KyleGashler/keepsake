@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react";
-import { ApiError, isNotFound, useApi, type InvitePreview } from "../api";
+import { ApiError, isNotFound, type InvitePreview } from "../api";
 import { useSession } from "../auth/session-context";
 import { friendlyError } from "../format";
+import { useApiQuery } from "../query";
 import { ROLE_DESCRIPTION } from "../roles";
 import { Splash, VerifyToJoin } from "./account-screens";
 import { AuthFrame, Notice, SignedOutFlow, TextLink } from "./auth-screens";
@@ -20,7 +21,11 @@ import { SheetButton, SheetError } from "./sheet";
  */
 export function JoinScreen({ token, onDone }: { token: string; onDone: () => void }) {
   const session = useSession();
-  const { data, error, refetch } = useApi<{ invite: InvitePreview }>(`/api/invites/${encodeURIComponent(token)}`);
+  // Public, and the person's rather than any family's: it's read signed out.
+  const preview = useApiQuery<{ invite: InvitePreview }>(`/api/invites/${encodeURIComponent(token)}`, {
+    scope: "account",
+  });
+  const { data, error, refetch } = preview;
   const [signingIn, setSigningIn] = useState<"signIn" | "signUp" | null>(null);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
@@ -32,7 +37,7 @@ export function JoinScreen({ token, onDone }: { token: string; onDone: () => voi
       <Unusable title="This invite link doesn't work" body="Check you have the whole link, or ask for a new one." onDone={onDone} />
     ) : (
       <AuthFrame title="Can't open this invite" subtitle="The archive couldn't answer just now.">
-        <SheetButton label="Try again" icon="refresh" onPress={() => void refetch()} />
+        <SheetButton label="Try again" icon="refresh" busy={preview.isFetching} onPress={() => void refetch()} />
         <TextLink label="Not now" onPress={onDone} />
       </AuthFrame>
     );

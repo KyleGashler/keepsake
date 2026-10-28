@@ -1,9 +1,11 @@
+import { useMutation } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
-import { ApiError, apiSend, useApi, type DeletionPreview } from "../api";
+import { ApiError, apiSend, type DeletionPreview } from "../api";
 import { AuthError } from "../auth";
 import { useSession } from "../auth/session-context";
 import { friendlyError } from "../format";
+import { useApiQuery } from "../query";
 import { SUPPORT_EMAIL } from "../support";
 import { Ionicons, type IoniconName } from "../styled";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
@@ -35,20 +37,19 @@ export function DeleteFamilySheet({
   onDeleted: () => void;
 }) {
   const [typed, setTyped] = useState("");
-  const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const confirmed = sameName(typed, familyName);
+  // What was cached for the family is forgotten when the session lets go of
+  // it (onDeleted → familyGone), not here: screens are still showing it.
+  const deletion = useMutation({ mutationFn: () => apiSend("/api/family", "DELETE") });
+  const busy = deletion.isPending || deletion.isSuccess;
 
-  const remove = async () => {
-    setBusy(true);
+  const remove = () => {
     setError(null);
-    try {
-      await apiSend("/api/family", "DELETE");
-      onDeleted();
-    } catch (err) {
-      setError(friendlyError(err, "Couldn't delete the family just now. Nothing was deleted."));
-      setBusy(false);
-    }
+    deletion.mutate(undefined, {
+      onSuccess: onDeleted,
+      onError: (err) => setError(friendlyError(err, "Couldn't delete the family just now. Nothing was deleted.")),
+    });
   };
 
   return (
@@ -65,7 +66,7 @@ export function DeleteFamilySheet({
             variant="danger"
             disabled={!confirmed}
             busy={busy}
-            onPress={() => void remove()}
+            onPress={remove}
           />
           <SheetButton label="Keep it" variant="secondary" onPress={onClose} />
         </>
@@ -104,7 +105,8 @@ export function DeleteFamilySheet({
 
 export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
   const session = useSession();
-  const preview = useApi<DeletionPreview>("/api/me/deletion");
+  // Asked afresh each time the sheet opens: it's what's about to be deleted.
+  const preview = useApiQuery<DeletionPreview>("/api/me/deletion", { scope: "account", staleTime: 0 });
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +132,12 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
         {preview.error ? (
           <>
             <SheetError message="Couldn't check what would be deleted. Nothing has been." />
-            <SheetButton label="Try again" variant="secondary" onPress={() => void preview.refetch()} />
+            <SheetButton
+              label={preview.isFetching ? "Trying…" : "Try again"}
+              variant="secondary"
+              busy={preview.isFetching}
+              onPress={() => void preview.refetch()}
+            />
           </>
         ) : (
           <ActivityIndicator colorClassName="accent-ink" />

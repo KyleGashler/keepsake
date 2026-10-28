@@ -1,6 +1,8 @@
+import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { apiSend, type ChildSummary, type Collection, type CollectionPatch, type Person, type PersonPatch } from "../api";
+import { COLLECTION_VIEWS, invalidate, PEOPLE_VIEWS } from "../query";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
 import { COLLECTION_SWATCHES, glyphColorFor, ICON_KEYS, isIconKey, type IconKey } from "../icons";
 import { pickAndUploadImage } from "../pick-image";
@@ -39,8 +41,14 @@ export function AddChildSheet({
   onAdded,
 }: {
   onClose: () => void;
-  onAdded: (child: ChildSummary) => void;
+  onAdded?: (child: ChildSummary) => void;
 }) {
+  const addChild = useMutation({
+    mutationFn: (body: { name: string; birthDate?: string | null }) =>
+      apiSend<{ person: Person; child: ChildSummary | null }>("/api/people", "POST", { ...body, role: "CHILD" }),
+    // A child comes with their own collections.
+    onSuccess: () => invalidate([...PEOPLE_VIEWS, ...COLLECTION_VIEWS]),
+  });
   const [name, setName] = useState("");
   const [birthday, setBirthday] = useState("");
   const [touched, setTouched] = useState(false);
@@ -57,12 +65,8 @@ export function AddChildSheet({
     setSaving(true);
     setError(null);
     try {
-      const res = await apiSend<{ person: Person; child: ChildSummary | null }>("/api/people", "POST", {
-        name: name.trim(),
-        role: "CHILD",
-        ...(birthDate ? { birthDate } : {}),
-      });
-      if (res.child) onAdded(res.child);
+      const res = await addChild.mutateAsync({ name: name.trim(), ...(birthDate ? { birthDate } : {}) });
+      if (res.child) onAdded?.(res.child);
       onClose();
     } catch (err) {
       setError(friendlyError(err, "Couldn't add them just now. Please try again."));
@@ -126,10 +130,15 @@ export function EditChildSheet({
 }: {
   child: ChildSummary;
   onClose: () => void;
-  onSaved: (child: ChildSummary) => void;
+  onSaved?: (child: ChildSummary) => void;
   /** Offer "Delete from the archive": the screen closes this sheet and asks to confirm. */
   onDelete?: () => void;
 }) {
+  const saveChild = useMutation({
+    mutationFn: (patch: PersonPatch) =>
+      apiSend<{ child: ChildSummary | null }>(`/api/people/${child.id}`, "PATCH", patch),
+    onSuccess: () => invalidate(PEOPLE_VIEWS),
+  });
   const [name, setName] = useState(child.name);
   const [birthday, setBirthday] = useState(birthdayInput(child.birthDate));
   /** undefined: unchanged; null: remove; a key: the new photo. */
@@ -175,8 +184,8 @@ export function EditChildSheet({
     setSaving(true);
     setError(null);
     try {
-      const res = await apiSend<{ child: ChildSummary | null }>(`/api/people/${child.id}`, "PATCH", patch);
-      if (res.child) onSaved(res.child);
+      const res = await saveChild.mutateAsync(patch);
+      if (res.child) onSaved?.(res.child);
       onClose();
     } catch (err) {
       setError(friendlyError(err, "Couldn't save just now. Please try again."));
@@ -275,8 +284,12 @@ export function CreateCollectionSheet({
 }: {
   child: Pick<ChildSummary, "id" | "name">;
   onClose: () => void;
-  onCreated: (collection: Collection) => void;
+  onCreated?: (collection: Collection) => void;
 }) {
+  const create = useMutation({
+    mutationFn: (body: Record<string, unknown>) => apiSend<{ collection: Collection }>("/api/collections", "POST", body),
+    onSuccess: () => invalidate(COLLECTION_VIEWS),
+  });
   return (
     <CollectionFormSheet
       title="Create a Collection"
@@ -286,7 +299,7 @@ export function CreateCollectionSheet({
       failure="Couldn't create it just now. Please try again."
       onClose={onClose}
       onSubmit={async ({ name, description, icon, color }) => {
-        const res = await apiSend<{ collection: Collection }>("/api/collections", "POST", {
+        const res = await create.mutateAsync({
           pillar: "CHILD_PROFILES",
           personId: child.id,
           name,
@@ -294,7 +307,7 @@ export function CreateCollectionSheet({
           icon,
           color,
         });
-        onCreated(res.collection);
+        onCreated?.(res.collection);
       }}
     />
   );
@@ -312,8 +325,13 @@ export function EditCollectionSheet({
 }: {
   collection: Pick<Collection, "id" | "name" | "description" | "icon" | "color">;
   onClose: () => void;
-  onSaved: (collection: Collection) => void;
+  onSaved?: (collection: Collection) => void;
 }) {
+  const save = useMutation({
+    mutationFn: (patch: CollectionPatch) =>
+      apiSend<{ collection: Collection }>(`/api/collections/${collection.id}`, "PATCH", patch),
+    onSuccess: () => invalidate(COLLECTION_VIEWS),
+  });
   return (
     <CollectionFormSheet
       title="Edit Collection"
@@ -333,8 +351,8 @@ export function EditCollectionSheet({
         if (fields.icon !== collection.icon) patch.icon = fields.icon;
         if (fields.color.toUpperCase() !== collection.color.toUpperCase()) patch.color = fields.color;
         if (Object.keys(patch).length === 0) return;
-        const res = await apiSend<{ collection: Collection }>(`/api/collections/${collection.id}`, "PATCH", patch);
-        onSaved(res.collection);
+        const res = await save.mutateAsync(patch);
+        onSaved?.(res.collection);
       }}
     />
   );

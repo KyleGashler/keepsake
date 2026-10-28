@@ -1,7 +1,9 @@
+import { useMutation } from "@tanstack/react-query";
 import { Platform } from "react-native";
 import { apiSend, type Person } from "./api";
 import type { SheetAction } from "./components/sheet";
 import { count, refusalMessage } from "./format";
+import { gone, invalidate } from "./query";
 
 /**
  * Deleting someone from the archive, as every screen that offers it asks:
@@ -27,28 +29,31 @@ export function deletePersonMessage(person: Pick<Person, "role">, collectionCoun
   return `${collections}They're taken off every memory they appear in, and memories they added stay without an author. This can't be undone.`;
 }
 
-/** The one destructive choice in a delete confirmation's ActionSheet. */
-export function deletePersonAction(
-  person: Pick<Person, "id" | "name">,
-  onDeleted: () => void,
-  onError: (message: string) => void,
-): SheetAction {
-  return {
+/**
+ * The one destructive choice in a delete confirmation's ActionSheet, as a
+ * hook: deleting someone goes through the data layer, and touches nearly
+ * everything — their collections go, and they're taken off every memory.
+ */
+export function useDeletePersonAction() {
+  const { mutate } = useMutation({
+    mutationFn: (id: string) => apiSend(`/api/people/${id}`, "DELETE"),
+    // Their page is gone; the rest of the family's data is stale.
+    onSuccess: (_, id) => invalidate("everything", [gone(`/api/people/${id}`), gone(`/api/children/${id}`)]),
+  });
+  return (
+    person: Pick<Person, "id" | "name">,
+    onDeleted: () => void,
+    onError: (message: string) => void,
+  ): SheetAction => ({
     label: `Delete ${person.name}`,
     icon: "trash-outline",
     destructive: true,
-    onPress: () => void deletePerson(person.id, onDeleted, onError),
-  };
-}
-
-async function deletePerson(id: string, onDeleted: () => void, onError: (message: string) => void) {
-  try {
-    await apiSend(`/api/people/${id}`, "DELETE");
-  } catch (err) {
-    onError(refusalMessage(err, "Couldn't delete them just now. Please try again."));
-    return;
-  }
-  onDeleted();
+    onPress: () =>
+      mutate(person.id, {
+        onSuccess: onDeleted,
+        onError: (err) => onError(refusalMessage(err, "Couldn't delete them just now. Please try again.")),
+      }),
+  });
 }
 
 /**

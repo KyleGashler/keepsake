@@ -1,26 +1,21 @@
-import { useEffect, useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { apiSend, useApi, type Collection, type MemoryCard } from "../api";
+import { apiSend, type Collection, type MemoryCard } from "../api";
 import { friendlyError, shortDate } from "../format";
+import { FILING_VIEWS, invalidate, useApiQuery } from "../query";
 import { Ionicons } from "../styled";
 import { SearchField } from "./journey";
 import { CardArt } from "./memory/parts";
 import { Sheet } from "./sheet";
+import { InlineError } from "./ui";
+import { useSettled } from "../use-settled";
 
-/** `text`, once it has stopped changing for `ms`. */
-function useSettled(text: string, ms: number) {
-  const [settled, setSettled] = useState(text);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(text), ms);
-    return () => clearTimeout(timer);
-  }, [text, ms]);
-  return settled;
-}
 
 /**
  * Choose which of the family's memories are filed in this collection: tick
  * to add, untick to take one out (the memory itself stays in the archive).
- * Each tap saves at once; the collection reloads when the sheet closes.
+ * Each tap saves at once, and marks the archives it changed stale.
  * The same filing a memory's "Add to Another Collection" changes, from the
  * collection's side.
  */
@@ -29,16 +24,21 @@ export function FileMemoriesSheet({
   onClose,
 }: {
   collection: Pick<Collection, "id" | "name">;
-  /** Closed; `changed` says whether anything was filed or unfiled. */
-  onClose: (changed: boolean) => void;
+  onClose: () => void;
 }) {
   const [query, setQuery] = useState("");
   const q = useSettled(query.trim(), 250);
   const searching = q.length >= 2;
-  const list = useApi<{ memories: MemoryCard[] }>(
+  const list = useApiQuery<{ memories: MemoryCard[] }>(
     searching ? `/api/search?q=${encodeURIComponent(q)}` : "/api/memories?limit=60",
+    { keepPrevious: true },
   );
-  const filedNow = useApi<{ memories: MemoryCard[] }>(`/api/memories?collectionId=${collection.id}&limit=100`);
+  const filedNow = useApiQuery<{ memories: MemoryCard[] }>(`/api/memories?collectionId=${collection.id}&limit=100`);
+  const file = useMutation({
+    mutationFn: ({ memoryId, filed }: { memoryId: string; filed: boolean }) =>
+      apiSend(`/api/collections/${collection.id}/memories/${memoryId}`, filed ? "PUT" : "DELETE"),
+    onSuccess: () => invalidate(FILING_VIEWS),
+  });
   // What this sheet has changed, over what the server said when it opened.
   const [overrides, setOverrides] = useState<Map<string, boolean>>(() => new Map());
   const [busy, setBusy] = useState<string | null>(null);
@@ -54,7 +54,7 @@ export function FileMemoriesSheet({
     setBusy(memory.id);
     setError(null);
     try {
-      await apiSend(`/api/collections/${collection.id}/memories/${memory.id}`, next ? "PUT" : "DELETE");
+      await file.mutateAsync({ memoryId: memory.id, filed: next });
       setOverrides((prev) => new Map(prev).set(memory.id, next));
     } catch (err) {
       setError(friendlyError(err, "That didn't save. Try again."));
@@ -66,14 +66,20 @@ export function FileMemoriesSheet({
   return (
     <Sheet
       visible
-      onClose={() => onClose(overrides.size > 0)}
+      onClose={onClose}
       title="Memories in this collection"
       subtitle={`Tick the ones that belong in ${collection.name}. Unticking only takes a memory out of here.`}
     >
       <SearchField value={query} onChangeText={setQuery} placeholder="Search memories" className="mb-2"
         style={{ height: 46 }} />
       {error ? <Text className="mt-2 font-sans text-[13.5px] text-terracotta">{error}</Text> : null}
-      {(list.loading && !list.data) || (filedNow.loading && !filedNow.data) ? (
+      {list.error && !list.data ? (
+        <InlineError error={list.error} onRetry={() => void list.refetch()} retrying={list.isFetching} />
+      ) : null}
+      {filedNow.error && !filedNow.data ? (
+        <InlineError error={filedNow.error} onRetry={() => void filedNow.refetch()} retrying={filedNow.isFetching} />
+      ) : null}
+      {(list.isPending && !list.error) || (filedNow.isPending && !filedNow.error) ? (
         <ActivityIndicator colorClassName="accent-primary" className="mt-4" />
       ) : null}
       {memories.map((memory) => {

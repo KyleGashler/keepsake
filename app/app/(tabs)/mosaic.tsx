@@ -2,10 +2,12 @@ import { router } from "expo-router";
 import { useMemo } from "react";
 import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { mediaUrl, useApi, type MosaicTile } from "../../src/api";
+import { mediaUrl, type MosaicTile } from "../../src/api";
+import { useCanContribute } from "../../src/auth/session-context";
 import { Column, PageHeader } from "../../src/components/journey";
 import { FamilyPill } from "../../src/components/family-switcher";
-import { ErrorState, Loading } from "../../src/components/ui";
+import { Button, EmptyState, ErrorState, Loading } from "../../src/components/ui";
+import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { Image, Ionicons } from "../../src/styled";
 import { layout, MAX_WIDTH } from "../../src/theme";
 
@@ -18,7 +20,10 @@ const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
  * the tiles into columns so the grid keeps a curated rhythm.
  */
 export default function MosaicScreen() {
-  const { data, error, loading, refetch } = useApi<{ tiles: MosaicTile[] }>("/api/mosaic");
+  const mosaic = useApiQuery<{ tiles: MosaicTile[] }>("/api/mosaic");
+  const { data, error } = mosaic;
+  useRefreshOnFocus(mosaic);
+  const canContribute = useCanContribute();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
 
@@ -57,8 +62,22 @@ export default function MosaicScreen() {
           onSettings={() => router.push("/family")}
           onSearch={() => router.push("/search")}
         />
-        {error && !data ? <ErrorState error={error} onRetry={refetch} /> : null}
-        {loading && !data ? <Loading label="Arranging the mosaic…" /> : null}
+        {error && !data ? (
+          <ErrorState error={error} onRetry={() => void mosaic.refetch()} retrying={mosaic.isFetching} />
+        ) : null}
+        {mosaic.isPending && !error ? <Loading label="Arranging the mosaic…" /> : null}
+        {data?.tiles.length === 0 ? (
+          <EmptyState
+            icon="images-outline"
+            title="Nothing to arrange yet"
+            body="Every photo the family keeps finds its place here, by colour and feeling rather than by date."
+            action={
+              canContribute ? (
+                <Button label="Preserve a memory" icon="add" onPress={() => router.push("/capture")} />
+              ) : undefined
+            }
+          />
+        ) : null}
         <View className="flex-row" style={{ gap: GAP }}>
           {columns.map((column, i) => (
             // oxlint-disable-next-line react/no-array-index-key -- columns are positions; tiles move between them

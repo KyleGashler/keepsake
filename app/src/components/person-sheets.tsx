@@ -1,6 +1,8 @@
+import { useMutation } from "@tanstack/react-query";
 import { Pressable, Text, View } from "react-native";
 import { useState } from "react";
 import { apiSend, type Person, type PersonCreate, type PersonPatch } from "../api";
+import { invalidate, PEOPLE_VIEWS } from "../query";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
@@ -30,7 +32,11 @@ const ADULT_ROLES: { role: Person["role"]; label: string }[] = [
  * Someone who belongs in the family's story but doesn't need an account (yet):
  * a great-grandparent, an aunt abroad. Inviting them later links this person.
  */
-export function AddPersonSheet({ onClose, onAdded }: { onClose: () => void; onAdded: (person: Person) => void }) {
+export function AddPersonSheet({ onClose, onAdded }: { onClose: () => void; onAdded?: (person: Person) => void }) {
+  const add = useMutation({
+    mutationFn: (body: PersonCreate) => apiSend<{ person: Person }>("/api/people", "POST", body),
+    onSuccess: () => invalidate(PEOPLE_VIEWS),
+  });
   const [name, setName] = useState("");
   const [relation, setRelation] = useState("");
   const [role, setRole] = useState<Person["role"]>("RELATIVE");
@@ -44,8 +50,8 @@ export function AddPersonSheet({ onClose, onAdded }: { onClose: () => void; onAd
     const body: PersonCreate = { name: name.trim(), role };
     if (relation.trim()) body.relation = relation.trim();
     try {
-      const res = await apiSend<{ person: Person }>("/api/people", "POST", body);
-      onAdded(res.person);
+      const res = await add.mutateAsync(body);
+      onAdded?.(res.person);
       onClose();
     } catch (err) {
       setError(friendlyError(err, "Couldn't add them just now. Please try again."));
@@ -114,8 +120,12 @@ export function EditPersonSheet({
 }: {
   person: Person;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved?: () => void;
 }) {
+  const edit = useMutation({
+    mutationFn: (patch: PersonPatch) => apiSend(`/api/people/${person.id}`, "PATCH", patch),
+    onSuccess: () => invalidate(PEOPLE_VIEWS),
+  });
   const [name, setName] = useState(person.name);
   const [relation, setRelation] = useState(person.relation ?? "");
   const [birthday, setBirthday] = useState(birthdayInput(person.birthDate));
@@ -136,8 +146,8 @@ export function EditPersonSheet({
     setSaving(true);
     setError(null);
     try {
-      await apiSend(`/api/people/${person.id}`, "PATCH", patch);
-      onSaved();
+      await edit.mutateAsync(patch);
+      onSaved?.();
       onClose();
     } catch (err) {
       setError(friendlyError(err, "Couldn't save just now. Please try again."));
