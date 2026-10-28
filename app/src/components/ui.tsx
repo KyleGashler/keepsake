@@ -284,7 +284,7 @@ export function MemoryRow({ memory }: { memory: MemoryCardType }) {
       className="flex-row gap-3 items-center py-3 border-b border-line active:opacity-72"
     >
       <Image
-        source={{ uri: mediaUrl(memory.heroUrl) }}
+        source={{ uri: mediaUrl(memory.thumbUrl ?? memory.heroUrl) }}
         className="w-[76px] h-[76px] rounded-sm bg-surface-alt"
         contentFit="cover"
         transition={200}

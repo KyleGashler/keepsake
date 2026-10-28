@@ -71,7 +71,7 @@ export function Thumb({ item }: { item: MediaItem }) {
   if (item.type === "VIDEO") return <VideoStill item={item} />;
   return (
     <Image
-      source={{ uri: mediaUrl(item.url) }}
+      source={{ uri: mediaUrl(item.thumbUrl ?? item.url) }}
       className="absolute inset-0"
       contentFit="cover"
       transition={200}

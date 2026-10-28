@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "storage:copy-to-s3": "tsx src/scripts/copy-local-to-s3.ts",
     "storage:s3-setup": "tsx src/scripts/s3-emulator-setup.ts",
+    "media:derive-backfill": "tsx src/scripts/derive-backfill.ts",
     "worker": "node dist/worker.js",
     "worker:dev": "tsx watch src/worker.ts"
   },
@@ -23,14 +24,17 @@
     "@mux/mux-node": "^15.5.0",
     "@prisma/client": "^6.19.0",
     "cors": "^2.8.5",
+    "exif-reader": "^2.0.3",
     "express": "^5.3.0",
     "express-rate-limit": "^8.7.0",
     "file-type": "^22.0.2",
     "firebase-admin": "^14.5.0",
+    "heic-decode": "^2.1.0",
     "helmet": "^8.3.0",
     "image-size": "^2.0.2",
     "pino": "^10.3.1",
     "pino-http": "^11.0.0",
+    "sharp": "^0.35.5",
     "zod": "^3.24.1"
   },
   "devDependencies": {

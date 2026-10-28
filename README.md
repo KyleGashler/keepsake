@@ -277,7 +277,9 @@ target, the client `PUT`s the bytes straight to it, `POST /api/media/finalize`
 sniffs the real type from the first 4 KB (a ranged read) and records the size
 and a digest — so the same client code works against a local volume and a
 presigned S3 URL ([server/src/storage/](server/src/storage/)). This section
-is photos (and covers and avatars): they are stored as uploaded. Video and
+is photos (and covers and avatars): they are stored as uploaded, and a
+memory's photos also get smaller renditions beside them (see
+[Photo renditions and palette](#photo-renditions-and-palette)). Video and
 audio take the same three calls but go to Mux instead — see
 [Video and audio (Mux)](#video-and-audio-mux). Every upload is capped at
 2,000,000,000 bytes (`GET /api/media/limits`; the capture screen says so before
@@ -394,8 +396,47 @@ exponential backoff until `maxAttempts`, then marked `FAILED`. A job left
 The worker runs inside the API when `WORKER_INLINE=1` (compose and Fly set it),
 or on its own with `npm run worker` (`npm run worker:dev` off TypeScript).
 
-Two jobs today: `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux))
-and `media.purge` (see [Deleting](#deleting-hard-no-trash)).
+Four jobs today: `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux)),
+`media.purge` (see [Deleting](#deleting-hard-no-trash)), and `media.derive` and
+`memory.refresh` (see [Photo renditions and palette](#photo-renditions-and-palette)).
+
+### Photo renditions and palette
+
+When a memory is saved, every uploaded photo in it gets a `media.derive` job
+(queued in the same transaction as its row). The job reads the original —
+never writes it — and stores two JPEGs beside it through the storage provider:
+`<familyId>/<uploadId>/thumb.jpg` (400 px long edge) and `display.jpg` (1600 px),
+upright, sRGB, with no metadata (so no GPS) ([server/src/jobs/media-derive.ts](server/src/jobs/media-derive.ts),
+[server/src/lib/photo-derivatives.ts](server/src/lib/photo-derivatives.ts)).
+It also records the photo's EXIF capture day (`Media.capturedAt`) and its
+upright size, then refreshes the memory:
+
+- **Palette** — `memory.refresh` clusters the hero photo's THUMB into up to
+  five colours (`Memory.palette`), the hue of its most telling one
+  (`paletteHue`) and its mean lightness (`brightness`). Mosaic sorts by these:
+  round the colour wheel, black-and-white photos last. A reorder or a removed
+  photo queues a refresh, since the hero may have changed.
+- **Date** — a memory saved with no date (`occurredAtSource` DEFAULT; the
+  compose screen sends none when there are photos and nobody touched the date
+  field) takes the earliest EXIF day among its photos. A date a person sends
+  or edits is `HUMAN` and no job ever moves it.
+
+DTOs use the renditions: card `heroUrl` and Mosaic tiles are DISPLAY, card
+`thumbUrl` and media `thumbUrl` are THUMB, a photo's `url` on the memory page
+is DISPLAY and `originalUrl` is the file as uploaded. Until the job has run
+(a few seconds) each falls back to the original.
+
+**HEIC.** sharp's prebuilt libvips reads HEIF containers but can't decode
+HEVC, which is what iPhone photos are, so HEIC pixels go through libheif
+compiled to WebAssembly (`heic-decode`), loaded only when a HEIC turns up.
+
+**Backfill** (photos uploaded before the job existed; safe to re-run):
+
+```bash
+cd server && npm run media:derive-backfill -- --dry-run   # count
+cd server && npm run media:derive-backfill -- --wait      # queue and run them here
+fly ssh console -C "sh -c 'cd /app && node dist/scripts/derive-backfill.js --wait'"   # production
+```
 
 ### Deleting: hard, no trash
 

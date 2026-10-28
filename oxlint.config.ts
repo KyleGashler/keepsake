@@ -345,5 +345,12 @@ export default defineConfig({
       ],
       rules: { "no-console": "off", "unicorn/no-process-exit": "off" },
     },
+    {
+      // Types for an untyped package: `declare module "x"` only declares the
+      // module from a script file (in a module it would be an augmentation).
+      files: ["server/src/types/*.d.ts"],
+      plugins: ["import"],
+      rules: { "import/unambiguous": "off" },
+    },
   ],
 });

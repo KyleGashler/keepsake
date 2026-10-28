@@ -86,6 +86,17 @@ enum StorySource {
   AI_DRAFT
 }
 
+/// Where a memory's date came from. Only a HUMAN date is out of the
+/// machine's reach; the others follow the photos (A6, `memory.refresh`).
+enum DateSource {
+  /// Nobody chose it: the server's "now" at creation.
+  DEFAULT
+  /// The earliest EXIF capture date among the memory's photos.
+  EXIF
+  /// Typed or picked by a person. Never overwritten by a job.
+  HUMAN
+}
+
 /// Progress of speech-to-text (Mux generated captions) over one AUDIO or
 /// VIDEO clip. Null on a Media row means transcription doesn't apply (photos,
 /// placeholders).
@@ -201,14 +212,21 @@ model Memory {
   /// while empty; once a person types or edits it, the job never touches it.
   transcript     String?
   occurredAt     DateTime
+  /// Who set `occurredAt`. Rows from before A6 count as HUMAN, so no job
+  /// ever moves a date someone may have chosen.
+  occurredAtSource DateSource   @default(HUMAN)
   location       String?
   authorId       String?
   /// Deterministic seed for the generated hero image.
   heroSeed       String
-  /// Drives Mosaic's aesthetic ordering (0-360). Stands in for palette analysis.
+  /// Drives Mosaic's ordering (0-360): the hue of the hero photo's most
+  /// telling colour (lib/palette.ts), or the generated stand-in's hue while
+  /// there's no photo to read.
   paletteHue     Int            @default(30)
+  /// Mean lightness of the hero photo, 0-100 (CIE L*).
   brightness     Int            @default(50)
-  /// Hex swatches pulled from the hero image by the analysis job.
+  /// Hex swatches pulled from the hero photo by `memory.refresh`, most of
+  /// the picture first. Empty while there's no derived photo hero.
   palette        String[]       @default([])
   analysisStatus AnalysisStatus @default(PENDING)
   storySource    StorySource    @default(HUMAN)
@@ -272,6 +290,9 @@ model Media {
   /// The Mux upload/asset behind a VIDEO or AUDIO clip. Null for photos,
   /// placeholders and pre-Mux rows.
   muxAssetId       String?
+  /// A photo's EXIF capture date (DateTimeOriginal), as the calendar day at
+  /// 12:00 UTC — the camera's clock has no time zone. Read by `media.derive`.
+  capturedAt       DateTime?
   createdAt        DateTime          @default(now())
 
   memory      Memory       @relation(fields: [memoryId], references: [id], onDelete: Cascade)

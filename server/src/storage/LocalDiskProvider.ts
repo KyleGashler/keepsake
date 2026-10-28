@@ -2,13 +2,14 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
-import type { Readable } from "node:stream";
+import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { logger } from "../lib/logger.js";
 import {
   StorageKeyError,
   UPLOAD_URL_TTL_SECONDS,
   assertDeletable,
+  assertDerivativeWritable,
   assertFamilyPrefix,
   assertSafeKey,
   assertUploadable,
@@ -153,6 +154,12 @@ export class LocalDiskProvider implements StorageProvider {
     assertSafeKey(key);
     // `end` is inclusive here too, so a range means the same thing on both providers.
     return fs.createReadStream(this.pathFor(key), range ? { start: range.start, end: range.end } : undefined);
+  }
+
+  /** Same atomic write-then-rename as an upload, so a reader never sees half a JPEG. */
+  async writeDerivative(key: string, body: Buffer, _contentType: string): Promise<void> {
+    assertDerivativeWritable(key);
+    await this.writeObject(key, Readable.from([body]));
   }
 
   async delete(key: string): Promise<void> {

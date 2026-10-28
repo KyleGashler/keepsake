@@ -16,7 +16,8 @@ primary_region = "sjc"
   # No SEED_DEMO: with real sign-in nobody could reach a seeded demo family
   # (it belongs to a dev identity), so production starts empty and the first
   # person to sign up creates their own.
-  # One machine: the job worker (mux.sync) runs inside the API process.
+  # One machine: the job worker (mux.sync, media.purge, media.derive,
+  # memory.refresh) runs inside the API process.
   WORKER_INLINE = "1"
   # Video and audio live on Mux (Production environment). Its credentials are
   # secrets, not [env]: `fly secrets set MUX_TOKEN_ID=… MUX_TOKEN_SECRET=…

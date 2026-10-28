@@ -84,6 +84,9 @@ function ComposeScreen() {
   const [title, setTitle] = useState("");
   const [story, setStory] = useState("");
   const [date, setDate] = useState(today());
+  // Untouched, a memory with photos takes its date from them (the server
+  // reads their EXIF); a date someone types is always kept.
+  const [dateTouched, setDateTouched] = useState(false);
   const [location, setLocation] = useState("");
   const [authorId, setAuthorId] = useState<string | null>(null);
   const [participantIds, setParticipantIds] = useState<string[]>([]);
@@ -107,6 +110,8 @@ function ComposeScreen() {
   const visuals = assets.filter((a) => !a.mime.startsWith("audio/"));
   const audioMode = params.mode === "audio" || recordings.length > 0;
   const hasVideo = visuals.some((a) => a.mime.startsWith("video/"));
+  const hasPhoto = visuals.some((a) => !a.mime.startsWith("video/"));
+  const photoDated = hasPhoto && !dateTouched;
   // Arrived from the video recorder without its clip (a reload drops the draft).
   const missingVideo = params.mode === "video" && !visuals.length;
 
@@ -172,7 +177,7 @@ function ComposeScreen() {
       const res = await apiSend<{ memory: Memory }>("/api/memories", "POST", {
         title: title.trim(),
         story: story.trim() || undefined,
-        occurredAt: toIso(date),
+        occurredAt: photoDated ? undefined : toIso(date),
         location: location.trim() || undefined,
         authorId: author ?? undefined,
         participantIds,
@@ -310,7 +315,10 @@ function ComposeScreen() {
             <Field label="Date" className="flex-1">
               <TextInput
                 value={date}
-                onChangeText={setDate}
+                onChangeText={(next) => {
+                  setDate(next);
+                  setDateTouched(true);
+                }}
                 placeholder="YYYY-MM-DD"
                 placeholderTextColorClassName="accent-muted"
                 className={`${INPUT} text-[15.5px]`}
@@ -326,6 +334,9 @@ function ComposeScreen() {
               />
             </Field>
           </View>
+          {photoDated ? (
+            <Text className="-mt-4 type-caption">If the photo knows when it was taken, that date is used instead.</Text>
+          ) : null}
 
           <Field label="Who's in it">
             <View className="flex-row flex-wrap gap-2">

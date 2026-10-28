@@ -16,6 +16,7 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   UPLOAD_URL_TTL_SECONDS,
   assertDeletable,
+  assertDerivativeWritable,
   assertFamilyPrefix,
   assertSafeKey,
   assertUploadable,
@@ -223,6 +224,19 @@ export class S3StorageProvider implements StorageProvider {
     // On Node the SDK's body is the HTTP response stream itself.
     if (!(out.Body instanceof Readable)) throw new Error(`Empty or non-stream body for ${key}`);
     return out.Body;
+  }
+
+  /**
+   * A plain PutObject from this process (the server rendered the bytes), no
+   * create-only condition: re-deriving a photo replaces its rendering. The
+   * bucket policy's create-only rule covers `original.*` keys only, and the
+   * guard keeps this method off them.
+   */
+  async writeDerivative(key: string, body: Buffer, contentType: string): Promise<void> {
+    assertDerivativeWritable(key);
+    await this.client.send(
+      new PutObjectCommand({ Bucket: this.bucket, Key: key, Body: body, ContentType: contentType }),
+    );
   }
 
   async delete(key: string): Promise<void> {

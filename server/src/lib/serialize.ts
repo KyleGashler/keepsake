@@ -1,9 +1,10 @@
 import { RENDER_VERSION } from "./placeholder.js";
-import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
+import { READ_URL_TTL_SECONDS, storage, type PhotoDerivativeKind } from "../storage/index.js";
 import { mediaHost } from "../media-host/index.js";
 import type {
   Prisma,
   Collection,
+  Derivative,
   Media,
   MediaStatus,
   MediaType,
@@ -17,17 +18,38 @@ import type {
  * The family's order (Media.sortOrder, set by reordering on the memory page):
  * the first photo or video is the memory's hero everywhere it's shown.
  */
-const MEDIA_ORDER: Prisma.MediaOrderByWithRelationInput[] = [{ sortOrder: "asc" }, { createdAt: "asc" }];
+export const MEDIA_ORDER: Prisma.MediaOrderByWithRelationInput[] = [{ sortOrder: "asc" }, { createdAt: "asc" }];
 
 /**
- * Load Media with this so the DTOs can sign a clip's URLs and get them in
- * order: `media: mediaInclude`.
+ * Load Media with this so the DTOs can sign a clip's URLs, pick a photo's
+ * renditions and get them in order: `media: mediaInclude`.
  * The types below require it, so a query that forgets won't compile.
  */
-export const mediaInclude = { include: { muxAsset: true }, orderBy: MEDIA_ORDER } as const;
+export const mediaInclude = {
+  include: { muxAsset: true, derivatives: { select: { kind: true, storageKey: true } } },
+  orderBy: MEDIA_ORDER,
+} as const;
 
-/** A Media row with its Mux asset (null for photos, placeholders, pre-Mux rows). */
-export type MediaRow = Media & { muxAsset: MuxAsset | null };
+/**
+ * A Media row with its Mux asset (null for photos, placeholders, pre-Mux
+ * rows) and its derivatives (a photo's THUMB/DISPLAY once `media.derive` has
+ * run; none for anything else).
+ */
+export type MediaRow = Media & {
+  muxAsset: MuxAsset | null;
+  derivatives: Pick<Derivative, "kind" | "storageKey">[];
+};
+
+/**
+ * Could this item be its memory's hero? A photo, or a video Mux has given a
+ * playback id (so it has a poster) that hasn't failed. The first one, in the
+ * family's order, is the hero. `memory.refresh` reads its palette from the
+ * same choice.
+ */
+export function canBeHero(m: { type: MediaType; muxAsset: Pick<MuxAsset, "playbackId" | "status"> | null }) {
+  if (m.type === "PHOTO") return true;
+  return m.type === "VIDEO" && Boolean(m.muxAsset?.playbackId) && m.muxAsset?.status !== "FAILED";
+}
 
 /**
  * Placeholder media is generated on demand; uploads are served from disk.
@@ -92,6 +114,19 @@ export async function mediaReadUrl(m: Pick<Media, "url" | "storageKey">) {
 }
 
 /**
+ * A photo at the size asked for: its THUMB (400 px long edge) or DISPLAY
+ * (1600 px) JPEG once `media.derive` has made it, else the original — a
+ * fresh upload is shown as uploaded for the few seconds until then (a HEIC
+ * won't draw in most browsers meanwhile; the client's tile shows through).
+ * Placeholders have only their generated URL.
+ */
+export async function photoUrl(m: Pick<MediaRow, "url" | "storageKey" | "derivatives">, kind: PhotoDerivativeKind) {
+  const rendition = m.derivatives.find((d) => d.kind === kind);
+  if (rendition) return storage().getReadUrl(rendition.storageKey, READ_URL_TTL_SECONDS);
+  return mediaReadUrl(m);
+}
+
+/**
  * A clip on Mux, as the client sees it: PROCESSING until the asset plays,
  * then its signed URLs. `url` is HLS for video and the `audio.m4a` rendition
  * for audio (HLS if Mux couldn't make the rendition); `posterUrl` is a signed
@@ -111,42 +146,56 @@ async function muxMedia(m: MediaRow, asset: MuxAsset) {
 }
 
 /**
- * The still that stands for a PHOTO or VIDEO in a card or tile: the photo
- * itself, or a video's poster frame — never the video. A clip still
- * processing gets its poster URL as soon as Mux has a playback id: it fails
- * to load until Mux has a frame, and the client draws its own tile behind
- * it meanwhile. Null when there's no still to give.
+ * The still that stands for a PHOTO or VIDEO in a card or tile: the photo's
+ * rendition of that size, or a video's poster frame — never the video. A
+ * clip still processing gets its poster URL as soon as Mux has a playback
+ * id: it fails to load until Mux has a frame, and the client draws its own
+ * tile behind it meanwhile. Null when there's no still to give.
  */
-export async function stillUrl(m: MediaRow): Promise<string | null> {
-  if (m.type === "PHOTO") return mediaReadUrl(m);
-  if (m.type !== "VIDEO" || !m.muxAsset?.playbackId || m.muxAsset.status === "FAILED") return null;
+export async function stillUrl(m: MediaRow, kind: PhotoDerivativeKind = "DISPLAY"): Promise<string | null> {
+  if (m.type === "PHOTO") return photoUrl(m, kind);
+  if (!canBeHero(m) || !m.muxAsset?.playbackId) return null;
   return mediaHost()?.posterUrl(m.muxAsset.playbackId, m.muxAsset.durationS) ?? null;
 }
 
 /**
  * A memory's hero: the first PHOTO or VIDEO with a still, in the order
- * given. Null when none has one.
+ * given, at the size asked for. Null when none has one.
  */
-export async function heroStill(media: MediaRow[]): Promise<{ url: string; media: MediaRow } | null> {
+export async function heroStill(
+  media: MediaRow[],
+  kind: PhotoDerivativeKind = "DISPLAY",
+): Promise<{ url: string; media: MediaRow } | null> {
   for (const m of media) {
     if (m.type !== "PHOTO" && m.type !== "VIDEO") continue;
-    const url = await stillUrl(m);
+    const url = await stillUrl(m, kind);
     if (url) return { url, media: m };
   }
   return null;
 }
 
+/**
+ * One photo, video or recording. A photo's `url` is its DISPLAY rendition
+ * and `thumbUrl` its THUMB (each the original until it's made);
+ * `originalUrl` is the file as uploaded — only the memory page gets these
+ * items, and downloads (A17) sign their own.
+ */
 export async function mediaDto(m: MediaRow) {
+  const photo = !m.muxAsset && m.type === "PHOTO";
   const av = m.muxAsset
     ? await muxMedia(m, m.muxAsset)
-    : { status: m.status, url: await mediaReadUrl(m), posterUrl: null };
+    : { status: m.status, url: photo ? await photoUrl(m, "DISPLAY") : await mediaReadUrl(m), posterUrl: null };
   return {
     id: m.id,
     type: m.type,
     /** PROCESSING | READY | FAILED. Photos and placeholders are READY. */
     status: av.status,
-    /** Null while a clip is PROCESSING or FAILED. */
+    /** Null while a clip is PROCESSING or FAILED. A photo's DISPLAY rendition. */
     url: av.url,
+    /** A photo's THUMB rendition (else `url`); a video's poster; null for audio. */
+    thumbUrl: photo ? await photoUrl(m, "THUMB") : av.posterUrl,
+    /** A photo as uploaded; null for everything else (Mux keeps clips). */
+    originalUrl: photo ? await mediaReadUrl(m) : null,
     /** A video's signed poster frame; null for everything else. */
     posterUrl: av.posterUrl,
     caption: m.caption,
@@ -211,15 +260,18 @@ const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
 
 export async function memoryCardDto(m: MemoryWithRelations) {
   const media = m.media ?? [];
-  const hero = await heroStill(media);
+  const hero = await heroStill(media, "DISPLAY");
+  const heroUrl = hero?.url ?? imageUrl(m.heroSeed, 1200, 900);
   return {
     id: m.id,
     title: m.title,
     occurredAt: m.occurredAt.toISOString(),
     location: m.location,
-    // A photo, or a video's poster frame (never the video itself); the
-    // generated stand-in when there's neither.
-    heroUrl: hero?.url ?? imageUrl(m.heroSeed, 1200, 900),
+    // A photo's DISPLAY rendition, or a video's poster frame (never the
+    // video itself); the generated stand-in when there's neither.
+    heroUrl,
+    /** The same picture for a small slot (≤ ~130 pt): a photo's THUMB. */
+    thumbUrl: hero ? ((await stillUrl(hero.media, "THUMB")) ?? heroUrl) : imageUrl(m.heroSeed, 400, 300),
     excerpt: m.story ? m.story.replace(/\s+/g, " ").slice(0, 140) : null,
     mediaCount: media.length,
     hasAudio: media.some((x) => x.type === "AUDIO"),
