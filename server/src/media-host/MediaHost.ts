@@ -47,6 +47,13 @@ export interface MediaHost {
   /** Signed poster frame. */
   posterUrl: (playbackId: string, durationS: number | null) => Promise<string>;
   /**
+   * The same poster frame as `posterUrl` (same moment of the clip), drawn
+   * `width` pixels wide, as JPEG bytes: `memory.refresh` reads its colours,
+   * and nothing stores it. Throws `MediaHostError`, retryable while Mux may
+   * yet draw it (network, 404/412 just after ready, 429, 5xx).
+   */
+  fetchPoster: (playbackId: string, durationS: number | null, width: number) => Promise<Buffer>;
+  /**
    * The signed `audio.m4a` rendition, served as an attachment named
    * `filename` (Mux's `download` option, carried in the token's claims).
    * Give the extension too: without one Mux names the file `.mp4`.

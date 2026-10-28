@@ -6,20 +6,11 @@ import { mediaPurgeHandler } from "./media-purge.js";
 import { memoryRefreshHandler } from "./memory-refresh.js";
 import { muxSyncHandler } from "./mux-sync.js";
 import { PostgresJobQueue, type PostgresJobQueueOptions } from "./PostgresJobQueue.js";
+import { jobQueue } from "./queue.js";
 
 export { PermanentJobError } from "./JobQueue.js";
 export type { JobQueue, JobPayloads, JobType } from "./JobQueue.js";
-
-let instance: JobQueue | null = null;
-
-/**
- * The process-wide queue. Routes only enqueue through it; handlers are
- * registered and polling starts only where `startWorker` runs.
- */
-export function jobQueue(): JobQueue {
-  if (!instance) instance = new PostgresJobQueue(prisma, { log: logger.child({ component: "jobs" }) });
-  return instance;
-}
+export { jobQueue };
 
 export type WorkerOptions = Partial<Omit<PostgresJobQueueOptions, "log">>;
 
