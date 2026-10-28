@@ -53,9 +53,11 @@ export interface JobPayloads {
    */
   "image.derive": { familyId: string; storageKey: string };
   /**
-   * Re-read what a memory takes from its photos: the palette from its hero,
-   * its date from their EXIF unless a person set one. Enqueued when the hero
-   * may have changed (reorder, removal); `media.derive` does the same inline.
+   * Re-read what a memory takes from its media: the palette from its hero (a
+   * photo's THUMB or a READY video's Mux poster), its date from its photos'
+   * EXIF unless a person set one. Enqueued when the hero may have changed
+   * (reorder, removal, a video becoming READY or FAILED); `media.derive`
+   * does the same inline.
    */
   "memory.refresh": { familyId: string; memoryId: string };
 }

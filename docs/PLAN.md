@@ -347,6 +347,54 @@ not a Media row, so they got no renditions and lists signed the full original
   existing photos and covers keep serving their originals until they're set
   again.
 
+**As built (2026-10-27), follow-up — video heroes (branch
+`task/A6c-video-palette`):** a memory whose hero is a READY video now takes
+its palette from the Mux poster frame. `memory.refresh` fetches the poster
+through the new `MediaHost.fetchPoster(playbackId, durationS, width)` (the
+same signed `thumbnail.jpg` and moment as `posterUrl`, 160 px wide, a few KB,
+capped at 2 MB) and hands the bytes to the existing `paletteOf`. Nothing is
+stored: Mux draws the poster on request and the palette is all we keep. The
+write guard now compares the hero's id *and*, for a video, its status, so a
+refresh that read a PROCESSING video can't overwrite the poster palette a
+newer refresh wrote. Outcomes: a READY video gives `analysisStatus` READY; a
+video still PROCESSING, an audio-only memory, or no hero gives the stand-in's
+values (PENDING) with no retry; a poster Mux refuses (4xx other than
+404/412/429) or bytes sharp can't read gives the stand-in, FAILED; network,
+404/412, 429 and 5xx are retried by the queue (default backoff, 5 attempts),
+and the handler's new `onFinalFailure` then settles on the stand-in, FAILED. A
+later reorder or removal tries again. An errored asset (FAILED) can't be a
+hero, so the memory falls to its next photo or the stand-in.
+- **Trigger.** `settleLinkedMedia` (the one place every writer — webhooks,
+  `mux.sync`, `POST /memories` linking an already-ready clip — brings a Media
+  row up to date) queues `memory.refresh` in the same transaction when a
+  VIDEO row turns READY or FAILED, deduplicated per memory by `kickRefresh`.
+  To enqueue from there without an import cycle, `jobQueue()` moved to
+  `jobs/queue.ts` (re-exported from `jobs/index.ts`).
+- **`media.derive`.** Its inline refresh can now meet a video hero; a Mux
+  error there is no longer the photo's failure, so it queues a
+  `memory.refresh` instead of failing the derive.
+- **Mosaic** needed no code change: ordering reads the palette whatever the
+  hero's type, so a grey video sorts with black-and-white photos at the end.
+- **Dev without Mux:** a READY video hero is left as it is (logged), no
+  retries. No video can be uploaded there anyway.
+- **Verified** with real Mux (Development environment) on a scratch DB, API
+  on 4720: a 30 s blue clip's memory was created PROCESSING at the stand-in
+  hue 35, and moved to 220 (`#3263c6`) within 3 s of `mux.sync` seeing it
+  READY, with one refresh job. A short clip ready before `POST /memories`
+  went straight to 220 through the linking path. In a [video, orange photo]
+  memory, reordering the photo first moved it to hue 26, and back to 220. A
+  noisy grey clip read hue 0 with a neutral palette and sorted last. A
+  random-bytes "video" errored, and its memory stayed at its stand-in hue
+  (PENDING) after one refresh. A tampered playback id got 403 → stand-in,
+  FAILED, at once. With `fetch` stubbed to fail for `image.mux.com`, three
+  attempts backed off and then settled on the stand-in, FAILED, and a later
+  refresh with Mux back restored 220 READY. Without Mux env the refresh
+  logged and left the colours alone. Test memories were deleted (their Mux
+  assets purged) and the DB dropped.
+- **Prod steps:** none beyond deploy. No migration and no backfill (prod data
+  is test data). Existing video-hero memories pick up a palette on their next
+  refresh (reorder, removal).
+
 #### A7. CRUD completeness
 **Depends:** A3.
 > **Decision (2026-10-23): hard delete, no trash or restore.** Deleting a

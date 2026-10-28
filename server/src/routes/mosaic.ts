@@ -8,11 +8,12 @@ export const mosaicRouter = Router();
 
 /**
  * Mosaic presents the archive by colour rather than by date. A memory's
- * colour is its hero photo's palette (A6: `memory.refresh` reads it from the
- * photo itself); memories without a derived photo keep their generated
- * stand-in's hue, which is the picture they show. Tiles run round the colour
- * wheel by hue, lighter first within a hue; black-and-white photos, which
- * have no hue worth the name, gather at the end from light to dark.
+ * colour is its hero's palette (A6: `memory.refresh` reads it from the
+ * photo's THUMB, or a video's Mux poster frame); memories with neither yet
+ * keep their generated stand-in's hue, which is the picture they show. Tiles
+ * run round the colour wheel by hue, lighter first within a hue;
+ * black-and-white heroes, photo or video, which have no hue worth the name,
+ * gather at the end from light to dark.
  */
 mosaicRouter.get("/mosaic", async (req, res) => {
   const family = req.ctx.family;
@@ -40,7 +41,7 @@ mosaicRouter.get("/mosaic", async (req, res) => {
         isVideo: hero?.media.type === "VIDEO",
         hasAudio: m.media.some((x) => x.type === "AUDIO"),
         paletteHue: m.paletteHue,
-        /** The hero photo's colours, most of the picture first; empty until read. */
+        /** The hero's colours (photo or video poster), most of the picture first; empty until read. */
         palette: m.palette,
         span,
       };

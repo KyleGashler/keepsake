@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import type { Logger } from "pino";
 import { prisma } from "../lib/prisma.js";
 import { MAX_DERIVE_BYTES, UndecodableImageError, renderPhoto, type RenderedPhoto } from "../lib/photo-derivatives.js";
 import { PURGE_MAX_ATTEMPTS } from "../lib/purge.js";
@@ -6,7 +7,8 @@ import { keyBelongsTo } from "../lib/upload-keys.js";
 import { PHOTO_DERIVATIVE_KINDS, derivativeKey, storage } from "../storage/index.js";
 import { isOriginalKey } from "../storage/StorageProvider.js";
 import { PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js";
-import { readAll, refreshMemory } from "./memory-refresh.js";
+import { MediaHostError } from "../media-host/index.js";
+import { kickRefresh, readAll, refreshMemory } from "./memory-refresh.js";
 
 /**
  * `media.derive`: one photo's THUMB (400 px) and DISPLAY (1600 px) JPEGs,
@@ -41,7 +43,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
 
       const have = new Set(media.derivatives.map((d) => d.kind));
       if (PHOTO_DERIVATIVE_KINDS.every((k) => have.has(k))) {
-        await refreshMemory(familyId, media.memoryId, ctx.log);
+        await refreshAfterDerive(queue, familyId, media.memoryId, ctx.log);
         return;
       }
 
@@ -82,7 +84,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
         { mediaId, capturedAt: rendered.capturedAt?.toISOString() ?? null, sizes: rendered.renditions.map((r) => `${r.kind}:${r.width}x${r.height}`) },
         "photo derived",
       );
-      await refreshMemory(familyId, media.memoryId, ctx.log);
+      await refreshAfterDerive(queue, familyId, media.memoryId, ctx.log);
     },
 
     async onFinalFailure({ mediaId }, err, ctx) {
@@ -120,6 +122,21 @@ export async function renderAndStore(key: string): Promise<{ rendered: RenderedP
     written.push(at);
   }
   return { rendered, written };
+}
+
+/**
+ * Refresh the memory now that this photo is derived. If the hero is a video
+ * and Mux can't draw its poster just now, that's not this photo's failure:
+ * hand the refresh to its own job, which retries Mux with backoff.
+ */
+async function refreshAfterDerive(queue: JobQueue, familyId: string, memoryId: string, log: Logger) {
+  try {
+    await refreshMemory(familyId, memoryId, log);
+  } catch (err) {
+    if (!(err instanceof MediaHostError)) throw err;
+    log.info({ memoryId, err: err.message }, "media.derive: video poster unavailable; memory.refresh will retry");
+    await kickRefresh(queue, familyId, memoryId);
+  }
 }
 
 /** Queue `media.derive` for each uploaded photo, in the caller's transaction. */

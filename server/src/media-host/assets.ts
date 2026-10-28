@@ -1,5 +1,7 @@
 import type { MediaStatus, MuxAsset, Prisma, TranscriptStatus } from "@prisma/client";
 import type { JobQueue } from "../jobs/JobQueue.js";
+import { kickRefresh } from "../jobs/memory-refresh.js";
+import { jobQueue } from "../jobs/queue.js";
 import { prisma } from "../lib/prisma.js";
 import type { AssetSnapshot, HostUpload, MediaHost } from "./MediaHost.js";
 
@@ -407,6 +409,12 @@ export async function settleLinkedMedia(tx: Prisma.TransactionClient, asset: Mux
     if (Object.keys(data).length === 0) continue;
     await tx.media.update({ where: { id: m.id }, data });
     if (offer) await offerToMemory(tx, m.memoryId, m.id, m.transcript);
+    // A video that can now show its poster (or never will) may change what
+    // the memory's hero is, or what colour it is: `memory.refresh` reads the
+    // poster (A6). Queued in this transaction, deduplicated per memory.
+    if (m.type === "VIDEO" && (status === "READY" || status === "FAILED") && data.status) {
+      await kickRefresh(jobQueue(), asset.familyId, m.memoryId, tx);
+    }
   }
 }
 

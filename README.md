@@ -411,11 +411,18 @@ upright, sRGB, with no metadata (so no GPS) ([server/src/jobs/media-derive.ts](s
 It also records the photo's EXIF capture day (`Media.capturedAt`) and its
 upright size, then refreshes the memory:
 
-- **Palette** — `memory.refresh` clusters the hero photo's THUMB into up to
+- **Palette** — `memory.refresh` clusters the hero's picture into up to
   five colours (`Memory.palette`), the hue of its most telling one
-  (`paletteHue`) and its mean lightness (`brightness`). Mosaic sorts by these:
-  round the colour wheel, black-and-white photos last. A reorder or a removed
-  photo queues a refresh, since the hero may have changed.
+  (`paletteHue`) and its mean lightness (`brightness`). For a photo hero
+  that's its THUMB. For a video hero that's its Mux poster frame, fetched
+  160 px wide through `MediaHost.fetchPoster` once the clip is READY and never
+  stored. Until then (still processing), and for audio-only memories, the
+  memory keeps its generated stand-in's colours. A poster Mux won't draw
+  leaves the stand-in with `analysisStatus` FAILED; network errors, 5xx and
+  429 are retried with backoff first. Mosaic sorts by these: round the colour
+  wheel, black-and-white heroes (photo or video) last. A reorder, a removed
+  item, or a video turning READY or FAILED (webhook or `mux.sync`) queues a
+  refresh, since the hero or its colours may have changed.
 - **Date** — a memory saved with no date (`occurredAtSource` DEFAULT; the
   compose screen sends none when there are photos and nobody touched the date
   field) takes the earliest EXIF day among its photos. A date a person sends

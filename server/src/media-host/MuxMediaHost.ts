@@ -22,6 +22,9 @@ export interface MuxConfig {
 /** Poster frames are drawn at this width; cards and heroes scale them down. */
 const POSTER_WIDTH = 1200;
 
+/** A small poster fetched for its colours is a few KB; past this something is wrong. */
+const POSTER_FETCH_MAX_BYTES = 2 * 1024 * 1024;
+
 /**
  * How long one signed URL is reused for. Signing per response would give
  * every response a new URL, and a new URL is a cache miss for every poster
@@ -149,13 +152,40 @@ export class MuxMediaHost implements MediaHost {
       : `https://stream.mux.com/${playbackId}/audio.m4a?token=${token}`;
   }
 
-  async posterUrl(playbackId: string, durationS: number | null): Promise<string> {
+  posterUrl(playbackId: string, durationS: number | null): Promise<string> {
+    return this.thumbnailUrl(playbackId, durationS, POSTER_WIDTH);
+  }
+
+  async fetchPoster(playbackId: string, durationS: number | null, width: number): Promise<Buffer> {
+    const url = await this.thumbnailUrl(playbackId, durationS, width);
+    let res: Response;
+    try {
+      res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    } catch (err) {
+      throw new MediaHostError(`Poster fetch failed: ${errorMessage(err)}`, null, true, { cause: err });
+    }
+    if (!res.ok) {
+      // 404 and 412: an asset that has only just become ready can take a
+      // moment to be drawn. Any other 4xx won't change on a retry.
+      const retryable = res.status === 404 || res.status === 412 || res.status === 429 || res.status >= 500;
+      throw new MediaHostError(`Poster fetch answered ${res.status}`, res.status, retryable);
+    }
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    const body = declared > POSTER_FETCH_MAX_BYTES ? null : Buffer.from(await res.arrayBuffer());
+    if (!body || body.length > POSTER_FETCH_MAX_BYTES) {
+      throw new MediaHostError("Poster is far larger than the size asked for", res.status, false);
+    }
+    return body;
+  }
+
+  /** A signed `thumbnail.jpg`, `width` wide, at the clip's poster moment. */
+  private async thumbnailUrl(playbackId: string, durationS: number | null, width: number): Promise<string> {
     // A couple of seconds in rather than frame 0, which is often black; the
     // middle of a clip shorter than that.
     const time = durationS && durationS > 0 ? Math.min(2, Math.floor(durationS / 2)) : 0;
     // Mux reads thumbnail options from the token's claims on a signed
     // playback id, and refuses them in the query string.
-    const token = await this.sign(playbackId, "thumbnail", 0, { width: String(POSTER_WIDTH), time: String(time) });
+    const token = await this.sign(playbackId, "thumbnail", 0, { width: String(width), time: String(time) });
     return `https://image.mux.com/${playbackId}/thumbnail.jpg?token=${token}`;
   }
 
