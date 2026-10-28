@@ -161,7 +161,7 @@ export function ChildHeader({ child }: { child: ChildSummary }) {
             />
           ))}
         </Svg>
-        <ChildPortrait child={child} size={PORTRAIT} uri={child.photoUrl} />
+        <ChildPortrait child={child} size={PORTRAIT} uri={child.photoThumbUrl} />
         <Sparkle size={24} color={ink} variant="outline" strokeWidth={1.8} className="absolute -right-4 -top-[18px]" />
       </View>
       <View className="flex-1 pt-2">

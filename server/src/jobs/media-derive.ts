@@ -45,26 +45,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
         return;
       }
 
-      const head = await storage().head(key);
-      if (!head) throw new PermanentJobError(`The original is missing from storage: ${key}`);
-      if (head.bytes > MAX_DERIVE_BYTES) {
-        throw new PermanentJobError(`Too large to derive (${head.bytes} bytes; the limit is ${MAX_DERIVE_BYTES})`);
-      }
-
-      let rendered: RenderedPhoto;
-      try {
-        rendered = await renderPhoto(await readAll(await storage().stream(key)));
-      } catch (err) {
-        if (err instanceof UndecodableImageError) throw new PermanentJobError(err.message, { cause: err });
-        throw err;
-      }
-
-      const written: string[] = [];
-      for (const r of rendered.renditions) {
-        const at = derivativeKey(key, r.kind);
-        await storage().writeDerivative(at, r.body, "image/jpeg");
-        written.push(at);
-      }
+      const { rendered, written } = await renderAndStore(key);
 
       const kept = await prisma.$transaction(async (tx) => {
         const rows = await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "Media" WHERE id = ${mediaId} FOR UPDATE`;
@@ -109,6 +90,36 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
       ctx.log.error({ mediaId, err }, "media.derive gave up; the original is served in place of renditions");
     },
   };
+}
+
+/**
+ * Read an original, render its THUMB and DISPLAY, and write them beside it
+ * (`derivativeKey`). Shared by `media.derive` and `image.derive`. The
+ * original is only read. A missing, oversized or undecodable original is a
+ * `PermanentJobError`; storage errors are thrown as they are, for a retry.
+ */
+export async function renderAndStore(key: string): Promise<{ rendered: RenderedPhoto; written: string[] }> {
+  const head = await storage().head(key);
+  if (!head) throw new PermanentJobError(`The original is missing from storage: ${key}`);
+  if (head.bytes > MAX_DERIVE_BYTES) {
+    throw new PermanentJobError(`Too large to derive (${head.bytes} bytes; the limit is ${MAX_DERIVE_BYTES})`);
+  }
+
+  let rendered: RenderedPhoto;
+  try {
+    rendered = await renderPhoto(await readAll(await storage().stream(key)));
+  } catch (err) {
+    if (err instanceof UndecodableImageError) throw new PermanentJobError(err.message, { cause: err });
+    throw err;
+  }
+
+  const written: string[] = [];
+  for (const r of rendered.renditions) {
+    const at = derivativeKey(key, r.kind);
+    await storage().writeDerivative(at, r.body, "image/jpeg");
+    written.push(at);
+  }
+  return { rendered, written };
 }
 
 /** Queue `media.derive` for each uploaded photo, in the caller's transaction. */

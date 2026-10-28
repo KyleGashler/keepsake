@@ -280,6 +280,73 @@ so the ffmpeg poster and audio-duration items are dropped.
   policy change: the API's `s3:PutObject` already covers every key, and the
   create-only policy covers `original.*` only.
 
+**As built (2026-10-27), follow-up — profile photos and pillar covers
+(A6b):** `Person.photoKey` and `PillarCover.storageKey` hold an upload's key,
+not a Media row, so they got no renditions and lists signed the full original
+(a HEIC one didn't display in Chrome). Now they do:
+- **Job.** A sibling job, `image.derive { familyId, storageKey }`
+  (`jobs/image-derive.ts`), not an extension of `media.derive`. That job is
+  about a Media row: Derivative rows, EXIF date, palette, memory refresh. This
+  one has none of those. Both call the same `renderAndStore` (factored out of
+  `media-derive.ts`), so they share rendering, HEIC decoding, size limits, the
+  `PermanentJobError` rules and the keys (`thumb.jpg`/`display.jpg` beside the
+  original). It's keyed by the storage key. After writing, it marks every
+  person and cover in the family still pointing at the key, with
+  `updateMany … WHERE photoKey = key`. A photo replaced mid-render is
+  therefore never marked with the old one's files. If nothing was marked, the
+  files it wrote go to `media.purge`. It skips rendering when every row is
+  already marked, and it uses the default 5 attempts.
+- **Schema.** Migration `20261027180000_a6b_picture_renditions` adds
+  `Person.photoDerivedKey` and `PillarCover.derivedKey`: the key whose
+  renditions exist. DTOs serve a rendition only while it equals the current
+  key. A stale value can't serve the wrong picture, and a photo set back to
+  an earlier key re-derives.
+- **Sizes: no new one.** Child `photoUrl` → DISPLAY, because the children list
+  shows it as a full-width 170 pt `PhotoCard` (~1100 px at 3x). New
+  `photoThumbUrl` → THUMB for the 88 pt and 30 pt portraits (264 px at 3x, under
+  400). Pillar `coverUrl` → DISPLAY (also a full-width card). Each falls back
+  to the original (`signedPictureUrl` in `lib/upload-keys.ts`). The `PATCH
+  /people/:id` response's `person` carries both URLs too. Client: the
+  `ChildSummary` type, plus the portraits in `child-header.tsx` and
+  `collection-archive.tsx` switched to `photoThumbUrl`.
+- **Enqueue and purge.** `PATCH /people/:id` and `PUT
+  /library/pillars/:key/cover` queue `image.derive` in the same transaction as
+  the write. A re-send of a photo that has no renditions yet queues it again.
+  Replacing or clearing a photo or cover enqueues `media.purge` for the old
+  key's renditions only (`purgeRenditionsOf` in `lib/purge.ts`). The original
+  stays, as before: dropping a pointer isn't a family deleting an upload.
+  The old key is read under a lock so racing edits can't skip a purge: the
+  Person row `FOR UPDATE`, or for covers the Family row `FOR NO KEY UPDATE`,
+  since a cover may have no row yet. Deleting a person now also names its
+  photo's rendition keys. Family and account deletion needed nothing, because
+  the prefix purge takes everything.
+- **Shared uploads.** A client may point a memory photo, a profile photo and
+  a cover at the same upload, and then they share renditions. `media.purge`'s
+  reference check now counts a `thumb.jpg`/`display.jpg` as in use while any
+  Media, Person or PillarCover points at an original in the same folder. So
+  deleting the memory keeps the profile photo's renditions, and replacing the
+  profile photo keeps the memory's.
+- **Verified** on scratch DB `fu_profile_covers` (local storage, dev auth,
+  API on 4710):
+  - A `sips` HEVC HEIC profile photo: the PATCH response served the original
+    HEIC. Seconds later, `photoUrl` was a 1600×1067 JPEG and `photoThumbUrl`
+    400×267, with no EXIF.
+  - Replacing it with an EXIF-orientation-6 JPEG gave upright 1067×1600 and
+    267×400 renditions, matching Quick Look's rendering. The HEIC's renditions
+    were purged and its original kept.
+  - Setting a cover gave a 1600×1067 DISPLAY. Replacing it purged the old
+    renditions, and removing it purged the new ones; both originals were kept.
+  - With the profile photo's upload also used as a memory photo, deleting the
+    memory kept all three files.
+  - Deleting the child purged the original and both renditions.
+  - Deleting the family removed its whole prefix.
+  - Every job succeeded.
+  - Not verified: the purge after a mid-render replace (timing-dependent),
+    S3, and Expo web.
+- **Prod steps:** the migration runs on boot, then `fly deploy`. No backfill:
+  existing photos and covers keep serving their originals until they're set
+  again.
+
 #### A7. CRUD completeness
 **Depends:** A3.
 > **Decision (2026-10-23): hard delete, no trash or restore.** Deleting a

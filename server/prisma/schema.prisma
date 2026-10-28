@@ -139,24 +139,28 @@ model Family {
 
 /// An individual whose life is part of the family's story.
 model Person {
-  id          String     @id @default(cuid())
-  familyId    String
-  name        String
-  role        PersonRole
+  id              String     @id @default(cuid())
+  familyId        String
+  name            String
+  role            PersonRole
   /// How this person is referred to inside the family ("Mom", "Grandpa").
-  relation    String?
-  birthDate   DateTime?
+  relation        String?
+  birthDate       DateTime?
   /// Deterministic seed for the generated placeholder avatar.
-  avatarSeed  String
-  accentColor String     @default("#C97B5A")
-  sortOrder   Int        @default(0)
+  avatarSeed      String
+  accentColor     String     @default("#C97B5A")
+  sortOrder       Int        @default(0)
   /// Set when this person can sign in. Children never have one — enforced in
   /// application code, not by the schema.
-  userId      String?    @unique
+  userId          String?    @unique
   /// Storage key of an uploaded profile photo (a finalized upload in this
   /// family's prefix). Null falls back to the generated avatar.
-  photoKey    String?
-  createdAt   DateTime   @default(now())
+  photoKey        String?
+  /// The `photoKey` whose THUMB and DISPLAY renditions `image.derive` has
+  /// written beside it. Renditions are served only while this equals
+  /// `photoKey`; until then (or when it's stale) the original is.
+  photoDerivedKey String?
+  createdAt       DateTime   @default(now())
 
   family        Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
   user          User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -203,35 +207,35 @@ model Collection {
 
 /// The foundational object: a single meaningful moment preserved by a family.
 model Memory {
-  id             String         @id @default(cuid())
-  familyId       String
-  title          String
+  id               String         @id @default(cuid())
+  familyId         String
+  title            String
   /// The written narrative. Families always retain editorial control.
-  story          String?
+  story            String?
   /// Written record of spoken audio. Filled from the clips' Media.transcript
   /// while empty; once a person types or edits it, the job never touches it.
-  transcript     String?
-  occurredAt     DateTime
+  transcript       String?
+  occurredAt       DateTime
   /// Who set `occurredAt`. Rows from before A6 count as HUMAN, so no job
   /// ever moves a date someone may have chosen.
-  occurredAtSource DateSource   @default(HUMAN)
-  location       String?
-  authorId       String?
+  occurredAtSource DateSource     @default(HUMAN)
+  location         String?
+  authorId         String?
   /// Deterministic seed for the generated hero image.
-  heroSeed       String
+  heroSeed         String
   /// Drives Mosaic's ordering (0-360): the hue of the hero photo's most
   /// telling colour (lib/palette.ts), or the generated stand-in's hue while
   /// there's no photo to read.
-  paletteHue     Int            @default(30)
+  paletteHue       Int            @default(30)
   /// Mean lightness of the hero photo, 0-100 (CIE L*).
-  brightness     Int            @default(50)
+  brightness       Int            @default(50)
   /// Hex swatches pulled from the hero photo by `memory.refresh`, most of
   /// the picture first. Empty while there's no derived photo hero.
-  palette        String[]       @default([])
-  analysisStatus AnalysisStatus @default(PENDING)
-  storySource    StorySource    @default(HUMAN)
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  palette          String[]       @default([])
+  analysisStatus   AnalysisStatus @default(PENDING)
+  storySource      StorySource    @default(HUMAN)
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
 
   family       Family              @relation(fields: [familyId], references: [id], onDelete: Cascade)
   author       Person?             @relation("MemoryAuthor", fields: [authorId], references: [id], onDelete: SetNull)
@@ -562,6 +566,9 @@ model PillarCover {
   pillar     Pillar
   /// A finalized upload in this family's prefix.
   storageKey String
+  /// The `storageKey` whose THUMB and DISPLAY renditions `image.derive` has
+  /// written; served only while it equals `storageKey`.
+  derivedKey String?
   updatedAt  DateTime @updatedAt
 
   family Family @relation(fields: [familyId], references: [id], onDelete: Cascade)

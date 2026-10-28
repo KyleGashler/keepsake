@@ -46,6 +46,13 @@ export interface JobPayloads {
    */
   "media.derive": { familyId: string; mediaId: string };
   /**
+   * The same THUMB and DISPLAY for an uploaded picture that isn't a Media
+   * row — a child's profile photo or a pillar cover — named by its storage
+   * key. Enqueued when one is set; marks every row still pointing at the
+   * key as derived. Safe to run again.
+   */
+  "image.derive": { familyId: string; storageKey: string };
+  /**
    * Re-read what a memory takes from its photos: the palette from its hero,
    * its date from their EXIF unless a person set one. Enqueued when the hero
    * may have changed (reorder, removal); `media.derive` does the same inline.
@@ -71,6 +78,7 @@ export const jobPayloadSchemas: { [T in JobType]: z.ZodType<JobPayloads[T]> } = 
     wholeFamily: z.boolean().optional(),
   }),
   "media.derive": z.object({ familyId: z.string(), mediaId: z.string() }),
+  "image.derive": z.object({ familyId: z.string(), storageKey: z.string() }),
   "memory.refresh": z.object({ familyId: z.string(), memoryId: z.string() }),
 };
 

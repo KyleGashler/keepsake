@@ -2,7 +2,7 @@ import { prisma } from "../lib/prisma.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
 import { MediaHostError, mediaHost, type HostUpload, type MediaHost } from "../media-host/index.js";
 import { storage } from "../storage/index.js";
-import { StorageKeyError } from "../storage/StorageProvider.js";
+import { StorageKeyError, isOriginalKey } from "../storage/StorageProvider.js";
 import type { JobHandler } from "./JobQueue.js";
 
 /**
@@ -79,7 +79,13 @@ export function mediaPurgeHandler(): JobHandler<"media.purge"> {
   };
 }
 
-/** True when any row still points at `key`. Keys are unique per upload, but a client may reuse one. */
+/**
+ * True when any row still points at `key`. Keys are unique per upload, but a
+ * client may reuse one: the same upload can be a memory's photo, a profile
+ * photo and a cover at once. A rendition (`thumb.jpg`, `display.jpg`) has no
+ * row of its own for a profile photo or cover, so it counts as referenced
+ * while any row points at an original beside it.
+ */
 async function stillReferenced(key: string) {
   const [media, derivatives, people, covers] = await Promise.all([
     prisma.media.count({ where: { storageKey: key } }),
@@ -87,7 +93,15 @@ async function stillReferenced(key: string) {
     prisma.person.count({ where: { photoKey: key } }),
     prisma.pillarCover.count({ where: { storageKey: key } }),
   ]);
-  return media + derivatives + people + covers > 0;
+  if (media + derivatives + people + covers > 0) return true;
+  if (isOriginalKey(key) || !key.includes("/")) return false;
+  const original = { startsWith: `${key.slice(0, key.lastIndexOf("/"))}/original` };
+  const [mediaBeside, peopleBeside, coversBeside] = await Promise.all([
+    prisma.media.count({ where: { storageKey: original } }),
+    prisma.person.count({ where: { photoKey: original } }),
+    prisma.pillarCover.count({ where: { storageKey: original } }),
+  ]);
+  return mediaBeside + peopleBeside + coversBeside > 0;
 }
 
 /**

@@ -1,5 +1,6 @@
 import { logger } from "../lib/logger.js";
 import { prisma } from "../lib/prisma.js";
+import { imageDeriveHandler } from "./image-derive.js";
 import type { JobQueue } from "./JobQueue.js";
 import { mediaDeriveHandler } from "./media-derive.js";
 import { mediaPurgeHandler } from "./media-purge.js";
@@ -36,6 +37,7 @@ export function startWorker(options: WorkerOptions = {}): JobQueue {
   queue.register("mux.sync", muxSyncHandler(queue));
   queue.register("media.purge", mediaPurgeHandler());
   queue.register("media.derive", mediaDeriveHandler(queue));
+  queue.register("image.derive", imageDeriveHandler(queue));
   queue.register("memory.refresh", memoryRefreshHandler());
   queue.start();
   return queue;
