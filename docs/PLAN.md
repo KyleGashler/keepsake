@@ -20,9 +20,11 @@ the callers.
 - Run `npm run typecheck` in both packages before finishing.
 - Every new query filters by `familyId`. Never look a row up by id alone.
 - Original media is sacred: nothing overwrites or AI-alters what a family
-  uploaded, and nothing deletes it on its own — only an explicit family
-  delete purges it (A7). Re-encoding for playback (Mux) is fine; the content stays
-  true.
+  uploaded. An Original is deleted only when nothing holds it any more: a
+  family deleted what held it (A7), or replaced or cleared the profile photo
+  or cover that held it, and no memory, person or cover still uses it
+  (`deleteIfUnused`, Picture module below). Re-encoding for playback (Mux) is
+  fine; the content stays true.
 - Don't add a dependency without a one-line justification in the PR.
 - One PR per task. Branch name `task/<id>-<slug>`.
 
@@ -394,6 +396,77 @@ hero, so the memory falls to its next photo or the stand-in.
 - **Prod steps:** none beyond deploy. No migration and no backfill (prod data
   is test data). Existing video-hero memories pick up a palette on their next
   refresh (reorder, removal).
+
+**As built (2026-11-02), follow-up — Picture module (branch
+`task/pictures-module`):** every rule about a still picture now lives in
+`server/src/lib/pictures.ts` (terms from `CONTEXT.md`: Picture, Original,
+Rendition, Holder). Before, the rendition URL was decided in two places, the
+"still in use?" check lived in `media.purge`, and the replace sequence was
+written twice in the routes with different locks. No schema change: memory
+photos keep `Derivative` rows and profile photos and covers keep
+`photoDerivedKey` / `derivedKey`; the module hides the difference, so a later
+single "Original" table could replace its insides without touching callers.
+- **Interface.**
+  - `pictureUrl(holder, size)`: the best URL for a Media row (with its
+    derivatives), a Person or a PillarCover; null when it has none.
+  - `setPicture(familyId, { personId } | { pillar }, key | null)`: set,
+    replace or clear, in its own transaction. It checks the key (format,
+    family prefix, an image Original, stored) and returns `{ ok: false,
+    problem }` for `malformed`, `foreign`, `not_an_image` or `missing`, which
+    the routes map with `imageKeyError`. It queues `media.purge` for the old
+    key and `image.derive` for the new one.
+  - `needsRenditions(familyId, key)` and `renditionsMade(familyId, key,
+    written)`: `image.derive` asks the first before rendering and calls the
+    second after. That marks every Holder, or queues the new files for
+    deletion when nothing holds the key.
+  - `deleteIfUnused(familyId, keys)`: what `media.purge` calls for storage
+    keys. It deletes each Original with its Renditions, or a Rendition alone,
+    unless something still holds it, and returns what it deleted, kept and
+    refused.
+- **Behaviour change.** Replacing or clearing a profile photo or cover now
+  deletes the old Original too, not only its Renditions, unless a memory,
+  another person or a cover still holds it (ground rule updated).
+- **`PATCH /people/:id`** calls `setPicture` first, so a bad key refuses the
+  request before anything is saved, then writes name, relation and birthday
+  on their own. A crash between the two leaves the new photo with the old
+  name, which is accepted.
+- **Race fixed.** The in-use check used to run apart from the storage delete,
+  so a picture set in between could lose its file. Now one Postgres advisory
+  transaction lock per Picture (named by its `<familyId>/<uploadId>/` folder,
+  so an Original and its Renditions share it) is held around "in use? →
+  delete" in `deleteIfUnused` and around "is the file there? → write the
+  Holder" in `setPicture`. Lock order: the Holder's row (Person `FOR UPDATE`,
+  or the Family row `FOR NO KEY UPDATE` for a cover), then the Picture lock.
+- **Known gap**, for "attach a finalized upload" (architecture review
+  candidate 5): `POST /memories` doesn't take the Picture lock, so a memory
+  attaching an upload while a `media.purge` deletes that same unheld upload
+  can still end up pointing at a missing file.
+- **Deleted:** `signedImageUrl`, `signedPictureUrl`, `imageKeyProblem`
+  (`lib/upload-keys.ts`), `purgeRenditionsOf`, `renditionKeys`
+  (`lib/purge.ts`), `stillReferenced` (`jobs/media-purge.ts`), `lockCover`
+  and the PATCH's own `FOR UPDATE` (routes), and `enqueueImageDerive`.
+  `profilePhotoUrls` is now two `pictureUrl` calls. `PURGE_MAX_ATTEMPTS`
+  moved to `jobs/JobQueue.ts` to avoid an import cycle. DTOs are unchanged.
+- **Tests.** This is the repo's first test runner: `vitest`, run with `npm
+  test` in `server/` (not on commit). `server/test/pictures.test.ts` goes
+  through the module's interface against a per-run database on the dev
+  container and `LocalDiskProvider` in a temp directory. Queued jobs are run
+  by handing each payload to its handler. 16 tests: URL fallback for each
+  Holder kind; set, replace and clear for a person and a cover; a shared
+  Original kept; each problem; `renditionsMade` with no Holder; and both
+  orders of the race (they fail with the lock turned off).
+- **Verified** on scratch DB `pictures_smoke` (dev auth, local storage, API
+  on 4730), against the DTOs and the files on disk:
+  - A child's photo was set (JPEG), replaced with a `sips` HEIC, and
+    cleared. Each PATCH answered with the original, then DISPLAY/THUMB, and
+    each let-go upload's folder was emptied.
+  - Bad, video and missing keys got 400/415/404 and saved no name change.
+  - A pillar cover (PNG) was set, replaced and removed. A foreign key got
+    404, and the removed cover fell back to the generated image.
+  - One upload was used as both the photo and a cover. Removing the cover
+    kept all three files, and deleting the child then purged them.
+  - All 14 jobs succeeded, and no files were left.
+- **Prod steps:** none beyond deploy (no migration).
 
 #### A7. CRUD completeness
 **Depends:** A3.

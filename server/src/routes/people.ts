@@ -3,12 +3,12 @@ import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
 import { ensureChildCollections } from "../lib/child-collections.js";
-import { enqueueImageDerive } from "../jobs/image-derive.js";
 import { childSummary, profilePhotoUrls } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
-import { deleteAndPurge, purgeRenditionsOf } from "../lib/purge.js";
+import { setPicture } from "../lib/pictures.js";
+import { deleteAndPurge } from "../lib/purge.js";
 import { mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
-import { imageKeyError, imageKeyProblem } from "../lib/upload-keys.js";
+import { imageKeyError } from "../lib/upload-keys.js";
 
 export const peopleRouter = Router();
 
@@ -120,10 +120,12 @@ const editPerson = z.object({
 
 /**
  * Edit a person: name, relation, birthday and profile photo.
- * Absent fields are left alone; null clears a nullable one. A new photo
- * queues `image.derive` for its renditions. Replacing or clearing one
- * purges the old photo's renditions but only drops the pointer to its
- * original — the uploaded original is kept.
+ * Absent fields are left alone; null clears a nullable one. The photo goes
+ * first, in its own transaction (`setPicture`, lib/pictures.ts), so a bad
+ * key refuses the whole request before anything is saved: a new photo
+ * queues its renditions, and the one it replaces is deleted unless
+ * something else still holds it. Then the other fields are saved. A crash
+ * between the two leaves the new photo with the old name, which is fine.
  */
 peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
@@ -137,39 +139,24 @@ peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
   });
   if (!existing) return res.status(404).json({ error: "Person not found" });
 
-  if (photoKey) {
-    const problem = await imageKeyProblem(photoKey, family.id);
-    if (problem) {
-      const { status, body } = imageKeyError(problem);
+  if (photoKey !== undefined) {
+    const set = await setPicture(family.id, { personId: existing.id }, photoKey);
+    if (!set.ok) {
+      const { status, body } = imageKeyError(set.problem);
       return res.status(status).json(body);
     }
   }
 
-  const person = await prisma.$transaction(async (tx) => {
-    // Locked, so two edits racing can't both think they replaced the same
-    // photo and leave the other's renditions behind.
-    const [before] = await tx.$queryRaw<{ photoKey: string | null; photoDerivedKey: string | null }[]>`
-      SELECT "photoKey", "photoDerivedKey" FROM "Person" WHERE id = ${existing.id} FOR UPDATE`;
-    const replaced = photoKey !== undefined && before !== undefined && before.photoKey !== photoKey;
-    const updated = await tx.person.update({
-      where: { id: existing.id },
-      data: {
-        ...(name === undefined ? {} : { name }),
-        ...(relation === undefined ? {} : { relation: relation || null }),
-        ...(birthDate === undefined ? {} : { birthDate: birthDate ? new Date(birthDate) : null }),
-        ...(replaced ? { photoKey, photoDerivedKey: null } : {}),
-      },
-    });
-    if (replaced) {
-      await purgeRenditionsOf(tx, jobQueue(), { familyId: family.id, key: before.photoKey, reason: "replaced profile photo" });
-    }
-    // Also when the same photo is sent again without renditions yet: a
-    // derive that gave up gets another go.
-    if (updated.photoKey && updated.photoDerivedKey !== updated.photoKey && photoKey) {
-      await enqueueImageDerive(jobQueue(), tx, family.id, updated.photoKey);
-    }
-    return updated;
-  });
+  const fields = {
+    ...(name === undefined ? {} : { name }),
+    ...(relation === undefined ? {} : { relation: relation || null }),
+    ...(birthDate === undefined ? {} : { birthDate: birthDate ? new Date(birthDate) : null }),
+  };
+  if (Object.keys(fields).length) {
+    await prisma.person.updateMany({ where: { id: existing.id, familyId: family.id }, data: fields });
+  }
+  const person = await prisma.person.findFirst({ where: { id: existing.id, familyId: family.id } });
+  if (!person) return res.status(404).json({ error: "Person not found" });
 
   res.json({
     person: { ...personDto(person), ...(await profilePhotoUrls(person)) },
@@ -197,7 +184,7 @@ class PersonIsMember extends Error {}
  * filing goes — and their place in every memory's "who was there". Memories
  * they wrote keep existing without an author. Pending invites naming them
  * are withdrawn. Their profile photo and its renditions are purged by
- * `media.purge`.
+ * `media.purge`, unless something else still holds it (lib/pictures.ts).
  */
 peopleRouter.delete("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;

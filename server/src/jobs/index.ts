@@ -28,7 +28,7 @@ export function startWorker(options: WorkerOptions = {}): JobQueue {
   queue.register("mux.sync", muxSyncHandler(queue));
   queue.register("media.purge", mediaPurgeHandler());
   queue.register("media.derive", mediaDeriveHandler(queue));
-  queue.register("image.derive", imageDeriveHandler(queue));
+  queue.register("image.derive", imageDeriveHandler());
   queue.register("memory.refresh", memoryRefreshHandler());
   queue.start();
   return queue;

@@ -396,9 +396,9 @@ exponential backoff until `maxAttempts`, then marked `FAILED`. A job left
 The worker runs inside the API when `WORKER_INLINE=1` (compose and Fly set it),
 or on its own with `npm run worker` (`npm run worker:dev` off TypeScript).
 
-Four jobs today: `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux)),
-`media.purge` (see [Deleting](#deleting-hard-no-trash)), and `media.derive` and
-`memory.refresh` (see [Photo renditions and palette](#photo-renditions-and-palette)).
+Five jobs today: `mux.sync` (see [Video and audio (Mux)](#video-and-audio-mux)),
+`media.purge` (see [Deleting](#deleting-hard-no-trash)), and `media.derive`,
+`image.derive` and `memory.refresh` (see [Photo renditions and palette](#photo-renditions-and-palette)).
 
 ### Photo renditions and palette
 
@@ -438,8 +438,16 @@ setting one queues `image.derive` instead ([server/src/jobs/image-derive.ts](ser
 the same two renditions beside the same original, no palette or date. A
 child's `photoUrl` is DISPLAY (the children list's cards), `photoThumbUrl` is
 THUMB (portraits), and a pillar's `coverUrl` is DISPLAY, each the original
-until the job has run. Replacing or removing a photo or cover purges the old
-one's renditions and keeps its original; deleting the child purges both.
+until the job has run. Replacing or removing a photo or cover deletes the old
+one, original and renditions, unless a memory, another person or a cover
+still uses the same upload; deleting the child does the same for theirs.
+
+All of this — which URL to serve, setting and replacing a photo or cover,
+when an upload is still in use, deleting its files — lives in one module,
+[server/src/lib/pictures.ts](server/src/lib/pictures.ts) (see
+[CONTEXT.md](CONTEXT.md) for Picture, Original, Rendition, Holder). The
+in-use check and the delete run under a per-upload Postgres advisory lock,
+and so does setting a picture, so the two can't cross.
 
 **HEIC.** sharp's prebuilt libvips reads HEIF containers but can't decode
 HEVC, which is what iPhone photos are, so HEIC pixels go through libheif
@@ -468,12 +476,16 @@ version and delete marker of the key) and then the Mux asset through
 it. Any failure — Mux unconfigured, a 5xx, a token without delete permission —
 is retried with backoff, 20 attempts (about four hours); a `FAILED` purge
 keeps its payload on the `Job` row, so set it back to `QUEUED` with
-`attempts = 0` once the cause is fixed. Keys some other row still points at,
-and keys outside the family's prefix, are skipped with a log line.
+`attempts = 0` once the cause is fixed. Keys something still holds (another
+memory, a profile photo, a cover), and keys outside the family's prefix, are
+skipped with a log line: the job hands its storage keys to `deleteIfUnused`
+([server/src/lib/pictures.ts](server/src/lib/pictures.ts)), which checks and
+deletes under a lock per upload, an original with its renditions.
 
 This is the only path that deletes an original or a Mux asset: the normal
-`StorageProvider.delete` still refuses originals, and the app never deletes
-either on its own.
+`StorageProvider.delete` still refuses originals. Besides the deletes below,
+it runs when a profile photo or cover is replaced or removed, for the upload
+it let go of.
 
 | Endpoint | Does |
 | --- | --- |
@@ -728,6 +740,17 @@ so the hosted image starts compiled JavaScript.
 
 ```bash
 cd server && npm run build && npm start   # compiled, as production runs it
+```
+
+Tests: `npm test` in `server/` runs [vitest](https://vitest.dev) (not on
+commit). It needs the compose database up (`little-by-little-db-1` on port
+55432): each run creates its own `test_*` database there, applies the
+migrations, and drops it afterwards, and uses local-disk storage in a temp
+directory. `TEST_DATABASE_BASE_URL` points it at another Postgres server.
+
+```bash
+cd server && npm test             # everything
+cd server && npx vitest run -t race   # tests whose name matches
 ```
 
 Linting is [oxlint](https://oxc.rs/docs/guide/usage/linter), configured once at

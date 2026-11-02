@@ -1,7 +1,3 @@
-import { contentTypeForKey, mediaTypeFor } from "./mime.js";
-import { READ_URL_TTL_SECONDS, StorageKeyError, assertSafeKey, derivativeKey, storage, type PhotoDerivativeKind } from "../storage/index.js";
-import { isOriginalKey } from "../storage/StorageProvider.js";
-
 /**
  * A storage key carries its owning family in its prefix
  * (`<familyId>/<uploadId>/original.<ext>`), which is how a route proves a key
@@ -11,29 +7,8 @@ export function keyBelongsTo(key: string, familyId: string) {
   return key.startsWith(`${familyId}/`);
 }
 
+/** Why `setPicture` (lib/pictures.ts) refused a key. */
 export type ImageKeyProblem = "malformed" | "foreign" | "not_an_image" | "missing";
-
-/**
- * Check a key the client hands back from `POST /api/media/finalize` before a
- * row points at it as a picture (a child's profile photo, a pillar cover).
- *
- * Same rules as attaching media to a memory — the family prefix — plus: it
- * names an original, its type is an image, and the object is actually there.
- * Returns null when the key is fine, else what's wrong with it.
- */
-export async function imageKeyProblem(key: string, familyId: string): Promise<ImageKeyProblem | null> {
-  try {
-    assertSafeKey(key);
-  } catch (err) {
-    if (err instanceof StorageKeyError) return "malformed";
-    throw err;
-  }
-  if (!keyBelongsTo(key, familyId)) return "foreign";
-  if (!isOriginalKey(key) || mediaTypeFor(contentTypeForKey(key)) !== "PHOTO") return "not_an_image";
-  if (contentTypeForKey(key) === "application/octet-stream") return "not_an_image";
-  if (!(await storage().head(key))) return "missing";
-  return null;
-}
 
 /** The HTTP answer for each problem: someone else's key reads as absent. */
 export function imageKeyError(problem: ImageKeyProblem) {
@@ -46,20 +21,4 @@ export function imageKeyError(problem: ImageKeyProblem) {
       // "foreign" and "missing" alike: another family's key reads as absent.
       return { status: 404, body: { error: "Upload not found", code: "upload_not_found" } };
   }
-}
-
-/** A stored picture's read URL, signed fresh per response. */
-export function signedImageUrl(key: string) {
-  return storage().getReadUrl(key, READ_URL_TTL_SECONDS);
-}
-
-/**
- * A profile photo's or cover's read URL at the size asked for: its
- * rendition once `image.derive` has made renditions of this very key
- * (`derivedKey === key`), else the original — the same fallback memory
- * photos have. Null when there's no picture.
- */
-export function signedPictureUrl(key: string | null, derivedKey: string | null, kind: PhotoDerivativeKind) {
-  if (!key) return null;
-  return signedImageUrl(derivedKey === key && isOriginalKey(key) ? derivativeKey(key, kind) : key);
 }

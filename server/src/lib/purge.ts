@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
-import type { JobPayloads, JobQueue } from "../jobs/JobQueue.js";
+import { PURGE_MAX_ATTEMPTS, type JobPayloads, type JobQueue } from "../jobs/JobQueue.js";
 import { lockAssets } from "../media-host/assets.js";
-import { PHOTO_DERIVATIVE_KINDS, UPLOAD_URL_TTL_SECONDS, derivativeKey, isOriginalKey } from "../storage/StorageProvider.js";
+import { UPLOAD_URL_TTL_SECONDS } from "../storage/StorageProvider.js";
 
 /**
  * Hard delete, and what it leaves to clean up (A7: no trash, no restore).
@@ -9,29 +9,21 @@ import { PHOTO_DERIVATIVE_KINDS, UPLOAD_URL_TTL_SECONDS, derivativeKey, isOrigin
  * When a family deletes a memory, removes a photo or clip from one, or
  * deletes a person, the rows go at once, in the request, and the files go
  * afterwards in a `media.purge` job: S3 (or local disk) originals and their
- * derivatives through `StorageProvider.purgeForFamilyDelete`, and the Mux
- * asset through `MediaHost.deleteAsset` (or `cancelUpload` if there is no
- * asset yet). The request never waits on S3 or Mux, and a slow or failing
+ * renditions through `deleteIfUnused` (lib/pictures.ts), which keeps any
+ * that something else still holds, and the Mux asset through
+ * `MediaHost.deleteAsset` (or `cancelUpload` if there is no asset yet). The request never waits on S3 or Mux, and a slow or failing
  * provider is retried by the queue rather than lost.
  *
  * The rows are gone by the time the job runs, so the payload carries every
  * key and id it needs. A MuxAsset row is dropped (and its asset purged) only
  * once no Media links to it any more.
  *
- * This is the only path that deletes an original or a Mux asset. The app
- * never does either on its own. Deleting a whole family (A16, below) is the
- * same job with `wholeFamily` set.
+ * The same job deletes a replaced or cleared profile photo's or cover's
+ * files (lib/pictures.ts). Deleting a whole family (A16, below) is the same
+ * job with `wholeFamily` set.
  */
 
 export type PurgePayload = JobPayloads["media.purge"];
-
-/**
- * Tries before a purge is left FAILED. The queue backs off 15 s doubling to a
- * 15-minute cap, so this is roughly four hours of trying. A FAILED job keeps
- * its payload on the Job row: re-queue it (status QUEUED, attempts 0) once
- * whatever was refusing is fixed.
- */
-export const PURGE_MAX_ATTEMPTS = 20;
 
 const purgeMediaSelect = {
   storageKey: true,
@@ -46,7 +38,8 @@ const purgeMediaSelect = {
  * - `media`: the Media rows the delete will take with it (directly, or by
  *   cascade from their memory). Read before `remove` runs.
  * - `extraKeys`: other originals that become unreferenced — a deleted
- *   person's profile photo. Their renditions are purged with them.
+ *   person's profile photo. `deleteIfUnused` takes an original's
+ *   renditions with it.
  * - `remove`: the delete itself.
  *
  * Lock order matches every other writer (MuxAsset rows, then Memory/Media),
@@ -93,8 +86,8 @@ export async function deleteAndPurge(
   }
 
   const storageKeys = unique([
-    ...media.flatMap((m) => [m.storageKey, ...renditionKeys(m.storageKey), ...m.derivatives.map((d) => d.storageKey)]),
-    ...(input.extraKeys ?? []).flatMap((k) => [k, ...renditionKeys(k ?? null)]),
+    ...media.flatMap((m) => [m.storageKey, ...m.derivatives.map((d) => d.storageKey)]),
+    ...(input.extraKeys ?? []),
   ]);
   if (storageKeys.length === 0 && muxAssets.length === 0) return null;
 
@@ -167,36 +160,6 @@ export async function deleteFamilyAndPurge(
     { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS, runAt: new Date(Date.now() + LATE_UPLOAD_SWEEP_MS) },
   );
   return true;
-}
-
-/**
- * A profile photo or pillar cover was replaced or removed: purge the old
- * picture's renditions, in the caller's transaction. The original stays —
- * dropping the pointer isn't a family deleting the upload. `media.purge`
- * keeps the renditions if another row still shows the same upload.
- */
-export async function purgeRenditionsOf(
-  tx: Prisma.TransactionClient,
-  queue: JobQueue,
-  input: { familyId: string; key: string | null | undefined; reason: string },
-) {
-  const storageKeys = renditionKeys(input.key ?? null);
-  if (storageKeys.length === 0) return;
-  await queue.enqueue(
-    "media.purge",
-    { familyId: input.familyId, storageKeys, muxAssets: [], reason: input.reason },
-    { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS },
-  );
-}
-
-/**
- * Where an original's renditions are, or will be (A6): named from its key,
- * so a `media.derive` or `image.derive` still running when the rows go can't
- * leave files no row ever pointed at. Purging a key with nothing there is a
- * no-op.
- */
-export function renditionKeys(key: string | null) {
-  return key && isOriginalKey(key) ? PHOTO_DERIVATIVE_KINDS.map((kind) => derivativeKey(key, kind)) : [];
 }
 
 function unique(values: (string | null | undefined)[]): string[] {

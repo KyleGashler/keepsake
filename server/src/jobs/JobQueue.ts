@@ -64,6 +64,14 @@ export interface JobPayloads {
 
 export type JobType = keyof JobPayloads;
 
+/**
+ * Tries before a `media.purge` is left FAILED. The queue backs off 15 s
+ * doubling to a 15-minute cap, so this is roughly four hours of trying. A
+ * FAILED job keeps its payload on the Job row: re-queue it (status QUEUED,
+ * attempts 0) once whatever was refusing is fixed.
+ */
+export const PURGE_MAX_ATTEMPTS = 20;
+
 const purgedClip = z.object({ uploadId: z.string(), assetId: z.string().nullable() });
 
 /**
