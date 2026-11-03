@@ -1,7 +1,7 @@
 import type { Person } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { personDto } from "./serialize.js";
-import { signedPictureUrl } from "./upload-keys.js";
+import { pictureUrl } from "./pictures.js";
 
 /**
  * A child as the Library's child screens show them: the person, their profile
@@ -34,8 +34,8 @@ export async function childSummary(familyId: string, p: Person) {
 /** A person's profile photo: DISPLAY for cards, THUMB for portraits; nulls when none. */
 export async function profilePhotoUrls(p: Pick<Person, "photoKey" | "photoDerivedKey">) {
   const [photoUrl, photoThumbUrl] = await Promise.all([
-    signedPictureUrl(p.photoKey, p.photoDerivedKey, "DISPLAY"),
-    signedPictureUrl(p.photoKey, p.photoDerivedKey, "THUMB"),
+    pictureUrl(p, "DISPLAY"),
+    pictureUrl(p, "THUMB"),
   ]);
   return { photoUrl, photoThumbUrl };
 }

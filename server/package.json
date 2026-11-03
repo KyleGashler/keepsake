@@ -12,6 +12,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "storage:copy-to-s3": "tsx src/scripts/copy-local-to-s3.ts",
     "storage:s3-setup": "tsx src/scripts/s3-emulator-setup.ts",
     "media:derive-backfill": "tsx src/scripts/derive-backfill.ts",
@@ -44,6 +45,7 @@
     "pino-pretty": "^13.1.3",
     "prisma": "^6.19.0",
     "tsx": "^4.23.1",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.12"
   }
 }

@@ -1,22 +1,23 @@
+import { deleteIfUnused } from "../lib/pictures.js";
 import { prisma } from "../lib/prisma.js";
-import { keyBelongsTo } from "../lib/upload-keys.js";
 import { MediaHostError, mediaHost, type HostUpload, type MediaHost } from "../media-host/index.js";
 import { storage } from "../storage/index.js";
-import { StorageKeyError, isOriginalKey } from "../storage/StorageProvider.js";
 import type { JobHandler } from "./JobQueue.js";
 
 /**
  * `media.purge`: remove for good the files behind rows a family deleted
- * (see lib/purge.ts for when it's enqueued and what the payload holds).
+ * (see lib/purge.ts for when it's enqueued and what the payload holds), or
+ * of a profile photo or cover that was replaced or cleared (lib/pictures.ts).
  *
  * Storage first, then Mux; every step is idempotent (an object or asset
  * that's already gone counts as purged), so a retry simply runs the whole
  * list again. Anything that fails is thrown and the queue retries it with
  * backoff — a missing Mux configuration or a token without delete
  * permission included, because those get fixed and the purge must not be
- * lost. Two things are skipped rather than retried, with a log line: a key
- * outside the family's prefix (never ours to delete) and a key some row
- * still points at (another memory, a profile photo, a cover).
+ * lost. The storage keys go to `deleteIfUnused`, which decides what is
+ * still in use. Two things are skipped rather than retried, with a log
+ * line: a key outside the family's prefix (never ours to delete) and a key
+ * something still holds (another memory, a profile photo, a cover).
  *
  * A `wholeFamily` purge (the family itself was deleted) also clears the
  * family's whole storage prefix. Neither check above stands in its way once
@@ -37,27 +38,9 @@ export function mediaPurgeHandler(): JobHandler<"media.purge"> {
         }
       }
 
-      let purged = 0;
-      for (const key of storageKeys) {
-        if (!keyBelongsTo(key, familyId)) {
-          ctx.log.error({ key, familyId }, "media.purge: key outside the family's prefix; skipped");
-          continue;
-        }
-        if (await stillReferenced(key)) {
-          ctx.log.warn({ key }, "media.purge: key is still referenced; kept");
-          continue;
-        }
-        try {
-          await storage().purgeForFamilyDelete(key);
-        } catch (err) {
-          if (err instanceof StorageKeyError) {
-            ctx.log.error({ key, err: err.message }, "media.purge: malformed key; skipped");
-            continue;
-          }
-          throw err;
-        }
-        purged++;
-      }
+      const { deleted, kept, refused } = await deleteIfUnused(familyId, storageKeys);
+      if (refused.length) ctx.log.error({ keys: refused, familyId }, "media.purge: not storage keys of this family's; skipped");
+      if (kept.length) ctx.log.warn({ keys: kept }, "media.purge: still held; kept");
 
       if (muxAssets.length) {
         const host = mediaHost();
@@ -67,7 +50,7 @@ export function mediaPurgeHandler(): JobHandler<"media.purge"> {
       }
 
       ctx.log.info(
-        { reason, familyId, objects: purged, ofKeys: storageKeys.length, muxAssets: muxAssets.length, wholeFamily },
+        { reason, familyId, objects: deleted.length, ofKeys: storageKeys.length, muxAssets: muxAssets.length, wholeFamily },
         "media purged",
       );
     },
@@ -77,31 +60,6 @@ export function mediaPurgeHandler(): JobHandler<"media.purge"> {
       ctx.log.error({ err, payload }, "media.purge gave up; the files are still stored");
     },
   };
-}
-
-/**
- * True when any row still points at `key`. Keys are unique per upload, but a
- * client may reuse one: the same upload can be a memory's photo, a profile
- * photo and a cover at once. A rendition (`thumb.jpg`, `display.jpg`) has no
- * row of its own for a profile photo or cover, so it counts as referenced
- * while any row points at an original beside it.
- */
-async function stillReferenced(key: string) {
-  const [media, derivatives, people, covers] = await Promise.all([
-    prisma.media.count({ where: { storageKey: key } }),
-    prisma.derivative.count({ where: { storageKey: key } }),
-    prisma.person.count({ where: { photoKey: key } }),
-    prisma.pillarCover.count({ where: { storageKey: key } }),
-  ]);
-  if (media + derivatives + people + covers > 0) return true;
-  if (isOriginalKey(key) || !key.includes("/")) return false;
-  const original = { startsWith: `${key.slice(0, key.lastIndexOf("/"))}/original` };
-  const [mediaBeside, peopleBeside, coversBeside] = await Promise.all([
-    prisma.media.count({ where: { storageKey: original } }),
-    prisma.person.count({ where: { photoKey: original } }),
-    prisma.pillarCover.count({ where: { storageKey: original } }),
-  ]);
-  return mediaBeside + peopleBeside + coversBeside > 0;
 }
 
 /**

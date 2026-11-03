@@ -2,11 +2,10 @@ import type { Prisma } from "@prisma/client";
 import type { Logger } from "pino";
 import { prisma } from "../lib/prisma.js";
 import { MAX_DERIVE_BYTES, UndecodableImageError, renderPhoto, type RenderedPhoto } from "../lib/photo-derivatives.js";
-import { PURGE_MAX_ATTEMPTS } from "../lib/purge.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
 import { PHOTO_DERIVATIVE_KINDS, derivativeKey, storage } from "../storage/index.js";
 import { isOriginalKey } from "../storage/StorageProvider.js";
-import { PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js";
+import { PURGE_MAX_ATTEMPTS, PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js";
 import { MediaHostError } from "../media-host/index.js";
 import { kickRefresh, readAll, refreshMemory } from "./memory-refresh.js";
 

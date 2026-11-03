@@ -1,3 +1,4 @@
+import { pictureUrl } from "./pictures.js";
 import { RENDER_VERSION } from "./placeholder.js";
 import { READ_URL_TTL_SECONDS, storage, type PhotoDerivativeKind } from "../storage/index.js";
 import { mediaHost } from "../media-host/index.js";
@@ -114,16 +115,14 @@ export async function mediaReadUrl(m: Pick<Media, "url" | "storageKey">) {
 }
 
 /**
- * A photo at the size asked for: its THUMB (400 px long edge) or DISPLAY
- * (1600 px) JPEG once `media.derive` has made it, else the original — a
- * fresh upload is shown as uploaded for the few seconds until then (a HEIC
- * won't draw in most browsers meanwhile; the client's tile shows through).
- * Placeholders have only their generated URL.
+ * A photo at the size asked for (`pictureUrl`, lib/pictures.ts): its THUMB
+ * (400 px long edge) or DISPLAY (1600 px) JPEG once `media.derive` has made
+ * it, else the original — a fresh upload is shown as uploaded for the few
+ * seconds until then (a HEIC won't draw in most browsers meanwhile; the
+ * client's tile shows through). Placeholders have only their generated URL.
  */
 export async function photoUrl(m: Pick<MediaRow, "url" | "storageKey" | "derivatives">, kind: PhotoDerivativeKind) {
-  const rendition = m.derivatives.find((d) => d.kind === kind);
-  if (rendition) return storage().getReadUrl(rendition.storageKey, READ_URL_TTL_SECONDS);
-  return mediaReadUrl(m);
+  return (await pictureUrl(m, kind)) ?? withVersion(m.url);
 }
 
 /**

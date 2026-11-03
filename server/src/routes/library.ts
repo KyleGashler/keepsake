@@ -2,14 +2,12 @@ import type { Pillar, Prisma } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
-import { jobQueue } from "../jobs/index.js";
-import { enqueueImageDerive } from "../jobs/image-derive.js";
 import { COLLECTION_ICONS, DEFAULT_COLLECTION_COLOR, DEFAULT_COLLECTION_ICON } from "../lib/child-collections.js";
 import { childSummaries, childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
-import { purgeRenditionsOf } from "../lib/purge.js";
+import { pictureUrl, setPicture } from "../lib/pictures.js";
 import { collectionDto, collectionInclude, imageUrl, mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
-import { imageKeyError, imageKeyProblem, signedPictureUrl } from "../lib/upload-keys.js";
+import { imageKeyError } from "../lib/upload-keys.js";
 
 export const libraryRouter = Router();
 
@@ -57,7 +55,7 @@ async function pillarDto(
   return {
     ...p,
     collectionCount,
-    coverUrl: cover ? await signedPictureUrl(cover.storageKey, cover.derivedKey, "DISPLAY") : imageUrl(p.coverSeed, 1000, 700),
+    coverUrl: (cover && (await pictureUrl(cover, "DISPLAY"))) ?? imageUrl(p.coverSeed, 1000, 700),
     customCover: Boolean(cover),
   };
 }
@@ -99,7 +97,11 @@ libraryRouter.get("/library", async (req, res) => {
 const pillarParam = z.enum(PILLAR_KEYS);
 const coverBody = z.object({ key: z.string().min(1).max(512) });
 
-/** Set a pillar card's cover to an upload the family has finalized. */
+/**
+ * Set a pillar card's cover to an upload the family has finalized. The cover
+ * it replaces is deleted, unless something else still holds it
+ * (`setPicture`, lib/pictures.ts).
+ */
 libraryRouter.put("/library/pillars/:key/cover", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const pillar = pillarParam.safeParse(req.params.key);
@@ -107,63 +109,28 @@ libraryRouter.put("/library/pillars/:key/cover", requireContributor, async (req,
   const body = coverBody.safeParse(req.body);
   if (!body.success) return res.status(400).json({ error: body.error.flatten() });
 
-  const problem = await imageKeyProblem(body.data.key, family.id);
-  if (problem) {
-    const { status, body: error } = imageKeyError(problem);
+  const set = await setPicture(family.id, { pillar: pillar.data }, body.data.key);
+  if (!set.ok) {
+    const { status, body: error } = imageKeyError(set.problem);
     return res.status(status).json(error);
   }
-
-  const key = body.data.key;
-  await prisma.$transaction(async (tx) => {
-    const before = await lockCover(tx, family.id, pillar.data);
-    if (before?.storageKey === key && before.derivedKey === key) return;
-    await tx.pillarCover.upsert({
-      where: { familyId_pillar: { familyId: family.id, pillar: pillar.data } },
-      create: { familyId: family.id, pillar: pillar.data, storageKey: key },
-      update: { storageKey: key, ...(before?.storageKey === key ? {} : { derivedKey: null }) },
-    });
-    if (before && before.storageKey !== key) {
-      await purgeRenditionsOf(tx, jobQueue(), { familyId: family.id, key: before.storageKey, reason: "replaced pillar cover" });
-    }
-    await enqueueImageDerive(jobQueue(), tx, family.id, key);
-  });
   const pillars = await pillarsFor(family.id);
   res.json({ pillar: pillars.find((p) => p.key === pillar.data) });
 });
 
 /**
- * Back to the generated default. The cover's renditions are purged; the
- * uploaded original is kept, as always.
+ * Back to the generated default. The cover is deleted, unless something else
+ * still holds it.
  */
 libraryRouter.delete("/library/pillars/:key/cover", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const pillar = pillarParam.safeParse(req.params.key);
   if (!pillar.success) return res.status(404).json({ error: "Unknown pillar" });
 
-  await prisma.$transaction(async (tx) => {
-    const before = await lockCover(tx, family.id, pillar.data);
-    if (!before) return;
-    await tx.pillarCover.deleteMany({ where: { familyId: family.id, pillar: pillar.data } });
-    await purgeRenditionsOf(tx, jobQueue(), { familyId: family.id, key: before.storageKey, reason: "removed pillar cover" });
-  });
+  await setPicture(family.id, { pillar: pillar.data }, null);
   const pillars = await pillarsFor(family.id);
   res.json({ pillar: pillars.find((p) => p.key === pillar.data) });
 });
-
-/**
- * The pillar's current cover, if any, with cover writes for the family
- * serialised: the Family row is locked (`FOR NO KEY UPDATE`, which doesn't
- * block inserts that reference it) so two changes to a cover with no row yet
- * can't both miss the other's key, and every replaced cover's renditions
- * get purged.
- */
-async function lockCover(tx: Prisma.TransactionClient, familyId: string, pillar: Pillar) {
-  await tx.$queryRaw`SELECT id FROM "Family" WHERE id = ${familyId} FOR NO KEY UPDATE`;
-  return tx.pillarCover.findUnique({
-    where: { familyId_pillar: { familyId, pillar } },
-    select: { storageKey: true, derivedKey: true },
-  });
-}
 
 libraryRouter.get("/children", async (req, res) => {
   const family = req.ctx.family;
