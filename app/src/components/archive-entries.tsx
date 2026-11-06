@@ -85,9 +85,7 @@ function quoteParts(memory: MemoryCard) {
   if (titleIsQuote) {
     return { quote: memory.title.replace(QUOTE_MARKS, ""), heading: null, context: memory.excerpt };
   }
-  const excerpt = memory.excerpt ?? "";
-  // The card excerpt is the story's first 140 characters.
-  const quote = excerpt.replace(QUOTE_MARKS, "") + (excerpt.length >= 140 ? "…" : "");
+  const quote = (memory.excerpt ?? "").replace(QUOTE_MARKS, "");
   return { quote, heading: memory.title, context: null };
 }
 

@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, type MosaicTile } from "../../src/api";
 import { useCanContribute } from "../../src/auth/session-context";
 import { Column, TabHeader } from "../../src/components/journey";
+import { QuoteArt } from "../../src/components/memory/parts";
 import { Button, EmptyState, ErrorState, Loading } from "../../src/components/ui";
 import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { Image, Ionicons } from "../../src/styled";
@@ -74,12 +75,16 @@ export default function MosaicScreen() {
                   className="overflow-hidden rounded-md bg-surface-alt active:opacity-80"
                   style={{ height: tile.height }}
                 >
-                  <Image
-                    source={{ uri: mediaUrl(tile.url) }}
-                    className="absolute inset-0"
-                    contentFit="cover"
-                    transition={260}
-                  />
+                  {tile.isTextOnly ? (
+                    <QuoteArt excerpt={tile.excerpt} large height={tile.height} />
+                  ) : (
+                    <Image
+                      source={{ uri: mediaUrl(tile.url) }}
+                      className="absolute inset-0"
+                      contentFit="cover"
+                      transition={260}
+                    />
+                  )}
                   {tile.hasAudio ? (
                     <View className="absolute top-2 right-2 rounded-full bg-scrim/62 p-[5px]">
                       <Ionicons name="mic" size={11} colorClassName="accent-surface" />

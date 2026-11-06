@@ -519,6 +519,8 @@ export type MosaicTile = {
   url: string;
   isVideo: boolean;
   hasAudio: boolean;
+  isTextOnly: boolean;
+  excerpt: string | null;
   paletteHue: number;
   palette?: string[];
   span: "single" | "wide" | "tall";

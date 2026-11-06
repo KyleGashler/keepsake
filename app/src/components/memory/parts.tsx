@@ -199,21 +199,52 @@ function RelatedCard({ memory, linked }: { memory: MemoryCard; linked: boolean }
   );
 }
 
-export function CardArt({ memory, compact = false }: { memory: MemoryCard; compact?: boolean }) {
+const LARGE_QUOTE_PADDING = 20;
+const LARGE_QUOTE_LINE = 25;
+
+export function QuoteArt({
+  excerpt,
+  compact = false,
+  large = false,
+  height,
+}: {
+  excerpt: string | null;
+  compact?: boolean;
+  large?: boolean;
+  height?: number;
+}) {
+  const lines = large ? Math.floor(((height ?? 190) - 2 * LARGE_QUOTE_PADDING) / LARGE_QUOTE_LINE) : 3;
+  return (
+    <View
+      className={`absolute inset-0 items-center justify-center bg-peach ${large ? "" : "p-3"}`}
+      style={large ? { padding: LARGE_QUOTE_PADDING } : undefined}
+    >
+      {!compact && excerpt ? (
+        <Text
+          className={`text-center font-display text-ink ${large ? "text-[18px]" : "text-[13.5px] leading-[18px]"}`}
+          style={large ? { lineHeight: LARGE_QUOTE_LINE } : undefined}
+          numberOfLines={lines}
+        >
+          “{excerpt}”
+        </Text>
+      ) : (
+        <Ionicons name="chatbubble-ellipses-outline" size={compact ? 18 : 22} colorClassName="accent-accent-deep" />
+      )}
+    </View>
+  );
+}
+
+export function CardArt({
+  memory,
+  compact = false,
+  large = false,
+}: {
+  memory: MemoryCard;
+  compact?: boolean;
+  large?: boolean;
+}) {
   const types = memory.mediaTypes;
-  if (memory.isTextOnly) {
-    return (
-      <View className="absolute inset-0 items-center justify-center bg-peach p-3">
-        {!compact && memory.excerpt ? (
-          <Text className="text-center font-display text-[13.5px] leading-[18px] text-ink" numberOfLines={3}>
-            “{memory.excerpt}”
-          </Text>
-        ) : (
-          <Ionicons name="chatbubble-ellipses-outline" size={compact ? 18 : 22} colorClassName="accent-accent-deep" />
-        )}
-      </View>
-    );
-  }
+  if (memory.isTextOnly) return <QuoteArt excerpt={memory.excerpt} compact={compact} large={large} />;
   if (!types.includes("PHOTO") && types.includes("VIDEO")) {
     // `heroUrl` is the video's poster frame.
     return (

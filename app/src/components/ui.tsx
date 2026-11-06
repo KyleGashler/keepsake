@@ -7,6 +7,7 @@ import { shortDate } from "../format";
 import { Image, Ionicons, type IoniconName } from "../styled";
 import { layout } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
+import { CardArt } from "./memory/parts";
 import { Sparkle } from "./journey";
 
 export function Screen({
@@ -244,13 +245,8 @@ export function MemoryTile({
       style={{ width }}
     >
       <View className="rounded-md overflow-hidden bg-surface-alt mb-2" style={{ height }}>
-        <Image
-          source={{ uri: mediaUrl(memory.heroUrl) }}
-          className="absolute inset-0"
-          contentFit="cover"
-          transition={220}
-        />
-        {memory.hasAudio ? (
+        <CardArt memory={memory} large />
+        {memory.hasAudio && memory.mediaTypes.some((t) => t !== "AUDIO") ? (
           <View className="absolute top-2 right-2 bg-scrim/62 rounded-full p-1.5">
             <Ionicons name="mic" size={12} colorClassName="accent-surface" />
           </View>

@@ -173,8 +173,15 @@ type MemoryWithRelations = Memory & {
 
 export const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
 
+const EXCERPT_LENGTH = 140;
+
 export function storyExcerpt(story: string | null) {
-  return story ? story.replace(/\s+/g, " ").slice(0, 140) : null;
+  if (!story) return null;
+  const flat = story.replace(/\s+/g, " ").trim();
+  if (flat.length <= EXCERPT_LENGTH) return flat;
+  const cut = flat.slice(0, EXCERPT_LENGTH);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > 0 ? cut.slice(0, lastSpace) : cut).replace(/[\s,;:.—-]+$/, "")}…`;
 }
 
 export async function memoryCardDto(m: MemoryWithRelations) {

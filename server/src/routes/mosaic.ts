@@ -2,7 +2,7 @@ import type { Memory } from "@prisma/client";
 import { Router } from "express";
 import { isNeutralPalette } from "../lib/palette.js";
 import { prisma } from "../lib/prisma.js";
-import { heroStill, imageUrl, mediaInclude } from "../lib/serialize.js";
+import { heroStill, imageUrl, mediaInclude, storyExcerpt } from "../lib/serialize.js";
 
 export const mosaicRouter = Router();
 
@@ -29,6 +29,8 @@ mosaicRouter.get("/mosaic", async (req, res) => {
         url: hero?.url ?? imageUrl(m.heroSeed, 900, 900),
         isVideo: hero?.media.type === "VIDEO",
         hasAudio: m.media.some((x) => x.type === "AUDIO"),
+        isTextOnly: m.media.length === 0,
+        excerpt: storyExcerpt(m.story),
         paletteHue: m.paletteHue,
         palette: m.palette,
         span,
