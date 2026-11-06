@@ -26,3 +26,4 @@ export const draft = {
     return assets;
   },
 };
+

@@ -10,7 +10,8 @@ import {
   RecorderStage,
   type Facing,
 } from "../../src/components/video-recorder";
-import { draft } from "../../src/draft";
+import type { DraftAsset } from "../../src/draft";
+import { handToCompose, type ComposeParams } from "../../src/routes";
 import { errorMessage } from "../../src/format";
 import {
   FALLBACK_MAX_UPLOAD_BYTES,
@@ -38,7 +39,7 @@ const TIMESLICE_MS = 1000;
  * for again, and leaving the screen stops everything.
  */
 export default function VideoWebScreen() {
-  const params = useLocalSearchParams<{ prompt?: string; collectionId?: string }>();
+  const params = useLocalSearchParams<ComposeParams>();
   // Without an answer, the recorder falls back to a safe budget rather than refusing.
   const { data: limits, error: limitsError } = useApiQuery<UploadLimits>("/api/media/limits", { staleTime: Infinity });
   const maxBytes = limits?.maxUploadBytes ?? (limitsError ? FALLBACK_MAX_UPLOAD_BYTES : null);
@@ -274,25 +275,16 @@ export default function VideoWebScreen() {
     setHandingOff(true);
     handedOffRef.current = true;
     const { mime, ext } = normalizeVideoType(clip.mime, clip.uri);
-    draft.set([
-      {
-        uri: clip.uri,
-        name: `video-${Date.now()}${ext}`,
-        mime,
-        bytes: clip.bytes,
-        width: clip.width,
-        height: clip.height,
-        durationS: clip.durationS,
-      },
-    ]);
-    router.replace({
-      pathname: "/capture/compose",
-      params: {
-        mode: "video",
-        ...(params.prompt ? { prompt: params.prompt } : {}),
-        ...(params.collectionId ? { collectionId: params.collectionId } : {}),
-      },
-    });
+    const asset: DraftAsset = {
+      uri: clip.uri,
+      name: `video-${Date.now()}${ext}`,
+      mime,
+      bytes: clip.bytes,
+      width: clip.width,
+      height: clip.height,
+      durationS: clip.durationS,
+    };
+    handToCompose([asset], params);
   }
 
   if (phase === "asking" || !budget) return <RecorderNotice state="asking" />;

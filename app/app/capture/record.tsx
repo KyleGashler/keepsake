@@ -15,9 +15,9 @@ import { StardustCluster } from "../../src/components/brand";
 import { AppHeader, Button, ViewOnlyState } from "../../src/components/ui";
 import { useCanContribute } from "../../src/auth/session-context";
 import { addToMemory, isNotFound } from "../../src/api";
-import { draft, type DraftAsset } from "../../src/draft";
+import type { DraftAsset } from "../../src/draft";
 import { MEMORY_VIEWS, memorySaved } from "../../src/query";
-import { goBackOr, routes } from "../../src/routes";
+import { goBackOr, handToCompose, routes, type ComposeParams } from "../../src/routes";
 import { clock, errorMessage } from "../../src/format";
 import { Ionicons, type IoniconName } from "../../src/styled";
 
@@ -43,7 +43,7 @@ export default function RecordRoute() {
 }
 
 function RecordScreen() {
-  const params = useLocalSearchParams<{ prompt?: string; collectionId?: string; memoryId?: string }>();
+  const params = useLocalSearchParams<ComposeParams & { memoryId?: string }>();
   const [addingTo, setAddingTo] = useState(params.memoryId ?? null);
   const insets = useSafeAreaInsets();
 
@@ -211,15 +211,7 @@ function RecordScreen() {
         if (mountedRef.current) goBackOr(routes.memory(addingTo));
         return;
       }
-      draft.set([asset]);
-      router.replace({
-        pathname: "/capture/compose",
-        params: {
-          mode: "audio",
-          ...(params.prompt ? { prompt: params.prompt } : {}),
-          ...(params.collectionId ? { collectionId: params.collectionId } : {}),
-        },
-      });
+      handToCompose([asset], params);
     } catch (err) {
       if (addingTo && isNotFound(err)) {
         setAddingTo(null);

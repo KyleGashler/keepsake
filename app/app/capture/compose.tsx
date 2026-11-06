@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
-import { router, useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
+import { useCallback, useMemo, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -26,8 +26,10 @@ import { AppHeader, Button, ErrorState, Loading, Screen, ViewOnlyState } from ".
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
 import { collectionName, duration, errorMessage } from "../../src/format";
+import { pickLibraryMedia, takePhoto } from "../../src/pick-media";
+import { composeParams, type ComposeParams } from "../../src/routes";
 import { MEMORY_VIEWS, invalidate, useApiQuery } from "../../src/query";
-import { Image, Ionicons } from "../../src/styled";
+import { Image, Ionicons, type IoniconName } from "../../src/styled";
 
 /** Every text field's box; each sets its own text size (the story's is larger). */
 const INPUT = "rounded-md border border-line bg-surface px-4 py-[13px] text-ink";
@@ -74,7 +76,7 @@ export default function ComposeRoute() {
 }
 
 function ComposeScreen() {
-  const params = useLocalSearchParams<{ prompt?: string; collectionId?: string; mode?: string }>();
+  const params = useLocalSearchParams<ComposeParams>();
   const peopleQuery = useApiQuery<{ people: Person[] }>("/api/people");
   const collectionsQuery = useApiQuery<{ collections: Collection[] }>("/api/collections");
   // The ceiling is the server's configuration; it doesn't move under a session.
@@ -88,8 +90,29 @@ function ComposeScreen() {
   });
   const session = useSession();
 
-  // Media picked in Capture is handed over once, on mount.
-  const [assets] = useState(() => draft.take());
+  // Media arrives through the draft: from Capture on first focus, from a recorder opened here on return.
+  const [assets, setAssets] = useState<DraftAsset[]>([]);
+  const addAssets = (added: DraftAsset[]) =>
+    setAssets((current) => [...current, ...added.filter((a) => !current.some((c) => c.uri === a.uri))]);
+  useFocusEffect(
+    useCallback(() => {
+      const arrived = draft.take();
+      if (arrived.length) setAssets((current) => [...current, ...arrived]);
+    }, []),
+  );
+  function removeAsset(uri: string) {
+    setAssets((current) => current.filter((a) => a.uri !== uri));
+    // A web recording's blob is otherwise held until the tab closes.
+    if (Platform.OS === "web" && uri.startsWith("blob:")) URL.revokeObjectURL(uri);
+  }
+  const openRecorder = (pathname: "/capture/record" | "/capture/video") =>
+    router.push({ pathname, params: composeParams(params) });
+  const addMediaActions: { label: string; icon: IoniconName; onPress: () => void }[] = [
+    { label: "Library", icon: "images-outline", onPress: async () => addAssets(await pickLibraryMedia()) },
+    { label: "Photo", icon: "camera-outline", onPress: async () => addAssets(await takePhoto()) },
+    { label: "Video", icon: "videocam-outline", onPress: () => openRecorder("/capture/video") },
+    { label: "Voice", icon: "mic-outline", onPress: () => openRecorder("/capture/record") },
+  ];
   const [title, setTitle] = useState("");
   const [story, setStory] = useState("");
   const [date, setDate] = useState(today());
@@ -117,12 +140,9 @@ function ComposeScreen() {
   // Audio rides as a playable card, never through <Image>.
   const recordings = assets.filter((a) => a.mime.startsWith("audio/"));
   const visuals = assets.filter((a) => !a.mime.startsWith("audio/"));
-  const audioMode = params.mode === "audio" || recordings.length > 0;
   const hasVideo = visuals.some((a) => a.mime.startsWith("video/"));
   const hasPhoto = visuals.some((a) => !a.mime.startsWith("video/"));
   const photoDated = hasPhoto && !dateTouched;
-  // Arrived from the video recorder without its clip (a reload drops the draft).
-  const missingVideo = params.mode === "video" && !visuals.length;
 
   const people = peopleData?.people ?? [];
   // Whoever is writing, by default: their own Person in this family (a
@@ -194,76 +214,62 @@ function ComposeScreen() {
             </View>
           ) : null}
 
-          {recordings.length ? (
-            <View className="gap-2">
-              {recordings.map((asset, i) => (
-                <AudioClip
-                  key={asset.uri}
-                  uri={asset.uri}
-                  title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
-                  durationS={asset.durationS}
+          <Field label="Photos, videos & voices">
+            {visuals.length ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
+                <View className="flex-row gap-2">
+                  {visuals.map((asset) => {
+                    const isVideo = asset.mime.startsWith("video/");
+                    return (
+                      <View key={asset.uri}>
+                        {isVideo ? (
+                          <VideoThumb asset={asset} />
+                        ) : (
+                          <Image
+                            source={{ uri: asset.uri }}
+                            className="h-24 w-24 rounded-sm bg-surface-alt"
+                            contentFit="cover"
+                          />
+                        )}
+                        <RemoveButton
+                          label={isVideo ? "Remove video" : "Remove photo"}
+                          onPress={() => removeAsset(asset.uri)}
+                          className="absolute right-1 top-1 bg-ink/55"
+                          iconClassName="accent-surface"
+                        />
+                      </View>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            ) : null}
+            {recordings.map((asset, i) => (
+              <View key={asset.uri} className="mb-2 flex-row items-center gap-2">
+                <View className="flex-1">
+                  <AudioClip
+                    uri={asset.uri}
+                    title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
+                    durationS={asset.durationS}
+                  />
+                </View>
+                <RemoveButton label="Remove recording" onPress={() => removeAsset(asset.uri)} iconClassName="accent-muted" />
+              </View>
+            ))}
+            <View className="flex-row flex-wrap gap-2">
+              {addMediaActions.map(({ label, icon, onPress }) => (
+                <Button
+                  key={label}
+                  variant="secondary"
+                  label={label}
+                  icon={icon}
+                  disabled={saving}
+                  onPress={onPress}
+                  className="grow basis-[140px] px-3"
                 />
               ))}
             </View>
-          ) : null}
-          {audioMode && !recordings.length ? (
-            // Arrived without a clip (a deep link, or a reload that dropped the
-            // in-memory draft): offer the recorder rather than an empty form.
-            <View className="flex-row items-center gap-3 rounded-md border border-line bg-surface p-3 pl-4">
-              <Text className="flex-1 type-body">No recording attached yet.</Text>
-              <Button
-                label="Record"
-                icon="mic-outline"
-                onPress={() =>
-                  router.replace({
-                    pathname: "/capture/record",
-                    params: {
-                      ...(params.prompt ? { prompt: params.prompt } : {}),
-                      ...(params.collectionId ? { collectionId: params.collectionId } : {}),
-                    },
-                  })
-                }
-              />
-            </View>
-          ) : null}
-          {missingVideo ? (
-            <View className="flex-row items-center gap-3 rounded-md border border-line bg-surface p-3 pl-4">
-              <Text className="flex-1 type-body">No video attached yet.</Text>
-              <Button
-                label="Record"
-                icon="videocam-outline"
-                onPress={() =>
-                  router.replace({
-                    pathname: "/capture/video",
-                    params: {
-                      ...(params.prompt ? { prompt: params.prompt } : {}),
-                      ...(params.collectionId ? { collectionId: params.collectionId } : {}),
-                    },
-                  })
-                }
-              />
-            </View>
-          ) : null}
-
-          {visuals.length ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <View className="flex-row gap-2">
-                {visuals.map((asset) =>
-                  asset.mime.startsWith("video/") ? (
-                    <VideoThumb key={asset.uri} asset={asset} />
-                  ) : (
-                    <Image
-                      key={asset.uri}
-                      source={{ uri: asset.uri }}
-                      className="h-24 w-24 rounded-sm bg-surface-alt"
-                      contentFit="cover"
-                    />
-                  ),
-                )}
-              </View>
-            </ScrollView>
-          ) : null}
-          {audioMode || hasVideo ? (
+          </Field>
+          {recordings.length || hasVideo ? (
             // Close under the media it's about, not a field's distance away.
             <Text className="-mt-4 type-caption">
               The transcript will be written automatically after you save.
@@ -455,6 +461,30 @@ function VideoThumb({ asset }: { asset: DraftAsset }) {
         ) : null}
       </View>
     </View>
+  );
+}
+
+function RemoveButton({
+  label,
+  onPress,
+  className = "",
+  iconClassName,
+}: {
+  label: string;
+  onPress: () => void;
+  className?: string;
+  iconClassName: string;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={6}
+      className={`h-7 w-7 items-center justify-center rounded-full active:opacity-70 ${className}`}
+    >
+      <Ionicons name="close" size={16} colorClassName={iconClassName} />
+    </Pressable>
   );
 }
 

@@ -1,5 +1,6 @@
 import { router, type Href } from "expo-router";
 import type { Collection, PillarKey } from "./api";
+import { draft, type DraftAsset } from "./draft";
 
 /**
  * Every Library screen lives in a stack nested in the Library tab
@@ -57,6 +58,19 @@ export function openInLibrary(href: string) {
  */
 export function backTo(parent: Href) {
   router.dismissTo(parent);
+}
+
+/** What compose was opened with; a recorder carries it there and back. */
+export type ComposeParams = { prompt?: string; collectionId?: string };
+
+export function composeParams({ prompt, collectionId }: ComposeParams) {
+  return { ...(prompt ? { prompt } : {}), ...(collectionId ? { collectionId } : {}) };
+}
+
+/** A recorder's clip goes to compose: back to the one that opened it, else a new one in the recorder's place. */
+export function handToCompose(assets: DraftAsset[], params: ComposeParams) {
+  draft.set(assets);
+  router.dismissTo({ pathname: "/capture/compose", params: composeParams(params) });
 }
 
 /**
