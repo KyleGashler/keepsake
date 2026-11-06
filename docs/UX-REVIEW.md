@@ -2,16 +2,9 @@
 
 A walk through every main screen of the local build (demo family, phone width). Work through it top to bottom; tick items off as they land.
 
-## Bugs
-
-- [x] **Search shows raw HTML.** Snippets render as `<b>cake</b> shaped like…`. Postgres `ts_headline` wraps matches in `<b>` by default ([search.ts](../server/src/routes/search.ts)). Fixed: empty `StartSel`/`StopSel`, so the snippet is plain text.
-- [x] **Opening a page by URL can fail first time.** Loading `/timeline` directly showed "Can't reach the archive"; "Try again" then worked. Not a bug: the dev API was restarting (tsx watch) while a commit touched server files. Cold loads of `/timeline`, `/mosaic` and `/library` work.
-- [x] **"Someone added …" in Family Updates.** A memory with no author falls back to "Someone" ([memories.ts](../server/src/routes/memories.ts)). Fixed: falls back to the signed-in user's name. The app always sends an author; only API calls without one hit this.
-
 ## Getting around
 
 - [ ] **Four taps to reach a memory** (Library → Child Profiles → Banks → Milestones). Add a strip of recent memories at the top of each child's page.
-- [ ] **No counts on collection rows.** Show how many memories each collection holds ("3").
 - [ ] **Timeline is a main tab that only says "Coming soon".** Hide it until it's built.
 - [ ] **51 collections for 5 memories.** Each child gets 7 default collections, so the archive feels empty. Show only collections with memories, plus one "+ More collections" option.
 - [ ] **The header changes between tabs.** Capture has a small heading with search and people icons; the others have a large heading, family chip and settings gear. Use one header everywhere.

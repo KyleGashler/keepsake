@@ -95,6 +95,7 @@ export default function ChildCollectionsScreen() {
                   key={collection.id}
                   title={collection.name}
                   description={collection.description}
+                  count={collection.memoryCount}
                   leading={<IconDisc icon={collection.icon} color={collection.color} size={52} />}
                   divider={i < collections.length - 1}
                   onPress={() => router.push(collectionHref(collection))}

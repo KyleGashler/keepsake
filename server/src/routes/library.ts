@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { COLLECTION_ICONS, DEFAULT_COLLECTION_COLOR, DEFAULT_COLLECTION_ICON } from "../lib/child-collections.js";
 import { archiveFilters, collectionArchive } from "../lib/archive.js";
+import { birthdaysMemoryCount } from "../lib/birthdays.js";
 import { childSummaries, childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
 import { pictureUrl, setPicture } from "../lib/pictures.js";
@@ -138,7 +139,14 @@ libraryRouter.get("/children/:id", async (req, res) => {
       include: collectionInclude,
     }),
   ]);
-  res.json({ child: summary, collections: collections.map(collectionDto) });
+  const dtos = await Promise.all(
+    collections.map(async (c) =>
+      c.kind === "birthdays"
+        ? { ...collectionDto(c), memoryCount: await birthdaysMemoryCount(family.id, c.id) }
+        : collectionDto(c),
+    ),
+  );
+  res.json({ child: summary, collections: dtos });
 });
 
 const collectionQuery = z.object({

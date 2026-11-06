@@ -88,6 +88,14 @@ async function firstPicture(memories: { media: MediaRow[] }[], size: "THUMB" | "
   return null;
 }
 
+function filedUnderBirthdays(birthdaysId: string): Prisma.MemoryCollectionListRelationFilter {
+  return { some: { collection: { OR: [{ id: birthdaysId }, { parent: { parentId: birthdaysId } }] } } };
+}
+
+export function birthdaysMemoryCount(familyId: string, birthdaysId: string) {
+  return prisma.memory.count({ where: { familyId, collections: filedUnderBirthdays(birthdaysId) } });
+}
+
 export async function birthdayGrid(familyId: string, birthdays: BirthdaysCollection) {
   const [rows, memories] = await Promise.all([
     prisma.collection.findMany({
@@ -95,15 +103,7 @@ export async function birthdayGrid(familyId: string, birthdays: BirthdaysCollect
       orderBy: { birthday: "asc" },
       include: { children: { select: { id: true } } },
     }),
-    memoriesWhere(
-      {
-        familyId,
-        collections: {
-          some: { collection: { OR: [{ id: birthdays.id }, { parent: { parentId: birthdays.id } }] } },
-        },
-      },
-      "pictures",
-    ),
+    memoriesWhere({ familyId, collections: filedUnderBirthdays(birthdays.id) }, "pictures"),
   ]);
 
   const loose = new Set([birthdays.id]);

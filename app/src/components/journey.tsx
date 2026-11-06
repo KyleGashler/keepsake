@@ -340,6 +340,7 @@ export function ListRow({
   leading,
   onPress,
   divider = true,
+  count,
   trailing,
 }: {
   title: string;
@@ -347,6 +348,7 @@ export function ListRow({
   leading?: ReactNode;
   onPress?: () => void;
   divider?: boolean;
+  count?: number;
   trailing?: ReactNode;
 }) {
   return (
@@ -371,6 +373,7 @@ export function ListRow({
             </Text>
           ) : null}
         </View>
+        {count ? <Text className="font-sans text-[15px] text-muted">{count}</Text> : null}
         {trailing ?? (onPress ? <Ionicons name="chevron-forward" size={20} colorClassName="accent-ink-soft" /> : null)}
       </View>
     </Pressable>
