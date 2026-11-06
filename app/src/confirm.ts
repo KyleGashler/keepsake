@@ -1,11 +1,7 @@
 import { Alert, Platform } from "react-native";
 
-/**
- * Ask before something that can't be undone. Alert has no web implementation,
- * so the browser's own dialog stands in. Use it where a sheet is already up
- * (a second Modal can't stack over the first); from a plain screen, the
- * journey's ActionSheet (components/sheet.tsx) is the friendlier way to ask.
- */
+// Alert has no web implementation, so the browser's dialog stands in. Use this
+// where a sheet is already up: a second Modal can't stack over the first.
 export function confirmAction({
   title,
   message,
@@ -14,7 +10,6 @@ export function confirmAction({
 }: {
   title: string;
   message: string;
-  /** The destructive choice, e.g. "Remove". */
   confirmLabel: string;
   cancelLabel?: string;
 }): Promise<boolean> {

@@ -14,11 +14,6 @@ import { layout, MAX_WIDTH } from "../../src/theme";
 const GAP = 10;
 const RATIO = { single: 1.15, tall: 1.6, wide: 0.72 } as const;
 
-/**
- * Mosaic is for perspective, not organisation: the archive arranged by how it
- * looks rather than when it happened. The server sorts by palette; here we lay
- * the tiles into columns so the grid keeps a curated rhythm.
- */
 export default function MosaicScreen() {
   const mosaic = useApiQuery<{ tiles: MosaicTile[] }>("/api/mosaic");
   const { data, error } = mosaic;
@@ -38,7 +33,6 @@ export default function MosaicScreen() {
     );
     for (const tile of data?.tiles ?? []) {
       const height = Math.round(columnWidth * RATIO[tile.span]);
-      // Always feed the shortest column so the bottom edge stays even.
       const target = cols.reduce((a, b) => (a.height <= b.height ? a : b));
       target.tiles.push({ ...tile, height });
       target.height += height + GAP;

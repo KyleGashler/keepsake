@@ -8,12 +8,6 @@ import { useColor } from "../theme";
 import { BackRow, ChildPortrait } from "./child-header";
 import { Glyph, Sparkle } from "./journey";
 
-/**
- * The pieces of the Birthdays screens: a child's Birthdays grid and one
- * birthday's categories (library/birthdays, library/birthday).
- */
-
-/** Back row with an optional ⋯, then the child's portrait beside the title, a cake, and a line under it. */
 export function BirthdayHeader({
   child,
   title,
@@ -61,7 +55,6 @@ export function BirthdayHeader({
   );
 }
 
-/** One birthday in the two-column grid: a photo (or a cake on peach), its name and how many memories. */
 export function BirthdayTile({
   name,
   memoryCount,
@@ -109,11 +102,6 @@ const MEDIA_ICONS: Record<MediaType, { icon: IoniconName; label: string }> = {
   AUDIO: { icon: "mic-outline", label: "audio" },
 };
 
-/**
- * A category: a rounded thumbnail with small white marks for the media it
- * holds, the name, one line of story, and a chevron — or, while editing, the
- * controls passed as `trailing`.
- */
 export function CategoryRow({
   title,
   preview,
@@ -172,7 +160,6 @@ export function CategoryRow({
   );
 }
 
-/** The terracotta "+" panel that closes a Birthdays list. */
 export function AddPanel({ title, subtitle, onPress }: { title: string; subtitle: string; onPress: () => void }) {
   return (
     <Pressable

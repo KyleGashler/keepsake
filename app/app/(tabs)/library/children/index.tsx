@@ -14,11 +14,6 @@ import { routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
 import { layout } from "../../../../src/theme";
 
-/**
- * Child Profiles (design/mockups/02): one photo card per child, oldest first,
- * then a way to add another. A child without a photo shows their monogram in
- * their own colour. With no children yet, the page is an invitation.
- */
 export default function ChildProfilesScreen() {
   const query = useApiQuery<ChildrenPayload>("/api/children");
   const { data, error } = query;
@@ -26,8 +21,6 @@ export default function ChildProfilesScreen() {
   const [adding, setAdding] = useState(false);
   const canContribute = useCanContribute();
 
-  // Edits deeper in the stack mark this stale as they save; this catches
-  // the rest of the family's.
   useRefreshOnFocus(query);
 
   const children = data?.children ?? [];
@@ -73,7 +66,6 @@ export default function ChildProfilesScreen() {
         ) : null}
 
         {children.length > 0 ? (
-          // Cards run wider than the type above them, as in the mockup.
           <View className="-mx-2.5 gap-4">
             {children.map((child) => (
               <PhotoCard

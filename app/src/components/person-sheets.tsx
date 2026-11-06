@@ -6,12 +6,6 @@ import { invalidate, PEOPLE_VIEWS } from "../query";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
-/**
- * Adding and editing people in the archive — adults as well as children (a
- * child's photo is edited on their Collections screen). Each sheet is
- * mounted by its screen only while open. Deleting someone: src/people.ts.
- */
-
 const BIRTHDAY_HINT = "Optional. Year-month-day, like 1958-03-02.";
 
 function birthdayEcho(input: string) {
@@ -20,7 +14,6 @@ function birthdayEcho(input: string) {
   return [birthdayLabel(iso), childAge(iso)].filter(Boolean).join("  ·  ");
 }
 
-/** The roles an adult can be added with. Children are added from the Library. */
 const ADULT_ROLES: { role: Person["role"]; label: string }[] = [
   { role: "PARENT", label: "Parent" },
   { role: "GRANDPARENT", label: "Grandparent" },
@@ -28,10 +21,6 @@ const ADULT_ROLES: { role: Person["role"]; label: string }[] = [
   { role: "COLLABORATOR", label: "Friend or helper" },
 ];
 
-/**
- * Someone who belongs in the family's story but doesn't need an account (yet):
- * a great-grandparent, an aunt abroad. Inviting them later links this person.
- */
 export function AddPersonSheet({ onClose, onAdded }: { onClose: () => void; onAdded?: (person: Person) => void }) {
   const add = useMutation({
     mutationFn: (body: PersonCreate) => apiSend<{ person: Person }>("/api/people", "POST", body),
@@ -112,7 +101,6 @@ export function AddPersonSheet({ onClose, onAdded }: { onClose: () => void; onAd
   );
 }
 
-/** Name, what the family calls them, and birthday. */
 export function EditPersonSheet({
   person,
   onClose,

@@ -23,12 +23,6 @@ import { deletePersonMessage, useDeletePersonAction } from "../../src/people";
 import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { goBackOr, openInLibrary, routes } from "../../src/routes";
 
-/**
- * Tapping a person filters the archive around their story. Someone who can
- * contribute also gets ⋯: edit their details, or delete them from the
- * archive — unless they have an account here, which only an owner can take
- * away (Family Hub), after which they can be deleted too.
- */
 export default function PersonScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const query = useApiQuery<PersonDetail>(`/api/people/${id}`);
@@ -41,7 +35,6 @@ export default function PersonScreen() {
   const [confirming, setConfirming] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Each state keeps the header, so there's always a way back.
   if (isNotFound(error) || !data) {
     let body = <Loading />;
     if (isNotFound(error)) {
@@ -82,7 +75,6 @@ export default function PersonScreen() {
               {data.memoryCount} {data.memoryCount === 1 ? "memory" : "memories"} so far
             </Text>
           </View>
-          {/* Whimsical shape 6/6 — dream cloud, over the person the story is about. */}
           <DreamCloud size={44} opacity={0.8} />
         </View>
         {notice ? <Text className="mt-3 type-caption text-terracotta">{notice}</Text> : null}

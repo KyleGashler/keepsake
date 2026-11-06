@@ -9,23 +9,13 @@ import {
 import { ageOn, longDate, monthDay } from "../format";
 import { Image, Ionicons, type IoniconName } from "../styled";
 
-/**
- * How one memory reads inside a collection's archive. src/archive.ts maps a
- * collection's kind to one of these.
- */
 export type EntryProps = {
   memory: MemoryCard;
   collection: Collection;
-  /** The child the collection belongs to, if any. */
   child: ChildSummary | null;
   onPress: () => void;
-  /** The last entry under its year heading — list renderers drop their hairline. */
   isLast: boolean;
 };
-
-// ---------------------------------------------------------------------------
-// Default: a photo-or-words row
-// ---------------------------------------------------------------------------
 
 const MEDIA_GLYPHS: Record<MediaType, { icon: IoniconName; label: string }> = {
   PHOTO: { icon: "image-outline", label: "Photos" },
@@ -33,11 +23,6 @@ const MEDIA_GLYPHS: Record<MediaType, { icon: IoniconName; label: string }> = {
   AUDIO: { icon: "mic-outline", label: "Audio" },
 };
 
-/**
- * A memory with media leads with its photo; a text-only one (a story, a note)
- * is set as words, with a rule in the collection's colour where a photo would
- * be — never a stand-in image.
- */
 export function MemoryEntry({ memory, collection, onPress, isLast }: EntryProps) {
   const eyebrow = [monthDay(memory.occurredAt), memory.location].filter(Boolean).join("  ·  ");
   return (
@@ -93,17 +78,8 @@ function MediaGlyphs({ types, count }: { types: MediaType[]; count: number }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Quotes: a pull-quote card
-// ---------------------------------------------------------------------------
-
 const QUOTE_MARKS = /^[\s"“”‘’']+|[\s"“”‘’']+$/g;
 
-/**
- * Which words are the quote. Quotes are usually captured with the words as
- * the title (in quote marks) and the circumstances as the story; a title
- * that isn't quoted but has a story is a heading over the quoted story.
- */
 function quoteParts(memory: MemoryCard) {
   const titleIsQuote = /^\s*["“‘']/.test(memory.title) || !memory.excerpt;
   if (titleIsQuote) {
@@ -115,7 +91,6 @@ function quoteParts(memory: MemoryCard) {
   return { quote, heading: memory.title, context: null };
 }
 
-/** Someone's words, large, with who said them, how old they were, and when. */
 export function QuoteEntry({ memory, child, onPress }: EntryProps) {
   const { quote, heading, context } = quoteParts(memory);
   const speaker = child ? [child.name, ageOn(child.birthDate, memory.occurredAt)].filter(Boolean).join(", ") : null;

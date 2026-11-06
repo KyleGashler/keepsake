@@ -14,31 +14,8 @@ export const searchRouter = Router();
 
 const query = z.object({ q: z.string().trim().max(120).default("") });
 
-/** One row of the ranked full-text hit list: id, rank, and a highlighted snippet. */
 type MemoryHit = { id: string; rank: number; snippet: string | null };
 
-/**
- * One universal search across the whole archive — memories, people,
- * collections, transcripts, locations.
- *
- * Memories are searched with Postgres full-text search: `Memory.searchVector`
- * is a generated, GIN-indexed tsvector (see the memory_search_vector
- * migration) weighted title > location > story > transcript, queried with
- * `websearch_to_tsquery` so users can type things like `"rainy tuesday"` or
- * `aquarium -rain`. Results are ranked with `ts_rank_cd` and each memory gets
- * a `ts_headline` snippet of the matched terms in context, which overrides
- * the card's default plain-text excerpt.
- *
- * `websearch_to_tsquery` can parse to an *empty* tsquery — typically an
- * all-stopword query like "the" — which would never match anything via `@@`
- * even though the user typed something. Rather than silently returning zero
- * results for that case, we fall back to the old ILIKE OR-clause so a query
- * like "the" still returns whatever plain substring matches exist.
- *
- * People and collections stay on ILIKE: they're small, short-text tables
- * where substring matching is exactly what you want (e.g. partial names),
- * and there's no transcript-sized column to justify an index for them.
- */
 searchRouter.get("/search", async (req, res) => {
   const family = req.ctx.family;
   const parsed = query.safeParse(req.query);
@@ -93,10 +70,8 @@ async function searchMemories(familyId: string, q: string) {
     LIMIT 30
   `;
 
-  // `websearch_to_tsquery` parses to an empty query for input that's nothing
-  // but stopwords/punctuation (e.g. "the"). An empty tsquery never matches
-  // anything, so `hits` above is unconditionally empty in that case — but
-  // that's a parsing dead-end, not "no results", so fall back to ILIKE.
+  // websearch_to_tsquery parses all-stopword input ("the") to an empty query
+  // that never matches; that's a parsing dead end, not "no results".
   if (hits.length === 0 && (await isEmptyTsQuery(q))) {
     return searchMemoriesByIlike(familyId, q);
   }
@@ -110,8 +85,7 @@ async function searchMemories(familyId: string, q: string) {
   });
   const byId = new Map(records.map((m) => [m.id, m]));
 
-  // Preserve the rank order from the raw query — Prisma's `in` filter makes
-  // no ordering guarantee of its own.
+  // Prisma's `in` filter makes no ordering guarantee; keep the rank order.
   return Promise.all(
     hits
       .map((h) => byId.get(h.id))

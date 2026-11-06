@@ -17,10 +17,6 @@ import { backTo, goBackOr, routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
 import { layout } from "../../../../src/theme";
 
-/**
- * A child's Birthdays: the birthdays the family has added, two to a row,
- * each with a photo and how many memories it holds; then Add a Birthday.
- */
 export default function BirthdaysScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const path = `/api/collections/${id}/birthdays`;
@@ -167,7 +163,6 @@ export default function BirthdaysScreen() {
 
 const MAX_BIRTHDAY = 120;
 
-/** Starts on the child's latest birthday when that isn't here yet, else the first one missing. */
 function AddBirthdaySheet({
   birthdaysId,
   child,

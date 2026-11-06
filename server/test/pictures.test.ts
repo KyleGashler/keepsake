@@ -11,13 +11,6 @@ import { deleteIfUnused, pictureUrl, renditionsMade, setPicture, type PictureHol
 import { prisma } from "../src/lib/prisma.js";
 import { derivativeKey, localProvider, originalKey, storage } from "../src/storage/index.js";
 
-/**
- * The Picture module (lib/pictures.ts), through its interface, against a
- * scratch Postgres and local disk. Queued jobs are run by `runJobs`, which
- * hands each queued `media.purge` and `image.derive` payload straight to its
- * handler, as the worker would.
- */
-
 const disk = () => {
   const provider = localProvider();
   if (!provider) throw new Error("tests expect STORAGE_PROVIDER=local");
@@ -45,7 +38,6 @@ afterAll(async () => {
   await prisma.$disconnect();
 });
 
-/** A finalized upload: an Original of `ext`, really stored (unless `store` is false). */
 async function upload(ext = ".jpg", store = true) {
   const key = originalKey(family, crypto.randomUUID(), ext);
   if (store) {
@@ -66,7 +58,7 @@ const filesOf = async (key: string) => ({
   display: await exists(display(key)),
 });
 
-/** The storage key a URL from `pictureUrl` serves (local read URLs carry it, signed). */
+// Local read URLs carry the storage key in a signed token.
 async function served(holder: PictureHolder, size: "THUMB" | "DISPLAY") {
   const url = await pictureUrl(holder, size);
   return url === null ? null : disk().verifyReadToken(url.replace("/media/o/", "")).key;
@@ -76,7 +68,6 @@ function context(type: JobType): JobContext {
   return { id: "test", type, attempt: 1, maxAttempts: 1, log: logger };
 }
 
-/** Run every queued job (and the jobs those queue) to completion. Returns the types run, in order. */
 async function runJobs() {
   const ran: string[] = [];
   for (;;) {
@@ -102,7 +93,6 @@ async function runJobs() {
 const personRow = () => prisma.person.findFirstOrThrow({ where: { id: person, familyId: family } });
 const coverRow = (pillar: Pillar) => prisma.pillarCover.findUnique({ where: { familyId_pillar: { familyId: family, pillar } } });
 
-/** A memory whose photo is `key`, with both Renditions written and recorded, as `media.derive` leaves it. */
 async function memoryPhoto(key: string) {
   for (const at of [thumb(key), display(key)]) await storage().writeDerivative(at, Buffer.from("jpeg"), "image/jpeg");
   const memory = await prisma.memory.create({
@@ -132,7 +122,6 @@ async function memoryPhoto(key: string) {
   return media;
 }
 
-/** A promise the test settles by hand. */
 function deferred() {
   const handle: { resolve?: () => void } = {};
   const promise = new Promise<void>((resolve) => {
@@ -249,7 +238,6 @@ describe("setPicture: a pillar cover", () => {
     await runJobs();
     expect(await filesOf(second)).toEqual({ original: false, thumb: false, display: false });
 
-    // Clearing a pillar with no cover is a no-op.
     expect(await setPicture(family, { pillar }, null)).toEqual({ ok: true });
     expect(await runJobs()).toEqual([]);
   });

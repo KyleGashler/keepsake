@@ -9,18 +9,6 @@ export { FirebaseTokenVerifier } from "./FirebaseTokenVerifier.js";
 
 export const AUTH_MODE = process.env.AUTH_MODE ?? "dev";
 
-/**
- * Pick the verifier for this process, and refuse to start rather than run
- * with a verifier that can't do its job:
- *
- * - `firebase` (production) needs `FIREBASE_PROJECT_ID` — without it every
- *   token would be rejected and the app would look broken rather than
- *   misconfigured.
- * - `dev` believes any `dev:<email>` token, so under `NODE_ENV=production` it
- *   needs the loud, explicit `ALLOW_DEV_AUTH_IN_PROD=1` opt-in. The hosted
- *   demo no longer uses it; the hatch stays for a throwaway production-mode
- *   run on a laptop.
- */
 export function createTokenVerifier(): TokenVerifier {
   const isProduction = process.env.NODE_ENV === "production";
   const mode = AUTH_MODE;

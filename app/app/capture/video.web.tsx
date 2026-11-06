@@ -26,21 +26,13 @@ type Phase = "asking" | "denied" | "insecure" | "unavailable" | "ready" | "recor
 type Clip = { uri: string; durationS: number; bytes: number; mime: string; width?: number; height?: number };
 
 const BITS_PER_SECOND = WEB_VIDEO.videoBitsPerSecond + WEB_VIDEO.audioBitsPerSecond;
-/** MediaRecorder hands over a chunk this often, which is how bytes are counted. */
+// MediaRecorder hands over a chunk this often; bytes are counted per chunk.
 const TIMESLICE_MS = 1000;
 
-/**
- * The web recorder. expo-camera can't record in a browser, so this is
- * `getUserMedia` + `MediaRecorder` directly, behind the same UI and the same
- * cap as the native screen (`video.tsx`).
- *
- * The camera light is the contract: tracks are stopped as soon as a recording
- * ends (the review plays the file, not the camera), on retake they're asked
- * for again, and leaving the screen stops everything.
- */
+// expo-camera can't record in a browser, so this drives getUserMedia and
+// MediaRecorder directly.
 export default function VideoWebScreen() {
   const params = useLocalSearchParams<ComposeParams>();
-  // Without an answer, the recorder falls back to a safe budget rather than refusing.
   const { data: limits, error: limitsError } = useApiQuery<UploadLimits>("/api/media/limits", { staleTime: Infinity });
   const maxBytes = limits?.maxUploadBytes ?? (limitsError ? FALLBACK_MAX_UPLOAD_BYTES : null);
   const budget = maxBytes ? recordingBudget(maxBytes, BITS_PER_SECOND) : null;
@@ -48,7 +40,7 @@ export default function VideoWebScreen() {
   const [phase, setPhase] = useState<Phase>(() => unsupported()?.phase ?? "asking");
   const [unavailable, setUnavailable] = useState(() => unsupported()?.message ?? "");
   const [facing, setFacing] = useState<Facing>("back");
-  // What the browser actually opened: a laptop webcam reports no facing at all.
+  // A laptop webcam reports no facing at all.
   const [mirrored, setMirrored] = useState(true);
   const [canFlip, setCanFlip] = useState(false);
   const [stream, setStream] = useState<MediaStream | null>(null);
@@ -101,7 +93,6 @@ export default function VideoWebScreen() {
     await connectCamera(which);
   }
 
-  /** Ask for the camera and microphone; the browser's checks have already passed. */
   async function connectCamera(which: Facing) {
     let media: MediaStream;
     try {
@@ -132,7 +123,6 @@ export default function VideoWebScreen() {
     setStream(media);
     setFacing(which);
     setMirrored(media.getVideoTracks()[0]?.getSettings().facingMode !== "environment");
-    // Only phones (and the odd desktop with two webcams) have a camera to flip to.
     navigator.mediaDevices
       .enumerateDevices()
       .then((devices) => {
@@ -145,12 +135,10 @@ export default function VideoWebScreen() {
   }
 
   useEffect(() => {
-    // The back camera on a phone ("capture a moment"); a desktop has only one.
-    // An unsupported browser already says so from the first render.
     if (!unsupported()) void connectCamera("back");
   }, []);
 
-  // The clock, and the length cap: the browser has no maxDuration of its own.
+  // MediaRecorder has no maxDuration of its own.
   const maxDurationS = budget?.maxDurationS;
   useEffect(() => {
     if (phase !== "recording" || maxDurationS === undefined) return;
@@ -201,7 +189,6 @@ export default function VideoWebScreen() {
     recorder.addEventListener("stop", () => {
       recorderRef.current = null;
       const ms = Date.now() - startedAtRef.current;
-      // The review plays the file, so the camera can go dark now.
       releaseCamera();
       if (!mountedRef.current || discardedRef.current) return;
       const blob = new Blob(chunks, { type: recorder.mimeType || mimeType });
@@ -324,11 +311,7 @@ export default function VideoWebScreen() {
   );
 }
 
-/**
- * Why this browser can't record at all, before anything is asked of the user.
- * Browsers only expose the camera on https or localhost; on plain http the API
- * simply isn't there.
- */
+// Browsers only expose the camera on https or localhost.
 function unsupported(): { phase: "insecure" | "unavailable"; message: string } | null {
   if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) return { phase: "insecure", message: "" };
   if (!pickWebVideoMimeType()) {
@@ -340,7 +323,6 @@ function unsupported(): { phase: "insecure" | "unavailable"; message: string } |
   return null;
 }
 
-/** What to say when `getUserMedia` fails for a reason other than a refusal. */
 function cameraFailure(name: string, err: unknown) {
   if (name === "NotFoundError" || name === "OverconstrainedError") {
     return "No camera or microphone was found. Plug one in, or try another device.";
@@ -354,18 +336,13 @@ function close() {
   else router.replace("/capture");
 }
 
-/**
- * The live picture. Muted so the room doesn't echo back through the
- * speakers, and mirrored for a camera facing you the way every selfie view is —
- * the recording itself is not mirrored.
- */
 function Preview({ stream, mirrored }: { stream: MediaStream | null; mirrored: boolean }) {
   const ref = useRef<HTMLVideoElement | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el || el.srcObject === stream) return;
-    // Set here as well as in props: React doesn't always write `muted` to the
-    // element, and Safari won't autoplay a stream without it.
+    // React doesn't always write `muted` to the element, and Safari won't
+    // autoplay a stream without it.
     el.muted = true;
     el.srcObject = stream;
     if (stream) {

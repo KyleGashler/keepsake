@@ -8,20 +8,10 @@ import { VideoControls, type HeroVideoProps } from "./video-controls";
 
 export type { HeroVideoProps };
 
-/** Setting `currentTime` is how expo-video seeks (exactly, by default). */
 function seekPlayer(player: VideoPlayer, seconds: number) {
   player.currentTime = seconds;
 }
 
-/**
- * The hero's video on a phone: expo-video with the native controls off and
- * the page's own drawn over it. Full screen hands over to the system player,
- * which brings its own controls.
- *
- * The stream is Mux's HLS, already transcoded for every device. Its poster
- * covers the picture until the first play, so there's no black box while the
- * player warms up. A clip that still can't play fires `onError`.
- */
 export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }: HeroVideoProps) {
   // Pinned: a signed URL changes on every refetch, and a new source would
   // rebuild the player mid-watch.

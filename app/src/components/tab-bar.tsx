@@ -4,19 +4,10 @@ import { useCanContribute } from "../auth/session-context";
 import { Ionicons } from "../styled";
 import { useColor } from "../theme";
 
-/** The route that gets the raised disc instead of an ordinary tab. */
 const RAISED_ROUTE = "capture";
 
-/**
- * Five tabs, icon over label, with Capture as a raised deep-teal disc in the
- * middle. The active tab's label goes bold with a short underline.
- *
- * Presses go through the navigator's `tabPress` event, so the stack inside a
- * tab still pops to its root when its (already focused) tab is tapped again.
- */
+// Presses go through the navigator's `tabPress` event so a focused tab tapped again pops its stack to root.
 export function TabBar({ state, descriptors, navigation, insets }: BottomTabBarProps) {
-  // Someone who can only view the family has nothing to capture into it, so
-  // the disc isn't there (the Capture screen says why if reached by a link).
   const canContribute = useCanContribute();
   const ink = useColor("ink");
   return (
@@ -50,7 +41,6 @@ export function TabBar({ state, descriptors, navigation, insets }: BottomTabBarP
               className="flex-1 items-center gap-[3px] active:opacity-70"
             >
               {raised ? (
-                // A 62pt disc, lifted half out of the bar (-mt: half its height and 4 more).
                 <View className="w-[62px] h-[62px] rounded-full -mt-[35px] mb-0.5 bg-primary items-center justify-center border-[3px] border-paper shadow-card">
                   <Ionicons name="add" size={34} colorClassName="accent-on-primary" />
                 </View>

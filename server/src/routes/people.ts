@@ -49,8 +49,6 @@ peopleRouter.get("/people/:id", async (req, res) => {
 
   res.json({
     person: personDto(person),
-    // Signs in as a member of this family. Such a person can't be deleted
-    // here: an owner removes them from the family first (Family Hub).
     isMember: isMember(person),
     memoryCount,
     memories: await memoryCardDtos(memories),
@@ -75,8 +73,6 @@ peopleRouter.post("/people", requireContributor, async (req, res) => {
     _max: { sortOrder: true },
   });
 
-  // A child arrives with their default collections, in the same transaction:
-  // a child with an empty Library is not a state anyone should see.
   const person = await prisma.$transaction(async (tx) => {
     const created = await tx.person.create({
       data: {
@@ -110,23 +106,13 @@ peopleRouter.post("/people", requireContributor, async (req, res) => {
 
 const editPerson = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  /** How the family refers to them ("Grandma"), or null to clear. */
   relation: z.string().trim().max(40).nullable().optional(),
-  /** ISO datetime, or null to clear. */
   birthDate: z.string().datetime().nullable().optional(),
-  /** A finalized upload key (an image in this family's prefix), or null to clear. */
   photoKey: z.string().min(1).max(512).nullable().optional(),
 });
 
-/**
- * Edit a person: name, relation, birthday and profile photo.
- * Absent fields are left alone; null clears a nullable one. The photo goes
- * first, in its own transaction (`setPicture`, lib/pictures.ts), so a bad
- * key refuses the whole request before anything is saved: a new photo
- * queues its renditions, and the one it replaces is deleted unless
- * something else still holds it. Then the other fields are saved. A crash
- * between the two leaves the new photo with the old name, which is fine.
- */
+// The photo goes first, in its own transaction, so a bad key refuses the request before anything
+// is saved; a crash between the two leaves the new photo with the old name, which is fine.
 peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = editPerson.safeParse(req.body);
@@ -168,24 +154,8 @@ function isMember(p: { userId: string | null; membership: { userId: string } | n
   return p.userId !== null || p.membership !== null;
 }
 
-/** Thrown inside the delete transaction when the person turned out to be linked after all. */
 class PersonIsMember extends Error {}
 
-/**
- * Delete someone from the archive, for good. Who can be deleted here: anyone
- * without an account in this family — a child, or an adult who never joined
- * or was removed from the family. A member (a Person linked to a User or a
- * FamilyMembership) is refused with `409 person_is_member`: removing them is
- * an owner's call, made in Family Hub (`DELETE /family/members/:userId`),
- * which unlinks the Person; after that they can be deleted here.
- *
- * What goes with them: their own collections (a child's Child Profiles and
- * Arrival Stories) — the memories filed there stay in the archive, only the
- * filing goes — and their place in every memory's "who was there". Memories
- * they wrote keep existing without an author. Pending invites naming them
- * are withdrawn. Their profile photo and its renditions are purged by
- * `media.purge`, unless something else still holds it (lib/pictures.ts).
- */
 peopleRouter.delete("/people/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const person = await prisma.person.findFirst({

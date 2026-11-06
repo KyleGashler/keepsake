@@ -15,11 +15,6 @@ export { jobQueue };
 
 export type WorkerOptions = Partial<Omit<PostgresJobQueueOptions, "log">>;
 
-/**
- * Register every handler and start polling. Called by `worker.ts`, or by the
- * API itself when `WORKER_INLINE=1`. Returns the queue so the caller can
- * `stop()` it on shutdown.
- */
 export function startWorker(options: WorkerOptions = {}): JobQueue {
   const queue =
     Object.keys(options).length > 0

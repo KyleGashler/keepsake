@@ -20,12 +20,6 @@ import {
   type UploadTarget,
 } from "./StorageProvider.js";
 
-/**
- * Media root. In Docker this is a volume; locally it defaults to `server/media`.
- * Originals live under `objects/`. The sibling `uploads/` is the pre-A5
- * directory, still served read-only so demo files uploaded before the
- * two-phase path existed keep resolving.
- */
 export const MEDIA_DIR = process.env.MEDIA_DIR ?? path.resolve("media");
 export const OBJECTS_DIR = path.join(MEDIA_DIR, "objects");
 
@@ -36,20 +30,17 @@ function resolveSecret() {
   const configured = process.env.MEDIA_SIGNING_SECRET;
   if (configured) return configured;
   if (process.env.NODE_ENV === "production") {
-    // Not fatal — a demo box that loses its media is recoverable, a box that
-    // won't boot isn't — but anyone who can read this repo can mint tokens.
+    // Not fatal, since a box that won't boot is worse, but anyone who can read this repo can mint tokens.
     logger.error("MEDIA_SIGNING_SECRET is unset in production; upload/read tokens use a public dev key");
   }
   return DEV_SECRET;
 }
 
-/** Upload tokens authorise a write; read tokens authorise a GET. Never interchangeable. */
 type TokenScope = "u" | "r";
 
 type UploadClaims = { key: string; mimeType: string; bytes: number; expiresAt: Date };
 type ReadClaims = { key: string; expiresAt: Date; downloadAs?: string };
 
-/** `d`: a read token's download filename (served as an attachment). */
 type Payload = { v: 1; s: TokenScope; k: string; e: number; m?: string; b?: number; d?: string };
 
 export class SignatureError extends Error {}
@@ -82,15 +73,8 @@ function verify(token: string, scope: TokenScope): Payload {
   return payload;
 }
 
-/**
- * Originals on a local volume, addressed exactly the way S3 addresses them.
- *
- * The one thing a bucket gives you that a disk doesn't is a presigned URL, so
- * this provider mints its own: an HMAC over (key, type, size, expiry) that the
- * `/media/local-upload` and `/media/o` routes verify. Those two routes are the
- * local stand-in for S3's endpoint, and they're the only public surface here —
- * the token *is* the authorisation, which is why they sit outside `/api`.
- */
+// A disk has no presigned URLs, so this mints HMAC tokens that the public `/media/local-upload`
+// and `/media/o` routes verify; the token is the whole authorisation.
 export class LocalDiskProvider implements StorageProvider {
   constructor() {
     fs.mkdirSync(OBJECTS_DIR, { recursive: true });
@@ -108,8 +92,7 @@ export class LocalDiskProvider implements StorageProvider {
       e: Math.floor(expires.getTime() / 1000),
     });
     return {
-      // Relative: the client resolves it against the API origin, so this works
-      // unchanged on localhost, on a LAN address, and behind the Fly hostname.
+      // Relative, so the client resolves it against whatever API origin it reached.
       url: `/media/local-upload/${token}`,
       method: "PUT",
       headers: { "Content-Type": input.mimeType },
@@ -117,7 +100,6 @@ export class LocalDiskProvider implements StorageProvider {
     };
   }
 
-  /** No checksum: a file on disk has no digest until something reads it all. */
   async head(key: string): Promise<ObjectHead | null> {
     assertSafeKey(key);
     try {
@@ -128,11 +110,7 @@ export class LocalDiskProvider implements StorageProvider {
     }
   }
 
-  /**
-   * Always true: `/media/local-upload` refuses to write a key that already
-   * exists and lands each object with an atomic rename, so a second write can't
-   * happen here. (S3 has to check after the fact; see S3StorageProvider.)
-   */
+  // The upload route refuses existing keys and lands each with an atomic rename.
   async writtenOnce(key: string): Promise<boolean> {
     assertSafeKey(key);
     return true;
@@ -156,7 +134,6 @@ export class LocalDiskProvider implements StorageProvider {
     return fs.createReadStream(this.pathFor(key), range ? { start: range.start, end: range.end } : undefined);
   }
 
-  /** Same atomic write-then-rename as an upload, so a reader never sees half a JPEG. */
   async writeDerivative(key: string, body: Buffer, _contentType: string): Promise<void> {
     assertDerivativeWritable(key);
     await this.writeObject(key, Readable.from([body]));
@@ -167,17 +144,14 @@ export class LocalDiskProvider implements StorageProvider {
     await fsp.rm(this.pathFor(key), { force: true });
   }
 
-  /** A family deleted what this file belongs to. A disk keeps no versions, so one rm is all of it. */
   async purgeForFamilyDelete(key: string): Promise<void> {
     assertSafeKey(key);
     const target = this.pathFor(key);
     await fsp.rm(target, { force: true });
-    // Tidy the now-empty `<familyId>/<uploadId>/` directory; a sibling
-    // (another rendition) keeps it, and that's fine.
+    // Fails while a sibling rendition remains, which is fine.
     await fsp.rmdir(path.dirname(target)).catch(() => undefined);
   }
 
-  /** The family is gone: its whole `<familyId>/` directory goes with it. */
   async purgeFamilyObjects(familyId: string): Promise<void> {
     assertFamilyPrefix(familyId);
     await fsp.rm(this.pathFor(familyId), { recursive: true, force: true });
@@ -187,8 +161,6 @@ export class LocalDiskProvider implements StorageProvider {
     await fsp.access(OBJECTS_DIR, fs.constants.W_OK);
     return true;
   }
-
-  // ---- Local-only: the routes that stand in for S3's endpoint ---------------
 
   verifyUploadToken(token: string): UploadClaims {
     const p = verify(token, "u");
@@ -201,11 +173,7 @@ export class LocalDiskProvider implements StorageProvider {
     return { key: p.k, expiresAt: new Date(p.e * 1000), ...(typeof p.d === "string" ? { downloadAs: p.d } : {}) };
   }
 
-  /**
-   * Write `source` to `key`, streamed — a 2 GB video must never be held in
-   * memory. Writes to a sibling `.part` file and renames, so a dropped
-   * connection can't leave a truncated object that `head()` would call real.
-   */
+  // Via a `.part` file and rename, so a dropped connection can't leave a truncated object.
   async writeObject(key: string, source: NodeJS.ReadableStream): Promise<{ bytes: number }> {
     assertSafeKey(key);
     const target = this.pathFor(key);
@@ -223,7 +191,6 @@ export class LocalDiskProvider implements StorageProvider {
     return { bytes: sink.bytesWritten };
   }
 
-  /** Discard a partial upload that failed validation. Originals only ever get here. */
   async discardObject(key: string): Promise<void> {
     assertSafeKey(key);
     await fsp.rm(this.pathFor(key), { force: true });
@@ -231,8 +198,7 @@ export class LocalDiskProvider implements StorageProvider {
 
   private pathFor(key: string) {
     const resolved = path.resolve(OBJECTS_DIR, key);
-    // assertSafeKey already rules traversal out; this is the check that would
-    // catch it if that regex is ever loosened.
+    // Defence in depth: catches traversal if assertSafeKey's regex is ever loosened.
     if (resolved !== OBJECTS_DIR && !resolved.startsWith(`${OBJECTS_DIR}${path.sep}`)) {
       throw new StorageKeyError("Storage key escapes the object root");
     }

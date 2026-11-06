@@ -4,16 +4,11 @@ export type DraftAsset = {
   mime: string;
   width?: number;
   height?: number;
-  /** As the picker reports it — lets compose refuse an oversized file before uploading. */
   bytes?: number;
-  /** Whole seconds, from the audio or video recorder or the picker. */
   durationS?: number;
 };
 
-/**
- * Hand-off between Capture and the compose screen. Picked media can be blob:
- * or data: URIs that are far too long for route params, so they ride here.
- */
+// blob:/data: URIs are far too long for route params, so picked media ride from Capture to compose here.
 let pending: DraftAsset[] = [];
 
 export const draft = {

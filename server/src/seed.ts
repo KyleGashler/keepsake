@@ -4,18 +4,7 @@ import { hueForSeed } from "./lib/placeholder.js";
 
 const prisma = new PrismaClient();
 
-/**
- * Seeds one demo family so the app has a story to tell on first run.
- * Idempotent: skips if a family already exists unless SEED_RESET=1. A child's
- * default collections are given once, when the child is created (see
- * lib/child-collections.ts); a skipped run never restores ones a family deleted.
- */
-
-/**
- * Family Life's starting set. A child's collections come from
- * lib/child-collections.ts; icons and colours here match the backfill in the
- * library_journey migration.
- */
+// Icons and colours match the backfill in the library_journey migration.
 const FAMILY_COLLECTIONS = [
   { name: "At Home", icon: "home", color: "#123F45" },
   { name: "Family Outings", icon: "sun", color: "#D4A04C" },
@@ -34,17 +23,10 @@ type MemorySpec = {
   location?: string;
   author: string;
   participants: string[];
-  /** "<child name>::<collection kind>" or "family::<collection name>" */
+  // "<child name>::<collection kind>" or "family::<collection name>"
   collections: string[];
 };
 
-/**
- * Deliberately small and text-only: enough that every Library screen has
- * something on a fresh database — a quote, a milestone, a birthday and an
- * everyday moment for Banks, one of them shared with Bear. Everything else in
- * the archive should be something a person actually captured, so it shows the
- * real upload and transcript paths. No fake media.
- */
 const MEMORIES: MemorySpec[] = [
   {
     title: "The last time Banks asked to be carried upstairs",
@@ -114,11 +96,6 @@ const PROMPTS = [
   },
 ];
 
-/**
- * The one signing-in user, so the auth work has something to resolve against.
- * The first PARENT is the account holder; other adults get invites later and
- * the children never become Users at all. Idempotent: safe on every boot.
- */
 async function ensureDemoUser(familyId: string) {
   const owner = await prisma.person.findFirst({
     where: { familyId, role: "PARENT" },
@@ -126,10 +103,8 @@ async function ensureDemoUser(familyId: string) {
   });
   if (!owner) return;
 
-  // Already owned — by the demo user, or by the real account that took the
-  // demo user over (a verified Firebase sign-in with the same email rebinds
-  // it; see resolveUser in src/auth/middleware.ts). Re-creating a dev owner
-  // beside a real one would leave a second OWNER nobody can sign in as.
+  // A real account may have taken the demo user over; a second dev OWNER beside it
+  // would be one nobody can sign in as.
   const owned = await prisma.familyMembership.findFirst({ where: { familyId, role: "OWNER" } });
   if (owned) return;
 
@@ -161,17 +136,12 @@ async function main() {
   const existing = await prisma.family.findFirst();
   if (existing && process.env.SEED_RESET !== "1") {
     console.log(`Seed skipped — "${existing.name}" already exists. Use SEED_RESET=1 to rebuild.`);
-    // A database seeded before accounts existed has the family but no one who
-    // can sign in to it. Attach the demo owner so the dev bridge resolves.
     await ensureDemoUser(existing.id);
     return;
   }
   if (existing) {
     console.log("SEED_RESET=1 — clearing existing data.");
-    // Deleting a Family cascades to its people, collections, memories, media,
-    // derivatives, activity, prompts, memberships, invites and subscription.
-    // Users hang off no family, so they (and their device tokens, which do
-    // cascade) go separately; jobs are family-independent too.
+    // Users and jobs hang off no family, so the Family cascade misses them.
     await prisma.family.deleteMany();
     await prisma.user.deleteMany();
     await prisma.job.deleteMany();
@@ -179,9 +149,6 @@ async function main() {
 
   const family = await prisma.family.create({ data: { name: "the Bryners" } });
 
-  // Avatar rings come from the brand palette. One parent (the demo owner) and
-  // three children, so the child screens show a list rather than a single card
-  // and the youngest has an empty Library.
   const peopleSpec = [
     { name: "Ali", role: "PARENT", relation: "Mom", accentColor: "#D68A75", birthDate: "1991-03-12" },
     { name: "Banks", role: "CHILD", relation: null, accentColor: "#D49A4A", birthDate: "2020-05-14" },
@@ -205,16 +172,11 @@ async function main() {
     });
   }
 
-  // One signing-in user so the auth work (A3/A4) has something to resolve
-  // against. Ali is the account holder; the other adults get invites later and
-  // the children never become Users at all.
   await ensureDemoUser(family.id);
 
   const children = [people.Banks, people.Bear, people.Collins];
   const collections: Record<string, string> = {};
 
-  // Every child starts with the same defaults a child added in the app gets.
-  // Families can rename or add to these at any time.
   for (const child of children) {
     await ensureChildCollections(family.id, child.id, prisma);
     const own = await prisma.collection.findMany({

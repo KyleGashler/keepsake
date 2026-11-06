@@ -1,23 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import { prisma as defaultClient } from "./prisma.js";
 
-/**
- * The collections every child starts with, and the one place they're defined.
- *
- * A child's Library is built from `Collection` rows whose `personId` is the
- * child. The seven Child Profile defaults carry a `kind` — a stable template
- * key the client uses to pick a renderer (quotes get a pull-quote card) — so a
- * family can rename "Milestones" without the app forgetting what it is.
- * Arrival Stories defaults have no kind; they're plain collections.
- *
- * Every default is a suggestion: a new child is given them once, and a family
- * may rename or delete any of them. Nothing ever puts a deleted one back.
- */
-
-/**
- * Glyph keys a collection disc may use. Opaque strings: the client maps each
- * to an icon. The first seven are the Child Profile defaults' own.
- */
 export const COLLECTION_ICONS = [
   "sparkles",
   "rainbow",
@@ -54,7 +37,6 @@ export type ChildCollectionTemplate = CollectionTemplate & {
   description: string;
 };
 
-/** In display order: `sortOrder` is the index. */
 export const CHILD_COLLECTIONS: readonly ChildCollectionTemplate[] = [
   {
     kind: "milestones",
@@ -107,10 +89,6 @@ export const CHILD_COLLECTIONS: readonly ChildCollectionTemplate[] = [
   },
 ];
 
-/**
- * A new child's Arrival Stories. Icons and colours match the backfill in the
- * library_journey migration, which gave existing rows the same.
- */
 export const ARRIVAL_COLLECTIONS: readonly CollectionTemplate[] = [
   { name: "Finding Out", icon: "sparkles", color: "#D4A04C" },
   { name: "Choosing Your Name", icon: "book", color: "#123F45" },
@@ -130,15 +108,7 @@ const slug = (s: string) =>
 
 type Db = PrismaClient | Prisma.TransactionClient;
 
-/**
- * Give a newly added child their default collections. Each pillar's set is
- * created only when the child has no collection in that pillar at all, so a
- * repeat call is a no-op and a family that prunes the suggestions doesn't see
- * them come back.
- *
- * Returns how many rows were created. A no-op for anyone who isn't a CHILD of
- * `familyId`.
- */
+// A pillar's defaults are only created when it has no collections, so pruned suggestions never come back.
 export async function ensureChildCollections(familyId: string, personId: string, db: Db = defaultClient) {
   const person = await db.person.findFirst({
     where: { id: personId, familyId, role: "CHILD" },
@@ -184,8 +154,7 @@ export async function ensureChildCollections(familyId: string, personId: string,
   }
 
   if (!toCreate.length) return 0;
-  // skipDuplicates leans on @@unique([personId, kind]): a concurrent call
-  // that got there first makes these no-ops rather than duplicates.
+  // skipDuplicates leans on @@unique([personId, kind]): a concurrent call that got there first makes these no-ops.
   const created = await db.collection.createMany({ data: toCreate, skipDuplicates: true });
   return created.count;
 }

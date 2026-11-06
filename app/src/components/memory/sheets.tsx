@@ -38,13 +38,9 @@ import { DateField } from "./date-field";
 import { DownloadList } from "./download-sheet";
 import { useSettled } from "../../use-settled";
 
-/** A sheet's quiet explanation under its header. */
 const HINT = "font-sans text-[14.5px] leading-[21px] text-ink-soft";
-/** A sentence that went wrong, in red under what it's about. */
 const ERROR = "mt-2 font-sans text-[13.5px] text-danger";
-/** Nothing to list. */
 const EMPTY = "mt-3 type-caption";
-/** A row in a picker list; give it `style={HAIRLINE_BELOW}` for the line under it. */
 const PICK_ROW = "flex-row items-center gap-3 border-line py-2.5";
 const PICK_NAME = "flex-1 font-sans text-[16px] text-ink";
 const PICK_THUMB = "h-11 w-11 overflow-hidden rounded-[8px] bg-surface-alt";
@@ -52,11 +48,6 @@ const HAIRLINE_BELOW = { borderBottomWidth: StyleSheet.hairlineWidth };
 
 export type SheetKind = "options" | "edit" | "media" | "collections" | "link" | "date" | "delete" | "download";
 
-/**
- * Everything behind the ⋯ button, in one sheet whose contents change: the
- * options menu, and the edit form, media arranger, collection picker, link
- * picker, date mover, delete confirmation and download list it leads to.
- */
 export function MemorySheets({
   memory,
   canContribute,
@@ -65,7 +56,6 @@ export function MemorySheets({
   onDeleted,
 }: {
   memory: Memory;
-  /** False for a VIEWER: the menu offers only Download. */
   canContribute: boolean;
   kind: SheetKind | null;
   onKind: (next: SheetKind | null) => void;
@@ -117,7 +107,6 @@ function OptionsMenu({
       />
       <SheetRow icon="albums-outline" label="Add to Another Collection" onPress={() => onPick("collections")} />
       <SheetRow icon="link-outline" label="Link to Another Memory" onPress={() => onPick("link")} />
-      {/* Sharing has to respect permissions before anything leaves the archive. */}
       <SheetRow icon="share-outline" label="Share" disabled note="Coming soon" />
       {download}
       <SheetRow icon="calendar-outline" label="Move to Different Date" onPress={() => onPick("date")} />
@@ -126,15 +115,10 @@ function OptionsMenu({
   );
 }
 
-/**
- * A write to this memory. Every memory route answers with the memory as it
- * is now, so the page shows that at once; `touched` is where else it shows.
- */
 function useMemoryWrite<V>(request: (vars: V) => Promise<{ memory: Memory }>, touched: Resource[]) {
   return useMutation({ mutationFn: request, onSuccess: (res) => memorySaved(res.memory, touched) });
 }
 
-/** PATCH the memory; resolves to an error message, or null when it worked. */
 function usePatch(memory: Memory, touched: Resource[]) {
   const { mutateAsync } = useMemoryWrite(
     (body: MemoryPatch) => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}`, "PATCH", body),
@@ -150,12 +134,7 @@ function usePatch(memory: Memory, touched: Resource[]) {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Edit
-// ---------------------------------------------------------------------------
-
 function EditForm({ memory, onClose }: { memory: Memory; onClose: () => void }) {
-  // Title, story, place and date show wherever the memory does.
   const patch = usePatch(memory, MEMORY_VIEWS);
   const [title, setTitle] = useState(memory.title);
   const [day, setDay] = useState(isoDay(memory.occurredAt));
@@ -245,15 +224,10 @@ function EditForm({ memory, onClose }: { memory: Memory; onClose: () => void }) 
   );
 }
 
-// ---------------------------------------------------------------------------
-// Arrange media
-// ---------------------------------------------------------------------------
-
 const MEDIA_NOUN: Record<MediaItem["type"], string> = { PHOTO: "photo", VIDEO: "video", AUDIO: "recording" };
 
 function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const items = memory.media;
-  // The first photo is the memory's face everywhere, and the counts move.
   const write = useMemoryWrite((request: () => Promise<{ memory: Memory }>) => request(), MEMORY_VIEWS);
   const [busy, setBusy] = useState<string | null>(null);
   const [progress, setProgress] = useState<string | null>(null);
@@ -384,15 +358,10 @@ function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => voi
   );
 }
 
-/** Under an item's name: that it leads the memory, or a clip's length. */
 function subtitle(item: MediaItem, index: number) {
   if (index === 0 && item.type !== "AUDIO") return "Leads the memory";
   return duration(item.durationS) || null;
 }
-
-// ---------------------------------------------------------------------------
-// Collections
-// ---------------------------------------------------------------------------
 
 const PILLAR_NAMES: Record<PillarKey, string> = {
   CHILD_PROFILES: "Child Profiles",
@@ -403,19 +372,12 @@ const PILLAR_ORDER: PillarKey[] = ["CHILD_PROFILES", "ARRIVAL_STORIES", "FAMILY_
 
 type Group = { key: string; title: string; collections: Collection[] };
 
-/** "Banks" for a child's own collections, "Banks · Arrival Stories", "Family Life". */
 function groupTitle(c: Collection) {
   if (c.pillar === "FAMILY_LIFE" || !c.personName) return PILLAR_NAMES[c.pillar];
   if (c.pillar === "CHILD_PROFILES") return c.personName;
   return `${c.personName} · ${PILLAR_NAMES[c.pillar]}`;
 }
 
-/**
- * The family's collections in groups — each child's own first (the children
- * this memory is already filed under leading), then each child's Arrival
- * Stories, then Family Life. Filing a memory in a sibling's collection is how
- * it shows up under them too.
- */
 function groupCollections(collections: Collection[], filedIn: Set<string>): Group[] {
   const groups = new Map<string, Group>();
   for (const c of collections) {
@@ -470,7 +432,6 @@ function CollectionPicker({ memory, onClose }: { memory: Memory; onClose: () => 
     if (!changed) return onClose();
     setSaving(true);
     setSaveError(null);
-    // Keep the existing order and add the new ones after it.
     const ids = [...memory.collections.map((c) => c.id).filter((id) => chosen.has(id)), ...[...chosen].filter((id) => !original.has(id))];
     const failed = await patch({ collectionIds: ids });
     setSaving(false);
@@ -530,10 +491,6 @@ function CollectionPicker({ memory, onClose }: { memory: Memory; onClose: () => 
   );
 }
 
-// ---------------------------------------------------------------------------
-// Links
-// ---------------------------------------------------------------------------
-
 function LinkPicker({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const q = useSettled(query.trim(), 250);
@@ -543,7 +500,6 @@ function LinkPicker({ memory, onClose }: { memory: Memory; onClose: () => void }
     { keepPrevious: true },
   );
   const { data } = results;
-  // A link shows on both memories' pages, and nowhere else.
   const write = useMutation({
     mutationFn: ({ linkedId, linked }: { linkedId: string; linked: boolean }) =>
       linked
@@ -658,12 +614,7 @@ function MemoryPickRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Date
-// ---------------------------------------------------------------------------
-
 function MoveDate({ memory, onClose }: { memory: Memory; onClose: () => void }) {
-  // A date orders every list the memory is in.
   const patch = usePatch(memory, MEMORY_VIEWS);
   const [day, setDay] = useState(isoDay(memory.occurredAt));
   const [saving, setSaving] = useState(false);
@@ -699,17 +650,12 @@ function MoveDate({ memory, onClose }: { memory: Memory; onClose: () => void }) 
   );
 }
 
-// ---------------------------------------------------------------------------
-// Delete
-// ---------------------------------------------------------------------------
-
 function ConfirmDelete({ memory, onClose, onDeleted }: { memory: Memory; onClose: () => void; onDeleted: () => void }) {
   const [error, setError] = useState<string | null>(null);
   const deletion = useMutation({
     mutationFn: () => apiSend(`/api/memories/${memory.id}`, "DELETE"),
     onSuccess: () => memoryDeleted(memory.id),
   });
-  // Still "Deleting…" after it worked, while the page goes away.
   const deleting = deletion.isPending || deletion.isSuccess;
 
   function remove() {

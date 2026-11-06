@@ -24,7 +24,6 @@ type Account =
   | { status: "emailInUse" }
   | { status: "error"; error: Error };
 
-/** `{ familyId: "…" }` from an error body, or null. */
 function familyIdIn(body: unknown): string | null {
   if (body && typeof body === "object" && "familyId" in body && typeof body.familyId === "string") {
     return body.familyId;
@@ -44,16 +43,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const latestLoad = useRef(0);
   const signedInAs = useRef<string | null>(null);
 
-  /**
-   * `pickFirst`: with several families and no valid choice, go to the first
-   * rather than ask — after the one being looked at was deleted or lost.
-   */
   const loadAccount = useCallback(async ({ quiet = false, pickFirst = false } = {}) => {
     const load = ++latestLoad.current;
     if (!quiet) setAccount({ status: "loading" });
     try {
-      // Always asked afresh: who someone is and which families are theirs
-      // decides what every other query may show.
+      // Always fresh: membership decides what every other query may show.
       const me = await queryClient.fetchQuery({
         queryKey: ["account", "me"],
         queryFn: () => apiGet<MePayload>("/api/me"),
@@ -63,11 +57,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       const remembered = getFamilyId() ?? (await rememberedFamilyId());
       if (load !== latestLoad.current) return;
       const ids = me.memberships.map((m) => m.familyId);
-      // A family they've left, been removed from, or that was deleted:
-      // nothing cached for it stays.
       forgetFamiliesExcept(ids);
-      // One family: no question to ask. Several: the last choice, if it's
-      // still one of theirs. Otherwise the picker (or create screen) asks.
       if (ids.length === 1) setFamilyId(ids[0]);
       else if (remembered && ids.includes(remembered)) setFamilyId(remembered);
       else if (pickFirst && ids.length) setFamilyId(ids[0]);
@@ -89,18 +79,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       auth.onChange((next) => {
         setRestored(true);
         setUser(next);
-        // A different person (or nobody) — start their account over. The same
-        // person with a changed emailVerified is not a new account.
+        // A changed emailVerified on the same person is not a new account.
         const email = next?.email ?? null;
         if (email === signedInAs.current) return;
         signedInAs.current = email;
-        // Nothing fetched for one person is shown to the next (or kept after
-        // signing out).
         forgetEverything();
         if (email) {
           void loadAccount();
         } else {
-          // Signed out: whatever held requests during an account deletion is over.
+          // Ends any request hold left by an account deletion.
           holdRequests(false);
           latestLoad.current++;
           setAccount({ status: "idle" });
@@ -118,17 +105,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  // The account as last loaded, for familyGone's optimistic step.
   const meRef = useRef<MePayload | null>(null);
   useEffect(() => {
     meRef.current = account.status === "loaded" ? account.me : null;
   }, [account]);
 
-  /**
-   * A family is gone — deleted (by them or another owner), or they were
-   * removed. Drop it at once and move to another family (the first), or to
-   * Create Family if it was their last; then ask the API what's true.
-   */
   const familyGone = useCallback(
     async (goneId: string) => {
       const me = meRef.current;
@@ -147,9 +128,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     onFamilyLost((lostId) => void familyGone(lostId));
   }, [familyGone]);
 
-  // The account's own writes. None changes a family's cached data in place:
-  // a new or joined family is a new key, and deleting the account signs out,
-  // which forgets everything.
   const { mutateAsync: deleteOnServer } = useMutation({ mutationFn: () => apiSend("/api/me", "DELETE") });
   const { mutateAsync: postFamily } = useMutation({
     mutationFn: (body: { name: string; displayName?: string }) =>
@@ -165,9 +143,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       password,
       deleteOnServer: async () => {
         await deleteOnServer();
-        // Gone on the server. Until the provider has signed out, a request
-        // would quietly make a new account for this identity: send none,
-        // and leave the screens that would.
+        // Until the provider signs out, any request would recreate an account for this identity.
         holdRequests(true);
         leaveFor(() => undefined);
       },
@@ -195,8 +171,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const res = await postAccept(token);
         joined = res.membership.familyId;
       } catch (err) {
-        // Already in that family (this link, or another way): nothing to
-        // accept — just go there.
         const already = err instanceof ApiError && err.code === "already_member" ? familyIdIn(err.body) : null;
         if (!already) throw err;
         joined = already;

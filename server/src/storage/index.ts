@@ -5,12 +5,7 @@ import type { StorageProvider } from "./StorageProvider.js";
 export { MAX_UPLOAD_BYTES, READ_URL_TTL_SECONDS, UPLOAD_URL_TTL_SECONDS, PHOTO_DERIVATIVE_KINDS, originalKey, derivativeKey, assertSafeKey, attachmentDisposition, StorageKeyError } from "./StorageProvider.js";
 export type { ByteRange, ObjectHead, PhotoDerivativeKind, ReadUrlOptions, StorageProvider, UploadTarget } from "./StorageProvider.js";
 
-/**
- * `STORAGE_PROVIDER` picks the implementation: `local` (the default — a volume)
- * or `s3` (a bucket; see S3StorageProvider for its env). An unrecognised value
- * throws rather than quietly falling back, because silently writing a family's
- * photographs to the wrong place is not a recoverable mistake.
- */
+// Throws on an unknown value rather than falling back: writing a family's photos to the wrong place can't be undone.
 export function createStorageProvider(): StorageProvider {
   const name = (process.env.STORAGE_PROVIDER ?? "local").toLowerCase();
   switch (name) {
@@ -25,17 +20,12 @@ export function createStorageProvider(): StorageProvider {
 
 let instance: StorageProvider | null = null;
 
-/** The process-wide provider. Lazy so an import can't blow up before logging exists. */
+// Lazy so an import can't blow up before logging exists.
 export function storage(): StorageProvider {
   if (!instance) instance = createStorageProvider();
   return instance;
 }
 
-/**
- * The local provider's own routes need more than the interface (token
- * verification, streamed writes). Returns null when something else is
- * configured, so those routes can 404 instead of pretending.
- */
 export function localProvider(): LocalDiskProvider | null {
   const provider = storage();
   return provider instanceof LocalDiskProvider ? provider : null;

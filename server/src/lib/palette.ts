@@ -1,36 +1,18 @@
-/**
- * A photo's colours, for Mosaic (A6).
- *
- * `memory.refresh` hands this the hero photo's THUMB, shrunk to a few
- * thousand pixels. A small k-means in CIE Lab (where distance is roughly what
- * an eye sees) groups them into up to five colours. Deterministic: the same
- * pixels always give the same palette, so a re-run changes nothing.
- *
- * - `swatches`: each group's average colour as `#rrggbb`, most of the
- *   picture first.
- * - `hue` (0-360, HSV, the same measure `hueForSeed` gives the generated
- *   stand-ins, so the two sort together): the hue of the group that says most
- *   about the picture — big and colourful beats big and grey, so a beach
- *   under a white sky files under its blue water, not the sky.
- * - `brightness` (0-100): mean lightness, CIE L*.
- */
+// k-means in CIE Lab, where distance is roughly what an eye sees. `hue` is HSV, the same
+// measure `hueForSeed` gives the generated stand-ins, so the two sort together.
 
 export type Palette = { swatches: string[]; hue: number; brightness: number };
 
 type Rgb = [number, number, number];
 type Lab = [number, number, number];
 
-/** Groups the picture is split into. Five is enough to see a photo's mood. */
 const K = 5;
 const ITERATIONS = 12;
 
-/**
- * Below this chroma (Lab, roughly 0-130) a colour reads as grey. A palette
- * whose every swatch is below it is a black-and-white photo, near enough.
- */
+// Lab chroma (roughly 0-130) below which a colour reads as grey.
 export const NEUTRAL_CHROMA = 12;
 
-/** `channels` per pixel (3 or 4; alpha is ignored), 8 bits each. */
+// `channels` is 3 or 4 bytes per pixel; alpha is ignored.
 export function paletteFromPixels(pixels: Uint8Array, channels: number): Palette {
   const n = Math.floor(pixels.length / channels);
   if (n === 0) throw new RangeError("No pixels to read a palette from");
@@ -48,7 +30,6 @@ export function paletteFromPixels(pixels: Uint8Array, channels: number): Palette
 
   const assignment = kMeans(lab, n, Math.min(K, n));
 
-  // Each group's size, average Lab (for chroma) and average sRGB (for the swatch).
   const groups = new Map<number, { count: number; lab: Lab; rgb: Rgb }>();
   for (let i = 0; i < n; i++) {
     const g = groups.get(assignment[i]) ?? { count: 0, lab: [0, 0, 0], rgb: [0, 0, 0] };
@@ -59,9 +40,7 @@ export function paletteFromPixels(pixels: Uint8Array, channels: number): Palette
     }
     groups.set(assignment[i], g);
   }
-  // A big flat area (sky, a wall) often comes back as two or three groups
-  // that look the same; fold each into a bigger one it's indistinguishable
-  // from, so the swatches are different colours. Sums merge as sums.
+  // A big flat area (sky, a wall) often splits into look-alike groups; fold them so the swatches differ.
   // oxlint-disable-next-line unicorn/no-array-sort -- a fresh array; ES2022 has no toSorted
   const bySize = [...groups.values()].sort((a, b) => b.count - a.count);
   const merged: typeof bySize = [];
@@ -86,7 +65,7 @@ export function paletteFromPixels(pixels: Uint8Array, channels: number): Palette
     // oxlint-disable-next-line unicorn/no-array-sort -- a fresh array; ES2022 has no toSorted
     .sort((a, b) => b.count - a.count || a.lab[0] - b.lab[0]);
 
-  // Big and colourful wins; a grey's weight falls towards zero with its chroma.
+  // Big and colourful beats big and grey: a beach under a white sky files under its blue water.
   const telling = ranked.reduce((best, g) => (score(g) > score(best) ? g : best), ranked[0]);
 
   return {
@@ -96,7 +75,7 @@ export function paletteFromPixels(pixels: Uint8Array, channels: number): Palette
   };
 }
 
-/** ΔE (CIE76) under which two groups count as one colour: a just-noticeable difference is ~2.3. */
+// ΔE (CIE76); a just-noticeable difference is ~2.3.
 const SAME_COLOUR = 10;
 
 function scale(t: [number, number, number], f: (v: number) => number): [number, number, number] {
@@ -116,17 +95,12 @@ function score(g: { count: number; lab: Lab }) {
   return g.count * (c / (c + 15));
 }
 
-/** True when every swatch is close to grey — a black-and-white photo. Empty is not neutral. */
 export function isNeutralPalette(swatches: string[]) {
   const rgbs = swatches.map(fromHex).filter((x): x is Rgb => x !== null);
   return rgbs.length > 0 && rgbs.every((c) => chroma(rgbToLab(c)) < NEUTRAL_CHROMA);
 }
 
-/**
- * Lloyd's k-means, seeded deterministically: the pixels sorted by lightness
- * and cut into `k` equal runs, each run's mean a starting centre. That spreads
- * the start from shadows to highlights, which is where a photo's groups lie.
- */
+// Seeded deterministically (lightness-sorted runs) so a re-run gives the same palette.
 function kMeans(lab: Float64Array, n: number, k: number): Int32Array {
   const order = Array.from({ length: n }, (_, i) => i);
   order.sort((a, b) => lab[a * 3] - lab[b * 3] || a - b);
@@ -165,7 +139,6 @@ function kMeans(lab: Float64Array, n: number, k: number): Int32Array {
       counts[j]++;
       for (let c = 0; c < 3; c++) sums[j * 3 + c] += lab[i * 3 + c];
     }
-    // An emptied centre stays where it was; it simply ends up with no pixels.
     for (let j = 0; j < k; j++) {
       if (counts[j] === 0) continue;
       for (let c = 0; c < 3; c++) centres[j * 3 + c] = sums[j * 3 + c] / counts[j];
@@ -178,18 +151,16 @@ function chroma(lab: Lab) {
   return Math.hypot(lab[1], lab[2]);
 }
 
-/** An sRGB channel (0-255) as linear light (0-1). */
 function linear(v: number) {
   const s = v / 255;
   return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
 }
 
-/** CIE Lab's companding of an XYZ ratio. */
 function labF(t: number) {
   return t > 216 / 24389 ? Math.cbrt(t) : ((24389 / 27) * t + 16) / 116;
 }
 
-/** sRGB (D65) → CIE L*a*b*. */
+// sRGB (D65).
 function rgbToLab([r8, g8, b8]: Rgb): Lab {
   const r = linear(r8);
   const g = linear(g8);
@@ -203,7 +174,6 @@ function rgbToLab([r8, g8, b8]: Rgb): Lab {
   return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
 }
 
-/** HSV hue in whole degrees, 0 for a grey — the same formula as `hueForSeed`. */
 function hsvHue([r, g, b]: Rgb) {
   const max = Math.max(r, g, b);
   const min = Math.min(r, g, b);

@@ -18,12 +18,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, type IoniconName } from "../styled";
 
-/**
- * A bottom sheet in the journey's language: paper, a grab handle, a display
- * title and a close button, over a teal scrim. A React Native Modal, so it
- * presents above the tab bar on every platform, the web included (where the
- * Escape key closes it). The panel rises in; the scrim fades.
- */
 export function Sheet({
   visible,
   onClose,
@@ -37,7 +31,6 @@ export function Sheet({
   title: string;
   subtitle?: string;
   children: ReactNode;
-  /** Pinned under the scrolling body — the sheet's main button. */
   footer?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
@@ -96,10 +89,6 @@ export function Sheet({
                 <Ionicons name="close" size={20} colorClassName="accent-ink" />
               </Pressable>
             </View>
-            {/*
-             * Fields sit further from each other (gap-6) than a field's own
-             * label, input and hint do (gap-2), so each reads as one group.
-             */}
             <ScrollView
               className="grow-0"
               contentContainerClassName="gap-6 px-gutter pb-3"
@@ -123,7 +112,6 @@ export type SheetAction = {
   destructive?: boolean;
 };
 
-/** A short menu of choices in a Sheet — instead of a browser confirm() or a native alert. */
 export function ActionSheet({
   visible,
   onClose,
@@ -146,8 +134,7 @@ export function ActionSheet({
               key={action.label}
               onPress={() => {
                 onClose();
-                // A browser only opens a file chooser inside the press itself.
-                // Natively, let the sheet finish leaving first: iOS won't
+                // A browser only opens a file chooser inside the press itself; iOS won't
                 // present a picker over a modal that is still dismissing.
                 if (Platform.OS === "web") action.onPress();
                 else setTimeout(action.onPress, 350);
@@ -176,7 +163,6 @@ export function ActionSheet({
   );
 }
 
-/** A labelled form control. */
 export function Field({
   label,
   hint,
@@ -200,7 +186,6 @@ export function Field({
   );
 }
 
-/** A text box in the sheet's style. The props are TextInput's own. */
 export function SheetInput({
   value,
   onChangeText,
@@ -262,10 +247,6 @@ export function SheetInput({
   );
 }
 
-/**
- * The sheet's buttons: a filled teal pill, a quiet outlined one, or a filled
- * red one (`danger`) for what can't be undone.
- */
 export function SheetButton({
   label,
   onPress,
@@ -304,7 +285,6 @@ export function SheetButton({
   );
 }
 
-/** A sentence that went wrong, in the sheet's voice. */
 export function SheetError({ message }: { message: string | null }) {
   if (!message) return null;
   return (

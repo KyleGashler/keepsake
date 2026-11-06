@@ -12,30 +12,18 @@ import { ChildPortrait } from "./child-header";
 import { Glyph, IconDisc } from "./journey";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
-/**
- * The Library journey's sheets: add a child, edit a child, create a
- * collection. Each is mounted by its screen only while open, so every opening
- * starts from a clean form.
- */
-
 const BIRTHDAY_HINT = "Year-month-day, like 2020-05-14.";
 
 function birthdayError(input: string) {
   return parseBirthday(input) === undefined ? "That doesn't look like a date — try 2020-05-14." : null;
 }
 
-/** How a typed birthday reads back: "May 14, 2020 · Age 6". */
 function birthdayEcho(input: string) {
   const iso = parseBirthday(input);
   if (!iso) return BIRTHDAY_HINT;
   return [birthdayLabel(iso), childAge(iso)].filter(Boolean).join("  ·  ");
 }
 
-// ---------------------------------------------------------------------------
-// Add a child
-// ---------------------------------------------------------------------------
-
-/** Name and birthday; the server creates the child's default collections. */
 export function AddChildSheet({
   onClose,
   onAdded,
@@ -46,7 +34,6 @@ export function AddChildSheet({
   const addChild = useMutation({
     mutationFn: (body: { name: string; birthDate?: string | null }) =>
       apiSend<{ person: Person; child: ChildSummary | null }>("/api/people", "POST", { ...body, role: "CHILD" }),
-    // A child comes with their own collections.
     onSuccess: () => invalidate([...PEOPLE_VIEWS, ...COLLECTION_VIEWS]),
   });
   const [name, setName] = useState("");
@@ -112,16 +99,6 @@ export function AddChildSheet({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Edit a child
-// ---------------------------------------------------------------------------
-
-/**
- * The gear on a child's Collections: their photo, name and birthday. Nothing
- * is saved until Save — a chosen photo is uploaded straight away (so Save is
- * quick) but only becomes theirs with the rest. Removing a photo only drops
- * the pointer; the uploaded original is kept.
- */
 export function EditChildSheet({
   child,
   onClose,
@@ -131,7 +108,6 @@ export function EditChildSheet({
   child: ChildSummary;
   onClose: () => void;
   onSaved?: (child: ChildSummary) => void;
-  /** Offer "Delete from the archive": the screen closes this sheet and asks to confirm. */
   onDelete?: () => void;
 }) {
   const saveChild = useMutation({
@@ -141,7 +117,7 @@ export function EditChildSheet({
   });
   const [name, setName] = useState(child.name);
   const [birthday, setBirthday] = useState(birthdayInput(child.birthDate));
-  /** undefined: unchanged; null: remove; a key: the new photo. */
+  // undefined: unchanged; null: remove; a key: the new photo.
   const [photoKey, setPhotoKey] = useState<string | null | undefined>(undefined);
   const [preview, setPreview] = useState<string | null>(child.photoUrl);
   const [uploading, setUploading] = useState(false);
@@ -270,13 +246,8 @@ export function EditChildSheet({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Create and edit a collection
-// ---------------------------------------------------------------------------
-
 type CollectionFields = { name: string; description: string; icon: IconKey; color: string };
 
-/** A child's own collection: a name, a line about it, and a disc to know it by. */
 export function CreateCollectionSheet({
   child,
   onClose,
@@ -313,11 +284,6 @@ export function CreateCollectionSheet({
   );
 }
 
-/**
- * Rename a collection, or change its line, glyph or colour. A child's default
- * collections can be renamed too: the app still knows "Milestones" by its
- * kind whatever the family calls it.
- */
 export function EditCollectionSheet({
   collection,
   onClose,
@@ -358,7 +324,6 @@ export function EditCollectionSheet({
   );
 }
 
-/** The form both sheets share: a live preview, name, description, glyph and colour. */
 function CollectionFormSheet({
   title,
   subtitle,
@@ -372,10 +337,8 @@ function CollectionFormSheet({
   subtitle?: string;
   submitLabel: string;
   initial: CollectionFields;
-  /** What to say when the save fails for no reason the API names. */
   failure: string;
   onClose: () => void;
-  /** Trimmed fields. Resolves once saved; a throw keeps the sheet open with the error. */
   onSubmit: (fields: CollectionFields) => Promise<void>;
 }) {
   const [name, setName] = useState(initial.name);
@@ -385,7 +348,6 @@ function CollectionFormSheet({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const ink = useColor("ink");
-  // A colour chosen before (or set elsewhere) stays on offer.
   const swatches: string[] = COLLECTION_SWATCHES.some((c) => c.toUpperCase() === initial.color.toUpperCase())
     ? [...COLLECTION_SWATCHES]
     : [initial.color, ...COLLECTION_SWATCHES];

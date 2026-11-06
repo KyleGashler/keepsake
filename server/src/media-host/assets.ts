@@ -5,27 +5,11 @@ import { jobQueue } from "../jobs/queue.js";
 import { prisma } from "../lib/prisma.js";
 import type { AssetSnapshot, HostUpload, MediaHost } from "./MediaHost.js";
 
-/**
- * The database side of a Mux clip: the `MuxAsset` row and the Media rows
- * linked to it.
- *
- * Four writers touch a row — init, finalize, webhooks and the `mux.sync`
- * job — in no guaranteed order, and webhooks can repeat. So every write is a
- * merge of facts Mux reported, done under a row lock, that never moves a
- * fact backwards (a `ready` asset can't become `preparing` again). `status`
- * is then computed from the facts, never set directly. Replaying any event
- * therefore changes nothing.
- *
- * The other half is linking. A clip can finish (and its captions too) before
- * or after `POST /memories` creates the Media row that points at it. Both
- * sides call `settleLinkedMedia` while holding the MuxAsset row lock, so
- * whichever happens second copies the facts onto the Media row and offers the
- * transcript to the memory.
- */
+// Init, finalize, webhooks and `mux.sync` write a row in any order and webhooks repeat, so every
+// write merges Mux's facts under a row lock without moving any backwards, then recomputes `status`.
 
 export const MUX_KEY_PREFIX = "mux:";
 
-/** `mux:<uploadId>` — what init hands the client in place of a storage key. */
 export function muxKey(uploadId: string) {
   return `${MUX_KEY_PREFIX}${uploadId}`;
 }
@@ -40,21 +24,13 @@ export function uploadIdFromKey(key: string) {
 
 const FAILED_UPLOAD = new Set(["errored", "cancelled", "timed_out"]);
 
-/** Mux's name for the audio-only static rendition. */
 const AUDIO_RENDITION = "audio.m4a";
 
-/** The facts `status` is computed from. */
 type Facts = Pick<
   MuxAsset,
   "type" | "uploadStatus" | "assetId" | "assetStatus" | "playbackId" | "renditionStatus" | "syncGaveUpAt"
 >;
 
-/**
- * UPLOADING until Mux has the bytes, PROCESSING while it transcodes, READY
- * once it plays (audio: once its `audio.m4a` is done, or known not to be
- * coming), FAILED when Mux says so — or when polling gave up, until a later
- * fact says otherwise.
- */
 export function computeStatus(row: Facts): MediaStatus {
   if (row.assetStatus === "errored" || FAILED_UPLOAD.has(row.uploadStatus)) return "FAILED";
   const playable =
@@ -67,12 +43,10 @@ export function computeStatus(row: Facts): MediaStatus {
   return "UPLOADING";
 }
 
-/** Nothing left to wait for: playable or failed, and captions done either way. */
 export function isSettled(row: Pick<MuxAsset, "status" | "captionStatus">) {
   return (row.status === "READY" || row.status === "FAILED") && row.captionStatus !== "PENDING";
 }
 
-/** A terminal Mux status wins over a `preparing` one, whatever order they arrive in. */
 function mergeProgress(current: string | null, next: string | null | undefined): string | null {
   if (!next) return current;
   if (current && current !== "preparing" && next === "preparing") return current;
@@ -103,7 +77,6 @@ type Patch = Partial<
   >
 >;
 
-/** What an upload's state adds. An upload only ever moves on from `waiting`. */
 export function uploadPatch(row: MuxAsset, upload: Pick<HostUpload, "status" | "assetId" | "error">): Patch {
   const patch: Patch = {};
   if (row.uploadStatus === "waiting" && upload.status !== "waiting") patch.uploadStatus = upload.status;
@@ -115,11 +88,9 @@ export function uploadPatch(row: MuxAsset, upload: Pick<HostUpload, "status" | "
   return patch;
 }
 
-/** What a full asset snapshot (API read or webhook body) adds. */
 export function snapshotPatch(row: MuxAsset, snap: AssetSnapshot): Patch {
   const patch: Patch = {};
   if (!row.assetId) patch.assetId = snap.id;
-  // An asset exists, so the upload delivered, whether or not that event came first.
   if (row.uploadStatus === "waiting") patch.uploadStatus = "asset_created";
 
   const assetStatus = mergeProgress(row.assetStatus, snap.status);
@@ -134,7 +105,6 @@ export function snapshotPatch(row: MuxAsset, snap: AssetSnapshot): Patch {
   return patch;
 }
 
-/** Playback id, duration, dimensions, audio track and (audio only) the m4a rendition. */
 function playbackFacts(row: MuxAsset, snap: AssetSnapshot): Patch {
   const patch: Patch = {};
   const playback = snap.playback_ids?.find((p) => p.policy === "signed") ?? snap.playback_ids?.[0];
@@ -167,7 +137,6 @@ function primaryAudio(snap: AssetSnapshot) {
   return tracks.find((t) => t.type === "audio" && t.primary) ?? tracks.find((t) => t.type === "audio");
 }
 
-/** The generated caption track to read, and what its state (or the asset's) says. */
 function captionFacts(row: MuxAsset, snap: AssetSnapshot, assetStatus: string | null): Patch {
   const patch: Patch = {};
   const generated = (snap.tracks ?? []).filter((t) => t.type === "text" && t.text_source === "generated_vod" && t.id);
@@ -183,15 +152,13 @@ function captionFacts(row: MuxAsset, snap: AssetSnapshot, assetStatus: string | 
     patch.captionStatus = "FAILED";
     patch.error = row.error ?? "Mux couldn't generate captions for this clip";
   } else if (assetStatus === "ready" && snap.tracks && !primaryAudio(snap)) {
-    // A ready asset with no audio track: nothing was said, and nothing ever
-    // will be. An empty transcript, settled.
+    // No audio track: Mux will never generate captions, so settle on an empty transcript.
     patch.captionStatus = "READY";
     patch.transcript = "";
   }
   return patch;
 }
 
-/** A caption track's state, from a `video.asset.track.*` webhook. */
 export function captionTrackPatch(row: MuxAsset, track: { id: string; status: "ready" | "errored" }): Patch {
   const patch: Patch = {};
   const captionTrackId = row.captionTrackId ?? track.id;
@@ -203,21 +170,13 @@ export function captionTrackPatch(row: MuxAsset, track: { id: string; status: "r
   return patch;
 }
 
-/** The audio rendition's state, from a `video.asset.static_rendition.*` webhook. */
 export function renditionPatch(row: MuxAsset, name: string | null | undefined, status: string): Patch {
   if (row.type !== "AUDIO" || name !== AUDIO_RENDITION) return {};
   const renditionStatus = mergeProgress(row.renditionStatus, status);
   return renditionStatus === row.renditionStatus ? {} : { renditionStatus };
 }
 
-/**
- * What Mux says about the asset's master (temporary master access, which
- * downloads ask for; see lib/downloads.ts). Merged like every other fact: a
- * late `preparing` can't undo `ready`. Absence says nothing — most events
- * about an asset don't mention its master — so only `master.deleted`
- * (`masterGonePatch`) clears it. A fresh request after the 24 hours sets the
- * fields outright instead of merging (`masterRequestedPatch`).
- */
+// Most Mux events omit the master, so absence says nothing; only `master.deleted` clears it.
 export function masterPatch(
   row: MuxAsset,
   master: { status?: string | null; url?: string | null } | null | undefined,
@@ -230,17 +189,11 @@ export function masterPatch(
   return patch;
 }
 
-/** Mux withdrew the master (`video.asset.master.deleted`): the 24 hours are up. */
 export function masterGonePatch(row: MuxAsset): Patch {
   if (row.masterStatus === null && row.masterUrl === null) return {};
   return { masterStatus: null, masterUrl: null };
 }
 
-/**
- * A download asked Mux for the master just now. `requested` false means Mux
- * already had one (asked for by an earlier request whose row we lost track
- * of, or from Mux's dashboard), so when it lapses is unknown: assume soon.
- */
 export function masterRequestedPatch(
   row: MuxAsset,
   result: { requested: boolean; master: { status: string; url: string | null } | null },
@@ -260,12 +213,11 @@ export function masterRequestedPatch(
   };
 }
 
-/** How long Mux keeps a temporary master: 24 hours from the request. */
+// Mux keeps a temporary master for 24 hours from the request.
 export const MASTER_ACCESS_MS = 24 * 60 * 60 * 1000;
-/** A master Mux already had when we asked: we don't know its age, so trust it for an hour. */
+// A master Mux already had when we asked is of unknown age, so trust it for an hour.
 const ADOPTED_MASTER_MS = 60 * 60 * 1000;
 
-/** Polling stopped with the asset unsettled: whatever is still pending fails. */
 export function giveUpPatch(row: MuxAsset): Patch {
   const patch: Patch = { syncGaveUpAt: new Date() };
   if (row.captionStatus === "PENDING") patch.captionStatus = "FAILED";
@@ -273,27 +225,13 @@ export function giveUpPatch(row: MuxAsset): Patch {
   return patch;
 }
 
-/**
- * Captions asked for again (the transcript retry): read the new track, and
- * stop counting the old give-up against the asset. The old transcript stays
- * until the new one arrives, so the memory merge knows what it replaces.
- */
+// Keeps the old transcript until the new one lands: offerToMemory needs it to recognise the machine's copy.
 export function captionRetryPatch(trackId: string | null): Patch {
-  // No id back from Mux: forget the old (failed) track, and the next asset
-  // read picks the generated track that isn't errored.
   return { captionTrackId: trackId ?? null, captionStatus: "PENDING", syncGaveUpAt: null };
 }
 
-/**
- * The Mux side of a transcript retry. Returns the caption track to read next.
- *
- * Mux refuses to generate captions in a language an existing generated track
- * already has — errored or not. So: a generated track that is ready (the text
- * exists; fetching it failed or polling gave up) or still preparing is simply
- * read again. Only when every generated track errored are those failed text
- * tracks removed and captions generated anew. The asset, its audio and its
- * video are never touched.
- */
+// Mux refuses to generate captions in a language an existing generated track already has, even an
+// errored one: reuse a live track, else delete the errored ones before generating anew.
 export async function requestCaptionsAgain(host: MediaHost, assetId: string, audioTrackId: string) {
   const snap = await host.getAsset(assetId);
   const generated = (snap.tracks ?? []).filter((t) => t.type === "text" && t.text_source === "generated_vod");
@@ -306,7 +244,6 @@ export async function requestCaptionsAgain(host: MediaHost, assetId: string, aud
   return ids[0] ?? null;
 }
 
-/** The transcript text for one caption track, once fetched. Ignored if the track changed meanwhile (a retry). */
 export function transcriptPatch(row: MuxAsset, trackId: string, text: string): Patch {
   if (row.captionTrackId !== trackId || row.captionStatus !== "PENDING") return {};
   return { transcript: text, captionStatus: "READY" };
@@ -314,12 +251,6 @@ export function transcriptPatch(row: MuxAsset, trackId: string, text: string): P
 
 export type AssetLookup = { id: string } | { uploadId?: string | null; assetId?: string | null };
 
-/**
- * Lock one MuxAsset row, apply `mutate`'s patch, recompute `status`, and
- * bring every linked Media row up to date — one transaction. Returns the row
- * as it now stands, or null when no row matches (an event for an upload this
- * database never made: another environment, or a test event).
- */
 export async function updateMuxAsset(
   lookup: AssetLookup,
   mutate: (row: MuxAsset) => Patch,
@@ -343,10 +274,8 @@ function sameValue(a: unknown, b: unknown) {
   return a === b;
 }
 
-/** `SELECT … FOR UPDATE` on one MuxAsset row, then read it whole. */
 async function lockAsset(tx: Prisma.TransactionClient, lookup: AssetLookup): Promise<MuxAsset | null> {
-  // By asset id or upload id: an asset event can arrive before the upload
-  // event that told us the asset id, but it carries the upload id too.
+  // An asset event can arrive before the upload event that told us the asset id, but carries the upload id.
   const rows =
     "id" in lookup
       ? await tx.$queryRaw<{ id: string }[]>`SELECT id FROM "MuxAsset" WHERE id = ${lookup.id} FOR UPDATE`
@@ -360,27 +289,20 @@ async function lockAsset(tx: Prisma.TransactionClient, lookup: AssetLookup): Pro
   return id ? tx.muxAsset.findUnique({ where: { id } }) : null;
 }
 
-/**
- * Lock several MuxAsset rows (in id order, so two callers can't deadlock).
- * `POST /memories` holds these while it creates the Media rows that link to
- * them, so a webhook can't settle the asset in between and miss the new rows.
- */
+// Locks in id order so two callers can't deadlock. `POST /memories` holds these while linking Media
+// rows, so a webhook can't settle the asset in between and miss them.
 export async function lockAssets(tx: Prisma.TransactionClient, ids: string[]): Promise<MuxAsset[]> {
   if (ids.length === 0) return [];
   await tx.$queryRaw`SELECT id FROM "MuxAsset" WHERE id = ANY(${ids}::text[]) ORDER BY id FOR UPDATE`;
   return tx.muxAsset.findMany({ where: { id: { in: ids } } });
 }
 
-/** A linked Media row's status: it never says UPLOADING (a memory only links finalized uploads). */
 function mediaStatusFor(asset: MuxAsset): MediaStatus {
   return asset.status === "READY" || asset.status === "FAILED" ? asset.status : "PROCESSING";
 }
 
-/**
- * Copy what an asset knows onto every Media row linked to it, and offer
- * a newly arrived transcript to each row's memory. Idempotent: a row already
- * up to date is left alone. Call with the MuxAsset row locked.
- */
+// Call with the MuxAsset row locked. Runs from both the asset side and `POST /memories`, so
+// whichever happens second does the linking.
 export async function settleLinkedMedia(tx: Prisma.TransactionClient, asset: MuxAsset) {
   const media = await tx.media.findMany({ where: { muxAssetId: asset.id } });
   for (const m of media) {
@@ -409,9 +331,7 @@ export async function settleLinkedMedia(tx: Prisma.TransactionClient, asset: Mux
     if (Object.keys(data).length === 0) continue;
     await tx.media.update({ where: { id: m.id }, data });
     if (offer) await offerToMemory(tx, m.memoryId, m.id, m.transcript);
-    // A video that can now show its poster (or never will) may change what
-    // the memory's hero is, or what colour it is: `memory.refresh` reads the
-    // poster (A6). Queued in this transaction, deduplicated per memory.
+    // `memory.refresh` derives the memory's hero from video posters.
     if (m.type === "VIDEO" && (status === "READY" || status === "FAILED") && data.status) {
       await kickRefresh(jobQueue(), asset.familyId, m.memoryId, tx);
     }
@@ -420,24 +340,14 @@ export async function settleLinkedMedia(tx: Prisma.TransactionClient, asset: Mux
 
 const TRANSCRIBABLE_TYPES = ["AUDIO", "VIDEO"] as const;
 
-/**
- * Rebuild the machine copy of the memory's transcript from its clips, in sort
- * order, if — and only if — no person has written it.
- *
- * `Memory.transcript` belongs to the family: they can type or edit it at any
- * time. It is only written when empty or still exactly what this function
- * would have written before the clip that just changed (`previousText` is
- * that clip's old transcript, null on its first). Any human edit makes it
- * differ, and from then on it is left alone.
- */
+// Never overwrite a person's words: only replace an empty transcript or the machine's previous copy.
 export async function offerToMemory(
   tx: Prisma.TransactionClient,
   memoryId: string,
   justFinished: string,
   previousText: string | null,
 ) {
-  // Row lock: two clips of one memory finishing together must not each see
-  // the other's half and both write.
+  // Row lock: two clips of one memory finishing together must not each see the other's half and both write.
   const [memory] = await tx.$queryRaw<{ transcript: string | null }[]>`
     SELECT transcript FROM "Memory" WHERE id = ${memoryId} FOR UPDATE`;
   if (!memory) return;
@@ -458,12 +368,10 @@ export async function offerToMemory(
       .join("\n\n");
 
   const current = memory.transcript?.trim() ?? "";
-  // What would have been there before this clip changed: the same clips, with
-  // this one's previous text (none on a first run; the old text on a re-run).
   const machineWrittenBefore = join(
     clips.map((c) => (c.id === justFinished ? { ...c, transcript: previousText } : c)),
   );
-  if (current !== "" && current !== machineWrittenBefore) return; // a person's words
+  if (current !== "" && current !== machineWrittenBefore) return;
 
   const next = join(clips);
   if (next && next !== current) {
@@ -471,14 +379,6 @@ export async function offerToMemory(
   }
 }
 
-/**
- * Before a change to a memory's clips (one removed, or the order changed):
- * lock the memory and note whether its transcript is still exactly the
- * machine's copy of the clips. Returns what to call once the change is
- * written: it rebuilds the machine copy from the clips as they now are, or
- * does nothing when a person has written the transcript (their words are
- * never touched) or it's empty.
- */
 export async function holdMachineTranscript(
   tx: Prisma.TransactionClient,
   memoryId: string,
@@ -510,24 +410,16 @@ function joinClipTranscripts(clips: { transcript: string | null }[]) {
     .join("\n\n");
 }
 
-// ---------------------------------------------------------------------------
-// Scheduling `mux.sync`. At most one queued job per asset: a new reason to
-// look (finalize, a webhook, a retry) pulls the queued one forward instead of
-// adding a second.
-// ---------------------------------------------------------------------------
-
 function queuedSync(muxAssetId: string): Prisma.JobWhereInput {
   return { type: "mux.sync", status: "QUEUED", payload: { path: ["muxAssetId"], equals: muxAssetId } };
 }
 
-/** Look at this asset now: run the queued sync job at once, or queue one. */
 export async function kickSync(queue: JobQueue, muxAssetId: string, db: Prisma.TransactionClient = prisma) {
   const pulled = await db.job.updateMany({ where: queuedSync(muxAssetId), data: { runAt: new Date() } });
   if (pulled.count > 0) return;
   await queue.enqueue("mux.sync", { muxAssetId, startedAt: Date.now() }, { db });
 }
 
-/** From inside a sync run: look again after `delayMs`, unless something already queued a look. */
 export async function continueSync(queue: JobQueue, muxAssetId: string, startedAt: number, delayMs: number) {
   if ((await prisma.job.count({ where: queuedSync(muxAssetId) })) > 0) return;
   await queue.enqueue("mux.sync", { muxAssetId, startedAt }, { runAt: new Date(Date.now() + delayMs) });

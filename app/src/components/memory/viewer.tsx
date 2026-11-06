@@ -17,18 +17,12 @@ import { Image, Ionicons } from "../../styled";
 import { VideoClip } from "../video";
 import { Thumb } from "./gallery";
 
-/**
- * Every photo and video on a memory, full screen on black: swipe (or use the
- * strip, or ← → on a keyboard) to move between them, "2 / 6" up top. Only
- * the video in view gets a player, so nothing plays off-screen.
- */
 export function MediaViewer({
   items,
   index,
   onClose,
 }: {
   items: MediaItem[];
-  /** Which item to open on; null keeps the viewer closed. */
   index: number | null;
   onClose: () => void;
 }) {
@@ -56,7 +50,6 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
     if (page !== current) setCurrent(Math.min(items.length - 1, Math.max(0, page)));
   }
 
-  // A keyboard on the web: arrows move, Escape closes.
   const onKey = useEffectEvent((e: KeyboardEvent) => {
     if (e.key === "ArrowRight") go(current + 1);
     else if (e.key === "ArrowLeft") go(current - 1);
@@ -169,7 +162,6 @@ function ViewerBody({ items, start, onClose }: { items: MediaItem[]; start: numb
   );
 }
 
-/** The video in view: playing once Mux has it ready, a word about it until then. */
 function ViewerVideo({ item }: { item: MediaItem }) {
   const status = mediaStatus(item);
   const [failed, setFailed] = useState(false);
@@ -179,7 +171,6 @@ function ViewerVideo({ item }: { item: MediaItem }) {
         uri={mediaUrl(item.url)}
         posterUrl={item.posterUrl}
         onError={() => setFailed(true)}
-        // VideoClip takes a style, not a className.
         style={{ width: "100%", height: "72%" }}
       />
     );

@@ -14,25 +14,14 @@ import {
 
 export interface PostgresJobQueueOptions {
   log: Logger;
-  /** Jobs this process runs at once. */
   concurrency?: number;
-  /** How long an idle loop waits before looking again. */
   pollIntervalMs?: number;
-  /**
-   * A RUNNING job whose lock is older than this is presumed orphaned (its
-   * worker died or was redeployed mid-run) and is claimed again. Must be
-   * comfortably longer than any handler takes.
-   */
+  // A RUNNING job locked longer than this is presumed orphaned and claimed again; keep it well above any handler's run.
   staleAfterMs?: number;
-  /** First retry delay; doubles per attempt, capped at `backoffMaxMs`. */
   backoffBaseMs?: number;
   backoffMaxMs?: number;
 }
 
-/**
- * A handler with its payload type erased, so handlers of every job type fit
- * one map. Each wrapper parses the raw payload before calling through.
- */
 type RegisteredHandler = {
   run: (payload: Prisma.JsonValue, ctx: JobContext) => Promise<void>;
   onFinalFailure?: (payload: Prisma.JsonValue, error: unknown, ctx: JobContext) => Promise<void>;
@@ -44,23 +33,12 @@ type ClaimedJob = {
   payload: Prisma.JsonValue;
   attempts: number;
   maxAttempts: number;
-  /** Doubles as the lock token: every write back requires it unchanged. */
+  // Doubles as the lock token: every write back requires it unchanged.
   lockedAt: Date;
 };
 
-/**
- * The `Job` table as a queue.
- *
- * Claiming is one statement: pick the oldest due row with
- * `FOR UPDATE SKIP LOCKED` (so concurrent workers never block on, or take,
- * each other's rows) and flip it to RUNNING in the same breath. The claim
- * counts as an attempt, so a job that kills its worker every time still runs
- * out of attempts.
- *
- * Timestamps are written as UTC on the database side: Prisma stores
- * `DateTime` as `timestamp(3)` in UTC, and `now() AT TIME ZONE 'UTC'` keeps
- * raw SQL in agreement whatever the session's time zone is.
- */
+// The claim counts as an attempt, so a job that kills its worker every time still runs out of attempts.
+// Prisma stores DateTime as UTC timestamp(3); `now() AT TIME ZONE 'UTC'` keeps raw SQL in agreement.
 export class PostgresJobQueue implements JobQueue {
   private readonly handlers = new Map<JobType, RegisteredHandler>();
   private readonly sleepers = new Set<() => void>();
@@ -138,7 +116,6 @@ export class PostgresJobQueue implements JobQueue {
       try {
         job = await this.claim();
       } catch (err) {
-        // Database blip: back off rather than spin, and keep the loop alive.
         this.log.error({ err }, "job claim failed");
         await this.sleep(this.pollIntervalMs * 5);
         continue;
@@ -185,7 +162,7 @@ export class PostgresJobQueue implements JobQueue {
       maxAttempts: job.maxAttempts,
       log,
     };
-    if (!handler) return; // unreachable: claim filters by registered type
+    if (!handler) return;
 
     // Only a job recovered from a dead worker can get here: its last
     // permitted attempt was spent by the run that never reported back.
@@ -213,7 +190,6 @@ export class PostgresJobQueue implements JobQueue {
 
   private async retryLater(job: ClaimedJob, err: unknown, log: Logger) {
     const exp = this.backoffBaseMs * 2 ** (job.attempts - 1);
-    // ±20% jitter so a burst of failures doesn't retry in lockstep.
     const delay = Math.min(this.backoffMaxMs, exp) * (0.8 + Math.random() * 0.4);
     const runAt = new Date(Date.now() + delay);
     await this.db.job.updateMany({
@@ -237,7 +213,6 @@ export class PostgresJobQueue implements JobQueue {
     }
   }
 
-  /** A wait that `stop()` can cut short. */
   private sleep(ms: number) {
     return new Promise<void>((resolve) => {
       const wake = () => {

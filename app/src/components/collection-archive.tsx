@@ -35,22 +35,12 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 const open = (memory: MemoryCard) => router.push(routes.memory(memory.id));
 
-/**
- * An archive as a whole screen: `path` (an archive endpoint, plus `extra`
- * params) fetched with the screen's filters. The filters live here, in the
- * screen, so a memory opened from a filtered list comes back to the same
- * filters (and scroll): memory detail is pushed over the tabs and this
- * screen stays mounted.
- */
 export function ArchiveScreen({ path, extra, view }: { path: string; extra?: Record<string, string>; view?: ArchiveView }) {
   const [filters, setFilters] = useState<ArchiveFilters>(NO_FILTERS);
-  // New filters keep the last list up (dimmed) until their answer is in.
   const query = useApiQuery<CollectionArchivePayload>(archivePath(path, filters, extra), { keepPrevious: true });
   const { data, error } = query;
   const insets = useSafeAreaInsets();
 
-  // Back from a memory (edited, moved, deleted) or from Capture: those writes
-  // mark this stale and it refreshes in place; this catches everyone else's.
   useRefreshOnFocus(query);
 
   // Checked before `data`: a collection removed while a memory was open
@@ -85,7 +75,6 @@ export function ArchiveScreen({ path, extra, view }: { path: string; extra?: Rec
       filters={filters}
       onFiltersChange={setFilters}
       loading={query.isPlaceholderData}
-      // Hidden while a retry is in flight, so the line doesn't sit there unchanged.
       error={query.isFetching ? null : error}
       onRetry={() => void query.refetch()}
       view={view}
@@ -93,19 +82,6 @@ export function ArchiveScreen({ path, extra, view }: { path: string; extra?: Rec
   );
 }
 
-/**
- * One collection's archive (screen 4 of the Library journey): who it belongs
- * to, the collection's disc, name and description, search and year chips,
- * then its memories under year headings, newest first. Each entry is drawn by
- * the renderer for the collection's kind (archive-entries.tsx).
- *
- * Filters are the caller's state, so the caller fetches with them; the
- * archive keeps showing the last payload while the next one loads, so the
- * header never flashes away.
- *
- * Someone who can contribute also gets ⋯: edit the collection, choose which
- * memories are filed in it, and delete it.
- */
 export function CollectionArchive({
   data,
   filters,
@@ -116,13 +92,10 @@ export function CollectionArchive({
   view,
 }: {
   data: CollectionArchivePayload;
-  /** A narrowed look at the collection (Birthdays' loose memories): its own heading and way back, no ⋯. */
   view?: ArchiveView;
   filters: ArchiveFilters;
   onFiltersChange: (filters: ArchiveFilters) => void;
-  /** A fetch for new filters is in flight; what's shown is the last answer. */
   loading?: boolean;
-  /** The last refresh failed; what's shown is the answer before it. */
   error?: Error | null;
   onRetry?: () => void;
 }) {
@@ -130,7 +103,6 @@ export function CollectionArchive({
   const { collection, years, memories } = data;
   const child = data.child ?? null;
 
-  // The box updates as you type; the server hears about it once typing pauses.
   const [text, setText] = useState(filters.q);
   const latest = useRef({ filters, onFiltersChange });
   useEffect(() => {
@@ -150,7 +122,6 @@ export function CollectionArchive({
   const groups = groupByYear(memories);
   const Entry = entryRendererFor(collection.kind);
 
-  // A VIEWER can't add memories, so the ways in to capture aren't offered.
   const canContribute = useCanContribute();
   const capture = canContribute
     ? () => router.push({ pathname: "/capture/compose", params: { collectionId: collection.id } })
@@ -160,9 +131,6 @@ export function CollectionArchive({
     onFiltersChange(NO_FILTERS);
   };
 
-  // A child's own collection backs out to their Collections; Arrival Stories
-  // and Family Life collections back out to their pillar.
-  // A birthday's category backs out to its birthday.
   const ownedByChild = collection.pillar === "CHILD_PROFILES" && child !== null;
   const backLabel =
     view?.backLabel ?? collection.parentName ?? (ownedByChild ? child.name : PILLAR_NAMES[collection.pillar]);
@@ -301,12 +269,8 @@ export function CollectionArchive({
 
 export type ArchiveView = { title: string; description: string; backLabel: string; backParent: Href };
 
-/**
- * Newest year first; the server already sends memories newest first. Years
- * are local, like the dates the entries show (format.ts reads local time) and
- * like the server's year chips, which archivePath asks for in this device's
- * time zone — so an entry never sits under a year its own date contradicts.
- */
+// Local years, like the server's year chips (archivePath sends this device's time zone),
+// so an entry never sits under a year its own date contradicts.
 function groupByYear(memories: MemoryCard[]) {
   const groups: { year: number; memories: MemoryCard[] }[] = [];
   for (const memory of memories) {
@@ -318,11 +282,6 @@ function groupByYear(memories: MemoryCard[]) {
   return groups;
 }
 
-// ---------------------------------------------------------------------------
-// Header pieces
-// ---------------------------------------------------------------------------
-
-/** Whose collection this is — the child's photo, name and age — and how much is in it. */
 function Identity({
   child,
   pillar,
@@ -346,7 +305,6 @@ function Identity({
   const age = childAge(child.birthDate);
   return (
     <View className="mt-4 flex-row items-center gap-2">
-      {/* Their photo, or their monogram — the same face Child Profiles shows, not the generated avatar. */}
       <ChildPortrait child={child} size={30} uri={child.photoThumbUrl} />
       <Text className="shrink font-sans text-[15px] text-ink-soft" numberOfLines={1}>
         <Text className="font-sans-bold text-ink">{child.name}</Text>
@@ -355,10 +313,6 @@ function Identity({
     </View>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Filters
-// ---------------------------------------------------------------------------
 
 function YearChips({
   years,
@@ -372,7 +326,6 @@ function YearChips({
   loading: boolean;
 }) {
   const total = years.reduce((sum, y) => sum + y.count, 0);
-  // A picked year stays on screen even when a search leaves it empty.
   const shown =
     selected !== null && !years.some((y) => y.year === selected)
       ? [
@@ -383,7 +336,6 @@ function YearChips({
       : years;
   return (
     <View className="mt-3 flex-row items-center">
-      {/* Chips scroll edge to edge on a narrow phone, past the column's gutter. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -443,10 +395,6 @@ function YearHeading({ year, count: n }: { year: number; count: number }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Empty states and the add action
-// ---------------------------------------------------------------------------
-
 const EMPTY_TITLE = "mt-3 text-center font-display text-[24px] leading-[30px] text-ink";
 const EMPTY_BODY = "mt-2 mb-6 max-w-[340px] text-center font-sans text-[15.5px] leading-[23px] text-ink-soft";
 
@@ -457,7 +405,6 @@ function EmptyCollection({
 }: {
   child: ChildSummary | null;
   name: string;
-  /** Absent for someone who can only view: there's nothing for them to do here yet. */
   onCapture?: () => void;
 }) {
   return (
@@ -520,7 +467,6 @@ function PillButton({
   );
 }
 
-/** The outlined "+" card that closes a list, as "Create a Collection" does on a child's Collections. */
 function AddCard({ title, subtitle, onPress }: { title: string; subtitle: string; onPress: () => void }) {
   return (
     <Pressable

@@ -6,20 +6,11 @@ import { VideoControls, type HeroVideoProps } from "./video-controls";
 
 export type { HeroVideoProps };
 
-/** Safari on iPhone can't put an arbitrary element full screen, only a video. */
+// Safari on iPhone can't put an arbitrary element full screen, only a video.
 type IOSVideo = HTMLVideoElement & { webkitEnterFullscreen?: () => void };
 
-/**
- * The hero's video on the web: a plain `<video>` without the browser's
- * controls, under the page's own. Full screen turns the browser's controls
- * back on, since ours stay behind on the page.
- *
- * The stream is Mux's HLS: Safari plays it natively, Chrome and Firefox
- * through hls.js (`web-hls.ts`). The poster stands in until the first play.
- */
 export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }: HeroVideoProps) {
-  // Pinned: a signed URL changes on every refetch, and a new source would
-  // reload the stream mid-watch.
+  // Pinned: a signed URL changes on every refetch, and a new source would reload mid-watch.
   const [source] = useState(uri);
   const [poster] = useState(posterUrl);
   const video = useRef<IOSVideo | null>(null);
@@ -71,6 +62,7 @@ export function HeroVideo({ uri, posterUrl, durationS, paused = false, onError }
         ref: video,
         src,
         poster: poster ?? undefined,
+        // Our controls stay behind on the page in full screen, so the browser's come back.
         controls: fullscreen,
         playsInline: true,
         preload: "metadata",

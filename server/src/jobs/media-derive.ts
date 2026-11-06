@@ -10,23 +10,6 @@ import { PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js
 import { MediaHostError } from "../media-host/index.js";
 import { kickRefresh, readAll, refreshMemory } from "./memory-refresh.js";
 
-/**
- * `media.derive`: one photo's THUMB (400 px) and DISPLAY (1600 px) JPEGs,
- * written beside its original (`<familyId>/<uploadId>/thumb.jpg`,
- * `display.jpg`), plus its EXIF capture day and upright size on the Media
- * row; then the memory is refreshed (palette, date — see memory-refresh.ts).
- *
- * The original is only ever read. Idempotent: a photo that already has both
- * renditions skips straight to the refresh, and a re-render replaces the
- * same two keys. Bytes that aren't a picture fail at once
- * (`PermanentJobError`); a storage or database error is retried by the queue.
- *
- * Racing a delete: the renditions are written first, then their rows under
- * the Media row's lock. If the photo was deleted meanwhile there's no row to
- * lock, and the files just written are handed to `media.purge`. A delete
- * that lands after the rows commit purges them itself (lib/purge.ts names
- * every original's rendition keys, rows or not).
- */
 export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> {
   return {
     async run({ familyId, mediaId }, ctx) {
@@ -34,7 +17,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
         where: { id: mediaId, memory: { familyId } },
         select: { id: true, type: true, storageKey: true, memoryId: true, derivatives: { select: { kind: true } } },
       });
-      if (!media) return; // deleted since; its purge took care of the files
+      if (!media) return;
       const key = media.storageKey;
       if (media.type !== "PHOTO" || !key || !isOriginalKey(key) || !keyBelongsTo(key, familyId)) {
         ctx.log.info({ mediaId, type: media.type }, "media.derive: not an uploaded photo; nothing to derive");
@@ -61,8 +44,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
           });
         }
         const facts: Prisma.MediaUpdateInput = {};
-        // Finalize measured the stored pixels; an EXIF-rotated photo's
-        // width and height come out swapped there. These are as it's seen.
+        // Finalize measured the stored pixels, which an EXIF rotation leaves swapped.
         if (rendered.width > 0 && rendered.height > 0) Object.assign(facts, { width: rendered.width, height: rendered.height });
         if (rendered.capturedAt) facts.capturedAt = rendered.capturedAt;
         await tx.media.update({ where: { id: mediaId }, data: facts });
@@ -70,8 +52,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
       });
 
       if (!kept) {
-        // Deleted while rendering. The delete's purge may already have run,
-        // so these files would outlive it; purge them the same way.
+        // Deleted while rendering: its purge may already have run, so these files would outlive it.
         await queueDeleteIfUnused(prisma, familyId, written, "derivatives of a deleted photo");
         return;
       }
@@ -84,18 +65,11 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
     },
 
     async onFinalFailure({ mediaId }, err, ctx) {
-      // The photo still shows (as its original); lists just load it whole.
       ctx.log.error({ mediaId, err }, "media.derive gave up; the original is served in place of renditions");
     },
   };
 }
 
-/**
- * Read an original, render its THUMB and DISPLAY, and write them beside it
- * (`derivativeKey`). Shared by `media.derive` and `image.derive`. The
- * original is only read. A missing, oversized or undecodable original is a
- * `PermanentJobError`; storage errors are thrown as they are, for a retry.
- */
 export async function renderAndStore(key: string): Promise<{ rendered: RenderedPhoto; written: string[] }> {
   const head = await storage().head(key);
   if (!head) throw new PermanentJobError(`The original is missing from storage: ${key}`);
@@ -120,11 +94,6 @@ export async function renderAndStore(key: string): Promise<{ rendered: RenderedP
   return { rendered, written };
 }
 
-/**
- * Refresh the memory now that this photo is derived. If the hero is a video
- * and Mux can't draw its poster just now, that's not this photo's failure:
- * hand the refresh to its own job, which retries Mux with backoff.
- */
 async function refreshAfterDerive(queue: JobQueue, familyId: string, memoryId: string, log: Logger) {
   try {
     await refreshMemory(familyId, memoryId, log);
@@ -135,7 +104,6 @@ async function refreshAfterDerive(queue: JobQueue, familyId: string, memoryId: s
   }
 }
 
-/** Queue `media.derive` for each uploaded photo, in the caller's transaction. */
 export async function enqueueDerive(
   queue: JobQueue,
   db: Prisma.TransactionClient,

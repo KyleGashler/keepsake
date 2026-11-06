@@ -3,14 +3,6 @@ import { Router } from "express";
 import { inviteStatus, plausibleToken } from "../lib/invites.js";
 import { prisma } from "../lib/prisma.js";
 
-/**
- * The invitee's side of an invite: look at it, then accept it. Neither is
- * scoped to a family the caller belongs to — the whole point is that they
- * don't yet — so neither sits behind `requireFamily`. The owner's side
- * (create, list, revoke) is in family.ts.
- */
-
-/** How someone appears inside one family: their Person there, else their account name. */
 export async function memberName(userId: string, familyId: string) {
   const membership = await prisma.familyMembership.findUnique({
     where: { userId_familyId: { userId, familyId } },
@@ -21,19 +13,8 @@ export async function memberName(userId: string, familyId: string) {
   return user?.displayName ?? "Someone";
 }
 
-/**
- * `GET /api/invites/:token` — mounted *before* `requireUser`, so it answers
- * without a token.
- *
- * Public on purpose: the person following an invite link is usually signed
- * out, often without an account at all, and should see who is inviting them
- * to what before being asked to sign up. The token is the credential — 256
- * random bits, so it can't be found by guessing — and whoever holds it is
- * exactly who the owner chose to show this to. Even so, the answer is the
- * minimum the join screen needs: the family's name, the inviter's name, the
- * role, the name the invite is for, and whether it still works. No ids, no
- * email address, nothing from inside the archive.
- */
+// Public: the token (256 random bits) is the credential. Answer only what the
+// join screen needs — no ids, no email, nothing from inside the archive.
 export const invitePreviewRouter = Router();
 
 invitePreviewRouter.get("/invites/:token", async (req, res) => {
@@ -58,7 +39,6 @@ invitePreviewRouter.get("/invites/:token", async (req, res) => {
   });
 });
 
-/** Why an accept was turned down, thrown inside the transaction so nothing it did sticks. */
 class Refusal extends Error {
   constructor(
     readonly status: number,
@@ -68,15 +48,7 @@ class Refusal extends Error {
   }
 }
 
-/**
- * `POST /api/invites/:token/accept` — behind `requireUser` only.
- *
- * Needs a verified email (B1's rule: the address is the one thing an invite
- * link can be forwarded away from, so whoever joins must at least have proven
- * an inbox). The invite isn't bound to any address — any verified account may
- * take it — and it works once: the claim is a conditional update, so two
- * accepts racing for one link can't both win.
- */
+// A link can be forwarded, so whoever accepts must have verified an inbox.
 export const inviteAcceptRouter = Router();
 
 inviteAcceptRouter.post("/invites/:token/accept", async (req, res) => {
@@ -100,8 +72,7 @@ inviteAcceptRouter.post("/invites/:token/accept", async (req, res) => {
     return res.status(409).json({ error: "already_member", familyId: invite.familyId });
   }
 
-  // See POST /families: Person.userId is a global back-link, held by at most
-  // one Person; FamilyMembership.personId is the per-family link.
+  // Person.userId is globally unique, so only one of a user's Persons can carry it.
   const alreadyLinked = await prisma.person.findUnique({ where: { userId: user.id }, select: { id: true } });
 
   let person: Person;
@@ -123,8 +94,6 @@ inviteAcceptRouter.post("/invites/:token/accept", async (req, res) => {
           where: { id: invite.personId, familyId: invite.familyId },
           include: { membership: { select: { userId: true } } },
         });
-        // Linked to someone else since the invite was made (another invite
-        // for the same Person got there first). Children never get accounts.
         const taken = !named || named.membership !== null || (named.userId !== null && named.userId !== user.id);
         if (taken || named.role === "CHILD") throw new Refusal(409, "person_taken");
         joined =
@@ -163,8 +132,7 @@ inviteAcceptRouter.post("/invites/:token/accept", async (req, res) => {
     });
   } catch (err) {
     if (err instanceof Refusal) return res.status(err.status).json({ error: err.code });
-    // A unique constraint lost to a concurrent request: this user joined the
-    // family another way a moment ago, or someone else claimed the Person.
+    // P2002: a unique constraint lost to a concurrent join.
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
       if (await alreadyMember()) {
         return res.status(409).json({ error: "already_member", familyId: invite.familyId });

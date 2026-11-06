@@ -2,7 +2,6 @@ import type { Collection, Memory, Person } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { mediaInclude, memoryCardDtos, memoryDto, type MediaRow } from "./serialize.js";
 
-/** How many related memories a memory page shows. */
 export const MAX_RELATED = 8;
 
 const cardInclude = { media: mediaInclude, participants: { include: { person: true } } } as const;
@@ -14,19 +13,11 @@ type DetailMemory = Memory & {
   collections: { collectionId: string; collection: Collection }[];
 };
 
-/** A link is stored once, smaller id first (the table's CHECK enforces it). */
+// Stored once, smaller id first: the table's CHECK enforces it.
 export function linkPair(a: string, b: string) {
   return a < b ? { memoryId: a, linkedId: b } : { memoryId: b, linkedId: a };
 }
 
-/**
- * "Related Memories": the ones a person linked by hand first (oldest link
- * first), then suggestions that share a collection or a person, nearest in
- * date either side. Never the memory itself, never another family's. At most
- * MAX_RELATED. `linkedIds` says which memories were
- * linked by hand (all of them, even past MAX_RELATED), so a page can offer to
- * unlink those and not the suggestions.
- */
 export async function relatedMemories(familyId: string, memory: DetailMemory) {
   const links = await prisma.memoryLink.findMany({
     where: { OR: [{ memoryId: memory.id }, { linkedId: memory.id }] },
@@ -43,8 +34,6 @@ export async function relatedMemories(familyId: string, memory: DetailMemory) {
   const byId = new Map(linkedRows.map((m) => [m.id, m]));
   const linked = linkedIds.map((id) => byId.get(id)).filter((m) => m !== undefined).slice(0, MAX_RELATED);
 
-  // Only links this family can see (a link row can't outlive its memories:
-  // both ends cascade).
   const live = linkedIds.filter((id) => byId.has(id));
 
   const room = MAX_RELATED - linked.length;
@@ -85,10 +74,6 @@ export async function relatedMemories(familyId: string, memory: DetailMemory) {
   return { related: await memoryCardDtos([...linked, ...suggested]), linkedIds: live };
 }
 
-/**
- * `GET /api/memories/:id`'s shape: the memory, plus this user's favourite
- * flag, related memories, and which of those were linked by hand.
- */
 export async function memoryDetail(familyId: string, userId: string, memory: DetailMemory) {
   const [dto, favorite, { related, linkedIds }] = await Promise.all([
     memoryDto(memory),

@@ -10,17 +10,6 @@ import { BrandMark } from "./brand";
 import { ListRow } from "./journey";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
-/**
- * The screens between signing in and the archive: the splash while the
- * account loads, the verify-email and account-problem states, and creating or
- * choosing a family. Each is one phase of the session (src/auth/session.tsx).
- */
-
-/**
- * What shows while the session restores and `GET /me` answers. The native
- * splash is the same paper colour (app.json), so the hand-off is seamless;
- * on the web this is the first thing drawn.
- */
 export function Splash() {
   return (
     <View className="flex-1 items-center justify-center bg-paper" accessibilityLabel="Opening little by little">
@@ -35,13 +24,11 @@ function errorText(err: unknown) {
   return "Something went wrong. Please try again.";
 }
 
-/** "Signed in as ali@example.com · Sign out" — at the foot of every account screen. */
 function SignedInAs() {
   const { user, signOut } = useSession();
   return <TextLink lead={user ? `Signed in as ${user.email}.` : undefined} label="Sign out" onPress={() => void signOut()} />;
 }
 
-/** Resend + "I've verified", shared by the blocking screen and the Family Hub nudge. */
 function useVerifyActions() {
   const { resendVerification, confirmVerified } = useSession();
   const [busy, setBusy] = useState<"resend" | "check" | null>(null);
@@ -68,10 +55,6 @@ function useVerifyActions() {
   return { busy, message, error, resend: () => void run("resend"), check: () => void run("check") };
 }
 
-/**
- * The API won't let this sign-in take over an existing account until the
- * address is proven (403 verify_email). Verifying is the only way forward.
- */
 export function VerifyEmailScreen() {
   const { user } = useSession();
   const { busy, message, error, resend, check } = useVerifyActions();
@@ -96,7 +79,6 @@ export function VerifyEmailScreen() {
   );
 }
 
-/** 409 email_in_use: a different account owns this address. Nothing to do here but leave. */
 export function EmailInUseScreen() {
   const { user, signOut } = useSession();
   return (
@@ -109,7 +91,6 @@ export function EmailInUseScreen() {
   );
 }
 
-/** `GET /me` failed for a reason that isn't about the account — usually the network. */
 export function AccountErrorScreen() {
   const { accountError, refreshAccount } = useSession();
   const offline = accountError && /failed to fetch|network/i.test(accountError.message);
@@ -128,7 +109,6 @@ export function AccountErrorScreen() {
   );
 }
 
-/** Signed in, belongs to no family yet: start one. */
 export function CreateFamilyScreen() {
   const { me, createFamily } = useSession();
   const [name, setName] = useState("");
@@ -185,7 +165,6 @@ export function CreateFamilyScreen() {
   );
 }
 
-/** In several families and no remembered choice: pick one. Remembered next time. */
 export function ChooseFamilyScreen() {
   const { memberships, selectFamily } = useSession();
   return (
@@ -215,11 +194,6 @@ export function ChooseFamilyScreen() {
   );
 }
 
-/**
- * The join screen's verify step: accepting an invite needs a verified email
- * (the API answers `403 verify_email` otherwise), so this stands where the
- * Join button would.
- */
 export function VerifyToJoin() {
   const { user } = useSession();
   const { busy, message, error, resend, check } = useVerifyActions();
@@ -243,10 +217,6 @@ export function VerifyToJoin() {
   );
 }
 
-/**
- * Family Hub's gentle reminder: signed up, not yet verified. Never blocks
- * anything here; accepting an invite to another family needs it.
- */
 export function VerifyEmailNudge() {
   const { user, verifyNudgeDismissed, dismissVerifyNudge } = useSession();
   const { busy, message, error, resend, check } = useVerifyActions();

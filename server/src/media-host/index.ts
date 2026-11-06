@@ -12,7 +12,6 @@ function env(name: string): string | null {
   return process.env[name]?.trim() || null;
 }
 
-/** Which of the variables a working host needs are unset. Empty means configured. */
 export function missingMuxEnv(): string[] {
   return REQUIRED.filter((name) => !env(name));
 }
@@ -26,19 +25,12 @@ function muxConfigFromEnv(): MuxConfig | null {
   return { tokenId, tokenSecret, signingKeyId, signingKeyPrivate };
 }
 
-/** `MUX_WEBHOOK_SECRET`, or null when webhooks aren't set up (dev without a tunnel). */
 export function muxWebhookSecret(): string | null {
   return env("MUX_WEBHOOK_SECRET");
 }
 
 let instance: MediaHost | null | undefined;
 
-/**
- * The process-wide host, or null when Mux isn't configured. Null is a normal
- * state, not an error: the server boots, photos work, AV uploads answer 503,
- * and existing clips serialize without URLs. Callers that can't go on without
- * a host use `requireMediaHost()`.
- */
 export function mediaHost(): MediaHost | null {
   if (instance === undefined) {
     const config = muxConfigFromEnv();

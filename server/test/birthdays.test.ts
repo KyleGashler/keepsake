@@ -145,8 +145,7 @@ describe("categories", () => {
     expect(ids.at(-1)).toBe(pool.id);
 
     expect(await reorderCategories(sixth, ids.slice(1))).toBe(false);
-    // ES2022 has no toReversed; this is a fresh copy.
-    // oxlint-disable-next-line unicorn/no-array-reverse
+    // oxlint-disable-next-line unicorn/no-array-reverse -- a fresh copy; ES2022 has no toReversed
     expect(await reorderCategories(sixth, [...ids].reverse())).toBe(true);
     const after = await birthdayCategories(familyId, sixth);
     expect(after.categories[0]?.collection.name).toBe("Pool Day");

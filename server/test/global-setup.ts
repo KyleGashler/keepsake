@@ -2,7 +2,6 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import { PrismaClient } from "@prisma/client";
 
-/** The run's database (vitest.config.ts names it): created and migrated before the tests, dropped after. */
 function target() {
   const url = process.env.TEST_DATABASE_URL;
   if (!url) throw new Error("TEST_DATABASE_URL is unset (vitest.config.ts sets it)");

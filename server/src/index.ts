@@ -34,36 +34,24 @@ const app = express();
 const PORT = Number(process.env.PORT ?? 4000);
 const isProduction = process.env.NODE_ENV === "production";
 
-// Before anything else: a misconfigured verifier must stop the boot, not
-// quietly serve an open API. Throws in production unless dev auth is opted in.
+// Must run first: a misconfigured verifier has to stop the boot, not serve an open API.
 const tokenVerifier = createTokenVerifier();
 
-// Missing Mux credentials are not fatal: photos and everything else work, and
-// video/audio uploads answer 503. Resolved here so the warning is at boot.
 mediaHost();
-
-// An unknown EMAIL_PROVIDER stops the boot rather than dropping every email.
 emailSender();
 
-// Fly terminates TLS and forwards one X-Forwarded-For hop, so the rate
-// limiters see the real client address rather than the proxy's.
+// Fly terminates TLS and forwards one X-Forwarded-For hop; the rate limiters need the client address.
 if (isProduction) app.set("trust proxy", 1);
 
 app.use(
   helmet({
-    // The Expo web bundle (see the WEB_DIR block below) loads inline scripts
-    // and styles that helmet's default policy blocks. Off until someone
-    // measures what the bundle actually needs and writes a tuned CSP —
-    // every other helmet default stays on.
+    // The Expo web bundle loads inline scripts and styles that helmet's default CSP blocks.
     contentSecurityPolicy: false,
-    // Media is served from the API origin but fetched by the app running on
-    // Metro's origin in development, so the default `same-origin` would
-    // block it.
+    // In development the app runs on Metro's origin; `same-origin` would block media.
     crossOriginResourcePolicy: { policy: "cross-origin" },
   }),
 );
 
-// See lib/cors-origins.ts for what an empty CORS_ORIGINS means.
 const corsOptions: CorsOptions =
   corsOrigins.length > 0 ? { origin: corsOrigins } : { origin: !isProduction };
 app.use(cors(corsOptions));
@@ -71,32 +59,23 @@ app.use(cors(corsOptions));
 app.use(
   pinoHttp({
     logger,
-    // Honour an upstream request id when there is one so a trace survives the
-    // proxy; otherwise mint one. Echoed back so clients can quote it.
     genReqId: (req, res) => {
       const header = req.headers["x-request-id"];
       const id = (Array.isArray(header) ? header[0] : header) || crypto.randomUUID();
       res.setHeader("x-request-id", id);
       return id;
     },
-    // The platform health check runs every 15s; logging it drowns everything else.
     autoLogging: { ignore: (req) => req.url === "/api/health" },
   }),
 );
 
-/**
- * Mux's webhooks: before `express.json`, because the signature is over the raw
- * bytes, and before the rate limiter and auth, because the caller is Mux and
- * the signature is its credential.
- */
+// Before `express.json` (Mux signs the raw bytes) and before auth (the signature is Mux's credential).
 app.use("/api/webhooks/mux", muxWebhookRouter);
 
 app.use(express.json({ limit: "2mb" }));
 
 const FIFTEEN_MINUTES = 15 * 60 * 1000;
 
-// Generous enough that a person browsing the archive never notices it, low
-// enough to blunt a scraper.
 const apiLimiter = rateLimit({
   windowMs: FIFTEEN_MINUTES,
   limit: 600,
@@ -104,7 +83,6 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Uploads are the expensive path: they write to disk and hold a connection open.
 const uploadLimiter = rateLimit({
   windowMs: FIFTEEN_MINUTES,
   limit: 60,
@@ -112,9 +90,6 @@ const uploadLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Health sits above the password gate and the limiters so the platform can
-// probe it however often it likes. `mux` says whether video and audio
-// uploads are configured; it's informational and never fails the check.
 app.get("/api/health", async (_req, res) => {
   const [db, media] = await Promise.all([checkDatabase(), checkMedia()]);
   const ok = db && media;
@@ -132,7 +107,6 @@ async function checkDatabase(): Promise<boolean> {
   }
 }
 
-/** Local: the objects directory is writable. S3: the bucket answers HeadBucket. */
 async function checkMedia(): Promise<boolean> {
   try {
     return await storage().healthCheck();
@@ -146,24 +120,13 @@ app.use("/api/media/init", uploadLimiter);
 app.use("/api/media/finalize", uploadLimiter);
 app.use("/api", apiLimiter);
 
-/**
- * Everything under /api needs an identity (health is registered above and so
- * escapes this, as does an invite's preview). `/me`, `/families` and an
- * invite's accept are the routes a signed-in person can reach before
- * belonging to an archive; every router past them is scoped
- * to exactly one family, and reads it from `req.ctx` rather than guessing.
- *
- * The middleware is mounted once rather than repeated per router so a request
- * verifies its token and resolves its membership a single time.
- */
-// The one route an invite link's recipient can read before signing in: who
-// is inviting them, to what. See the note on it in routes/invites.ts.
+// Order is the access policy: routes above `authenticated` are public, and
+// routes above `requireFamily` are reachable before joining a family.
 app.use("/api", invitePreviewRouter);
 
 const authenticated = requireUser(tokenVerifier);
 app.use("/api", authenticated);
 app.use("/api", accountRouter);
-// Accepting is how someone with no family gets one, so it can't need one.
 app.use("/api", inviteAcceptRouter);
 
 app.use("/api", requireFamily);
@@ -177,27 +140,15 @@ app.use("/api", searchRouter);
 app.use("/api", familyRouter);
 app.use("/api/media", mediaApiRouter);
 
-/**
- * Media bytes are public: the client renders them as plain `<img>` URLs with
- * no way to attach a header. Generated placeholders are pure functions of a
- * seed, and uploaded originals are reachable only through signed, expiring
- * tokens in the path. The upload handshake itself lives under `/api/media`,
- * behind auth (mounted above) and the upload limiter.
- */
+// Public because `<img>` can't send an auth header; originals are reachable
+// only through signed, expiring tokens in the path.
 app.use("/media/uploads", express.static(path.join(MEDIA_DIR, "uploads"), { maxAge: "1y" }));
 app.use("/media", mediaBytesRouter);
 
-/**
- * In the hosted build the web bundle ships inside this image, so the app and
- * the API share an origin. Absent (as in local development) this is inert and
- * Metro serves the app on :8081 instead.
- */
 const WEB_DIR = process.env.WEB_DIR;
 if (WEB_DIR && fs.existsSync(WEB_DIR)) {
   const indexHtml = path.join(WEB_DIR, "index.html");
   app.use(express.static(WEB_DIR, { index: false, maxAge: "1h" }));
-  // expo-router is a single-page app: any non-API path renders the same shell
-  // and the client resolves the route.
   app.get("/{*splat}", (req, res, next) => {
     if (req.path.startsWith("/api") || req.path.startsWith("/media")) return next();
     res.sendFile(indexHtml);
@@ -208,11 +159,8 @@ if (WEB_DIR && fs.existsSync(WEB_DIR)) {
 app.use((_req, res) => res.status(404).json({ error: "Not found" }));
 
 app.use(async (err: Error, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  // `genReqId` above only ever mints strings.
   const requestId = typeof req.id === "string" ? req.id : undefined;
-  // The family was deleted while this request was writing to it (A16): answer
-  // as `requireFamily` would have a moment later — it isn't theirs any more.
-  // `req.ctx` is declared, not guaranteed: it's unset before requireUser runs.
+  // `req.ctx` is declared but unset before requireUser runs.
   const ctx: Partial<express.Request["ctx"]> | undefined = req.ctx;
   const familyId = ctx?.family?.id;
   if (err instanceof MediaInputError) {
@@ -225,11 +173,9 @@ app.use(async (err: Error, req: express.Request, res: express.Response, _next: e
     return;
   }
   (req.log ?? logger).error({ err, requestId }, "unhandled error");
-  // A stack trace is a map of the server; developers get it, the internet doesn't.
   res.status(500).json({ error: isProduction ? "Internal server error" : err.message, requestId });
 });
 
-/** For the error handler: true when unsure, so a failed lookup still reads as a 500. */
 async function familyExists(id: string) {
   try {
     return (await prisma.family.count({ where: { id } })) > 0;
@@ -242,28 +188,12 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   logger.info({ port: PORT }, `little by little API listening on http://localhost:${PORT}`);
 });
 
-/**
- * Node ends any request that takes longer than `requestTimeout` (5 minutes by
- * default) to arrive in full. With the local provider, uploads come through
- * this server (`PUT /media/local-upload/…`), and a 2 GB video on a slow
- * uplink takes far longer than that. Give a request as long as an upload URL
- * lives. Headers still have to arrive within `headersTimeout`, so a client
- * that opens a socket and says nothing is still cut off quickly. With S3 the
- * bytes go to the bucket and the default stands.
- */
+// Node's default 5-minute `requestTimeout` cuts off large uploads through the
+// local provider; `headersTimeout` still drops idle sockets quickly.
 if (localProvider()) server.requestTimeout = UPLOAD_URL_TTL_SECONDS * 1000;
 
-/**
- * One process doing both jobs, for dev and the single Fly machine. Without
- * it, jobs wait in the table until `npm run worker` picks them up.
- */
 const worker: JobQueue | null = process.env.WORKER_INLINE === "1" ? startWorker() : null;
 
-/**
- * Fly sends SIGTERM and waits before killing the machine. Stop taking new
- * connections and new jobs, let in-flight work finish, then let go of the
- * database.
- */
 let shuttingDown = false;
 function shutdown(signal: NodeJS.Signals) {
   if (shuttingDown) return;
@@ -276,8 +206,7 @@ function shutdown(signal: NodeJS.Signals) {
   }, 10_000);
   forceExit.unref();
 
-  // Stop claiming at once; a job already running gets until the force-exit,
-  // and one cut off there is reclaimed once its lock goes stale.
+  // A job cut off by the force-exit is reclaimed once its lock goes stale.
   const workerStopped = worker?.stop().catch((err: unknown) => logger.error({ err }, "error stopping job worker"));
 
   server.close(async (err) => {

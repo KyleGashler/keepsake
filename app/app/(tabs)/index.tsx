@@ -24,17 +24,10 @@ import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { Image, Ionicons, type IoniconName } from "../../src/styled";
 import { layout, useColor } from "../../src/theme";
 
-/**
- * Home is the front porch of the family's story — a welcome, the people in it,
- * one thing worth capturing today, and a quiet record of what's happened.
- * Deliberately not a dashboard.
- */
 export default function HomeScreen() {
   const home = useApiQuery<HomePayload>("/api/home");
   const { data, error } = home;
   const insets = useSafeAreaInsets();
-  // A new memory is here the moment you come back from Capture (it's marked
-  // stale when saved); someone else's, once this has had time to go stale.
   useRefreshOnFocus(home);
 
   return (
@@ -61,30 +54,25 @@ export default function HomeScreen() {
   );
 }
 
-/** Starting points for the first memory, each one opens Capture with it as the prompt. */
 const STARTER_IDEAS = [
   "A photo of today, just as it is",
   "How the two of you met",
   "Something someone said this week",
 ];
 
-/** The invite sheet lives on the Family screen; ?invite=1 opens it on arrival. */
 function openInvite() {
   router.push({ pathname: "/family", params: { invite: "1" } });
 }
 
-/** Below this many people, Your People offers empty places to fill. */
 const SMALL_FAMILY = 4;
 
 function HomeBody({ data }: { data: HomePayload }) {
   const canContribute = useCanContribute();
   const isOwner = useSession().family?.role === "OWNER";
   const [adding, setAdding] = useState<"person" | "child" | null>(null);
-  // Today's prompt is an invitation to capture, which a VIEWER can't take up.
   const prompt = canContribute ? data.prompt : null;
   const addPerson = () => setAdding("person");
   const cream = useColor("cream");
-  // A small family gets an empty place in the rail to add to; a bigger one, the header button.
   const addInRail = canContribute && data.people.length < SMALL_FAMILY;
 
   return (
@@ -108,7 +96,6 @@ function HomeBody({ data }: { data: HomePayload }) {
           ) : null
         }
       />
-      {/* Rails scroll edge to edge, past the column's gutter, and rest aligned with it. */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -149,7 +136,6 @@ function HomeBody({ data }: { data: HomePayload }) {
               transition={300}
             />
             <View className="absolute inset-0 bg-scrim/36" />
-            {/* Whimsical shape 1/6 — twinkle, on the one moment worth capturing today. */}
             <Twinkle size={22} color={cream} opacity={0.9} className="absolute top-4 right-4" />
             <View className="p-6 gap-2">
               <Text className="font-display text-[26px] leading-[33px] text-cream">{prompt.text}</Text>
@@ -219,11 +205,6 @@ function HomeBody({ data }: { data: HomePayload }) {
   );
 }
 
-/**
- * The first few things that make the archive worth opening, ticked off as
- * the family does them and gone once they're all done. Inviting is the
- * owner's alone, so it's only on their list.
- */
 function GettingStarted({
   progress,
   isOwner,
@@ -283,7 +264,6 @@ function GettingStarted({
   );
 }
 
-/** An empty place at the end of Your People, the size of a person. */
 function PlaceholderChip({
   icon,
   label,
@@ -293,7 +273,6 @@ function PlaceholderChip({
   label: string;
   onPress: () => void;
 }) {
-  // Sized like a PersonChip, so the rail's rhythm carries on into the gaps.
   return (
     <Pressable
       onPress={onPress}
@@ -311,7 +290,6 @@ function PlaceholderChip({
   );
 }
 
-/** What Your Story So Far says before there's a story. */
 function FirstMemory({ canContribute }: { canContribute: boolean }) {
   if (!canContribute) {
     return (

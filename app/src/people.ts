@@ -5,18 +5,6 @@ import type { SheetAction } from "./components/sheet";
 import { count, refusalMessage } from "./format";
 import { gone, invalidate } from "./query";
 
-/**
- * Deleting someone from the archive, as every screen that offers it asks:
- * the same words and the same request. The sheets that add and edit people
- * are in components/person-sheets.tsx.
- */
-
-/**
- * What deleting someone takes with them, for the confirmation's subtitle.
- * Mirrors `DELETE /api/people/:id`: their collections go (the memories filed
- * there stay), and so does their place in "who was there"; memories they
- * added stay, without an author. Without a count, a child's are named.
- */
 export function deletePersonMessage(person: Pick<Person, "role">, collectionCount?: number) {
   let collections = "";
   if (collectionCount === undefined && person.role === "CHILD") {
@@ -29,15 +17,9 @@ export function deletePersonMessage(person: Pick<Person, "role">, collectionCoun
   return `${collections}They're taken off every memory they appear in, and memories they added stay without an author. This can't be undone.`;
 }
 
-/**
- * The one destructive choice in a delete confirmation's ActionSheet, as a
- * hook: deleting someone goes through the data layer, and touches nearly
- * everything — their collections go, and they're taken off every memory.
- */
 export function useDeletePersonAction() {
   const { mutate } = useMutation({
     mutationFn: (id: string) => apiSend(`/api/people/${id}`, "DELETE"),
-    // Their page is gone; the rest of the family's data is stale.
     onSuccess: (_, id) => invalidate("everything", [gone(`/api/people/${id}`), gone(`/api/children/${id}`)]),
   });
   return (
@@ -56,10 +38,7 @@ export function useDeletePersonAction() {
   });
 }
 
-/**
- * Open a sheet after another one closes. A browser can swap them at once;
- * iOS won't present a modal over one that is still dismissing.
- */
+// iOS won't present a modal over one that's still dismissing; a browser can swap them at once.
 export function afterSheetCloses(open: () => void) {
   if (Platform.OS === "web") open();
   else setTimeout(open, 350);

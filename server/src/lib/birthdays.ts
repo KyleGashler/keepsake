@@ -11,16 +11,6 @@ import {
   type MediaRow,
 } from "./serialize.js";
 
-/**
- * Birthdays: a child's Birthdays collection (`kind` "birthdays") holds one
- * collection per birthday the family adds, and each birthday holds its
- * categories (Friend Party, Family Birthday Dinner, …). Memories are filed in
- * categories. A memory filed straight in Birthdays belongs to the added
- * birthday nearest its date, and is "unsorted" when there's no such birthday.
- *
- * This module is the only code that knows that shape.
- */
-
 export const SUGGESTED_CATEGORIES = ["Friend Party", "Family Birthday Dinner", "Lunch with Grandma"] as const;
 
 export const MAX_BIRTHDAY = 120;
@@ -30,7 +20,6 @@ export function ordinal(n: number) {
   return `${n}${teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
 }
 
-/** Which birthday a date is nearest, so a party the weekend before counts; null before the first. */
 export function nearestBirthday(birthDate: Date, at: Date): number | null {
   const anniversary = (n: number) =>
     Date.UTC(birthDate.getUTCFullYear() + n, birthDate.getUTCMonth(), birthDate.getUTCDate());
@@ -49,7 +38,6 @@ export function findBirthdays(familyId: string, id: string) {
   });
 }
 
-/** One birthday, with the Birthdays collection it's in. */
 export async function findBirthday(familyId: string, id: string) {
   const birthday = await prisma.collection.findFirst({
     where: { id, familyId, birthday: { not: null }, parent: { kind: "birthdays" } },
@@ -60,7 +48,6 @@ export async function findBirthday(familyId: string, id: string) {
 
 type Birthday = NonNullable<Awaited<ReturnType<typeof findBirthday>>>;
 
-/** Newest first, with what a tile needs: media for its picture, filings to place it. */
 function memoriesWhere(where: Prisma.MemoryWhereInput, media: "all" | "pictures" = "all") {
   return prisma.memory.findMany({
     where,
@@ -76,15 +63,10 @@ type FiledMemory = Awaited<ReturnType<typeof memoriesWhere>>[number];
 
 const filedIn = (m: FiledMemory, ids: Set<string>) => m.collections.some((c) => ids.has(c.collectionId));
 
-/** The birthday a memory filed straight in Birthdays is nearest, by the child's birth date. */
 function birthdayOf(birthdays: BirthdaysCollection, m: { occurredAt: Date }) {
   return birthdays.person?.birthDate ? nearestBirthday(birthdays.person.birthDate, m.occurredAt) : null;
 }
 
-/**
- * Ids of the memories filed straight in Birthdays nearest birthday `which`,
- * or nearest none of the added ones ("unsorted").
- */
 export async function looseMemoryIds(familyId: string, birthdays: BirthdaysCollection, which: number | "unsorted") {
   const [added, loose] = await Promise.all([
     prisma.collection.findMany({ where: { parentId: birthdays.id }, select: { birthday: true } }),
@@ -98,7 +80,6 @@ export async function looseMemoryIds(familyId: string, birthdays: BirthdaysColle
   return loose.filter((m) => belongs(birthdayOf(birthdays, m))).map((m) => m.id);
 }
 
-/** The first picture among `memories` (newest first), at tile size. */
 async function firstPicture(memories: { media: MediaRow[] }[], size: "THUMB" | "DISPLAY") {
   for (const m of memories) {
     const hero = await heroStill(m.media, size);
@@ -107,7 +88,6 @@ async function firstPicture(memories: { media: MediaRow[] }[], size: "THUMB" | "
   return null;
 }
 
-/** The Birthdays grid: each added birthday, oldest first, and how many memories are unsorted. */
 export async function birthdayGrid(familyId: string, birthdays: BirthdaysCollection) {
   const [rows, memories] = await Promise.all([
     prisma.collection.findMany({
@@ -145,7 +125,6 @@ export async function birthdayGrid(familyId: string, birthdays: BirthdaysCollect
   return { birthdays: tiles, unsortedCount };
 }
 
-/** A category row: its newest picture, a line of story, and which kinds of media it holds. */
 async function categoryTile(memories: FiledMemory[]) {
   const newest = memories[0];
   return {
@@ -156,11 +135,6 @@ async function categoryTile(memories: FiledMemory[]) {
   };
 }
 
-/**
- * One birthday's categories in the family's order, and its "other moments":
- * memories filed straight in Birthdays nearest this birthday. `q` narrows
- * both to matching memories and drops categories with none.
- */
 export async function birthdayCategories(familyId: string, birthday: Birthday, q?: string) {
   const [categories, filed, loose] = await Promise.all([
     prisma.collection.findMany({
@@ -185,7 +159,6 @@ export async function birthdayCategories(familyId: string, birthday: Birthday, q
   };
 }
 
-/** Add the `n`th birthday to a child's Birthdays, with the suggested categories in it. Null when it's already there. */
 export async function addBirthday(birthdays: Collection, n: number) {
   try {
     return await prisma.$transaction(async (tx) => {
@@ -230,7 +203,6 @@ function categoryRow(birthday: Collection, name: string, sortOrder: number): Pri
   };
 }
 
-/** A new category at the end of the birthday's list. */
 export async function addCategory(birthday: Collection, name: string) {
   const last = await prisma.collection.aggregate({ where: { parentId: birthday.id }, _max: { sortOrder: true } });
   return prisma.collection.create({
@@ -239,7 +211,6 @@ export async function addCategory(birthday: Collection, name: string) {
   });
 }
 
-/** Put a birthday's categories in this order. False unless `ids` is exactly its categories. */
 export async function reorderCategories(birthday: Collection, ids: string[]) {
   const current = await prisma.collection.findMany({ where: { parentId: birthday.id }, select: { id: true } });
   const wanted = new Set(ids);

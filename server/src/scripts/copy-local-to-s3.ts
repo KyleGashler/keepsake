@@ -1,24 +1,5 @@
-/**
- * One-off: copy every original on the local volume into the S3 bucket, at the
- * same key, so flipping STORAGE_PROVIDER to s3 leaves no Media row pointing at
- * nothing.
- *
- *   npm run storage:copy-to-s3 -- --dry-run     # report what would be copied
- *   npm run storage:copy-to-s3                  # copy
- *
- * Reads `MEDIA_DIR/objects` and the S3 env (S3_BUCKET, S3_REGION, …; see
- * S3StorageProvider). STORAGE_PROVIDER itself is ignored, so this can run on a
- * box still serving from disk.
- *
- * Idempotent: an object already in the bucket is left alone (HEAD first, and
- * the PUT is create-only besides), so a second run uploads nothing. A size
- * mismatch between disk and bucket is reported, never overwritten — originals
- * are never overwritten.
- *
- * Out of scope: pre-A5 files under `MEDIA_DIR/uploads`, which `Media.url`
- * references directly and the API still serves from the volume. They're
- * counted in the summary and left where they are.
- */
+// Ignores STORAGE_PROVIDER, so it can run on a box still serving from disk. Never overwrites: existing
+// objects are skipped and size mismatches reported. Legacy `MEDIA_DIR/uploads` files are counted, not copied.
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
@@ -31,7 +12,6 @@ import { assertSafeKey } from "../storage/StorageProvider.js";
 
 const dryRun = process.argv.includes("--dry-run");
 
-/** Every file under `dir`, as a slash-separated key relative to it. */
 async function* walk(dir: string, prefix = ""): AsyncGenerator<string> {
   let entries: fs.Dirent[];
   try {
@@ -67,8 +47,6 @@ async function main() {
     failed: 0,
   };
 
-  // The declared type the family uploaded with, where a row records it; the
-  // key's extension otherwise (an object finalize accepted but no memory claimed).
   const rows = await prisma.media.findMany({
     where: { storageKey: { not: null } },
     select: { storageKey: true, mimeType: true },

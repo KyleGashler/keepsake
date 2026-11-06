@@ -31,24 +31,14 @@ import {
 export type S3Config = {
   bucket: string;
   region: string;
-  /** Where this process reaches the bucket. Unset means AWS itself. */
   endpoint?: string;
-  /**
-   * Where a *client* reaches the bucket, when that differs from `endpoint` —
-   * e.g. the API talks to `http://s3:9000` inside compose while the browser
-   * needs `http://localhost:9300`. Presigned URLs are minted against this,
-   * because the host is part of what's signed.
-   */
+  // The host clients reach the bucket on, when it differs from `endpoint`.
+  // Presigned URLs must be minted against it because the host is signed.
   publicEndpoint?: string;
-  /** Emulators serve `endpoint/bucket/key` rather than `bucket.endpoint/key`. */
+  // Emulators serve `endpoint/bucket/key` rather than `bucket.endpoint/key`.
   forcePathStyle: boolean;
 };
 
-/**
- * Read once at boot. A missing bucket is a configuration error, not something
- * to discover on the first upload. Credentials are left to the SDK's default
- * chain (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` on Fly).
- */
 export function s3ConfigFromEnv(env: NodeJS.ProcessEnv = process.env): S3Config {
   const bucket = env.S3_BUCKET?.trim();
   if (!bucket) throw new Error("STORAGE_PROVIDER=s3 needs S3_BUCKET");
@@ -68,61 +58,23 @@ function clientFor(config: S3Config, endpoint: string | undefined) {
     region: config.region,
     endpoint,
     forcePathStyle: config.forcePathStyle,
-    // The SDK's default ("when supported") adds a CRC32 of the request body to
-    // every PutObject. A presigned PUT has no body when it's signed, so that
-    // checksum would describe zero bytes and the real upload would fail it.
+    // The SDK's default signs a CRC32 of the request body; a presigned PUT has
+    // no body at signing time, so the real upload would fail that checksum.
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED",
   };
   return new S3Client(options);
 }
 
-/**
- * Headers bound into the presigned PUT's signature. The presigner leaves
- * `content-type` out by default, which would let a client authorised for a
- * PNG store anything; naming it here makes a different type a signature
- * mismatch. `content-length` pins the size the same way, and `if-none-match`
- * is what makes the upload create-only (see `createUploadTarget`).
- */
+// The presigner leaves `content-type` unsigned by default, letting a client
+// authorised for a PNG store anything; signing these pins type, size and create-only.
 const SIGNED_UPLOAD_HEADERS = new Set(["content-type", "content-length", "if-none-match"]);
 
-/**
- * Originals in an S3 bucket (or anything that speaks S3 well enough to
- * validate SigV4 — the compose emulator is RustFS).
- *
- * The client talks to the bucket directly through presigned URLs, so this
- * process never proxies upload or playback bytes. Finalize reads only the
- * first few KB (a ranged GET, to sniff the type) and takes the object's
- * digest from S3's own checksum rather than downloading it to hash.
- *
- * ## Why a re-PUT can't swap the bytes under a recorded checksum
- *
- * The local provider refuses a write to an existing key (409). Here the client
- * PUTs straight to the bucket, so the same rule is enforced two ways:
- *
- * 1. **At write time — the real guard.** The presigned PUT carries
- *    `If-None-Match: *` inside its signature. S3 (conditional writes, 2024)
- *    then refuses any PUT to a key that already holds an object with
- *    `412 Precondition Failed`, and the client can't drop the header because
- *    the signature covers it. Replaying the URL after finalize — or racing a
- *    second PUT in before it — fails at the bucket. `docs/aws/bucket-policy.json`
- *    additionally denies any original PUT without the condition, so even a
- *    URL signed by some other code path can't overwrite.
- *
- * 2. **At finalize — the backstop.** `writtenOnce()` lists the key's versions.
- *    On a versioned bucket (production's is), more than one version or a
- *    delete marker means something was written over the upload, and finalize
- *    refuses it. On an unversioned bucket the check is vacuous and (1) stands
- *    alone.
- *
- * What this does *not* do is pin reads to a `VersionId`: recording one needs a
- * `Media.storageVersion` column, and no existing column means that. With (1)
- * in force a key never gets a second version, so the latest is the original.
- */
+// A signed `If-None-Match: *` makes S3 refuse (412) any PUT to an existing key, so a
+// replayed URL can't swap bytes under a recorded checksum. `writtenOnce` is the backstop.
 export class S3StorageProvider implements StorageProvider {
   readonly bucket: string;
   private readonly client: S3Client;
-  /** Signs URLs for the client's view of the endpoint; never sends a request. */
   private readonly presigner: S3Client;
 
   constructor(config: S3Config) {
@@ -141,7 +93,6 @@ export class S3StorageProvider implements StorageProvider {
         Key: input.key,
         ContentType: input.mimeType,
         ContentLength: input.bytes,
-        // Create-only. See the class comment.
         IfNoneMatch: "*",
       }),
       { expiresIn: UPLOAD_URL_TTL_SECONDS, signableHeaders: SIGNED_UPLOAD_HEADERS },
@@ -149,21 +100,14 @@ export class S3StorageProvider implements StorageProvider {
     return {
       url,
       method: "PUT",
-      // Both are signed: omit either, or send a different value, and S3 answers
-      // 403 SignatureDoesNotMatch. Content-Length is signed too; the client's
-      // HTTP stack sets it from the body.
+      // Signed: omit either or change its value and S3 answers 403 SignatureDoesNotMatch.
       headers: { "Content-Type": input.mimeType, "If-None-Match": "*" },
       expiresAt: expires.toISOString(),
     };
   }
 
-  /**
-   * Size plus S3's own checksum of the object. S3 computes a full-object
-   * CRC64NVME for every upload that arrives without a checksum of its own —
-   * which a presigned PUT from the app always does — and returns it from
-   * HeadObject only when asked (`ChecksumMode: ENABLED`). Emulators may not
-   * keep one; then there's no `checksum` and finalize hashes the bytes itself.
-   */
+  // S3 returns its full-object CRC64NVME only with `ChecksumMode: ENABLED`.
+  // Emulators may not keep one; finalize then hashes the bytes itself.
   async head(key: string): Promise<ObjectHead | null> {
     assertSafeKey(key);
     try {
@@ -180,8 +124,7 @@ export class S3StorageProvider implements StorageProvider {
 
   async writtenOnce(key: string): Promise<boolean> {
     assertSafeKey(key);
-    // Prefix listing, then exact match: `…/original.png` is also a prefix of a
-    // hypothetical `…/original.png.bak`, which is a different object.
+    // Exact key only: `…/original.png` is also a prefix of `…/original.png.bak`.
     const out = await this.client.send(
       new ListObjectVersionsCommand({ Bucket: this.bucket, Prefix: key, MaxKeys: 10 }),
     );
@@ -197,21 +140,14 @@ export class S3StorageProvider implements StorageProvider {
       new GetObjectCommand({
         Bucket: this.bucket,
         Key: key,
-        // Same policy as the local `/media/o` route: family media must never sit
-        // in a shared cache, nor outlive the URL that fetched it.
+        // Family media must never sit in a shared cache, nor outlive the URL that fetched it.
         ResponseCacheControl: `private, max-age=${ttlSeconds}`,
-        // A `response-content-disposition` override, inside the signature.
         ...(options?.downloadAs ? { ResponseContentDisposition: attachmentDisposition(options.downloadAs) } : {}),
       }),
       { expiresIn: ttlSeconds },
     );
   }
 
-  /**
-   * The object body as a Node stream, straight off the socket — never all in
-   * memory. With `range`, a ranged GET: S3 sends only those bytes, so the
-   * finalize sniff doesn't open a 2 GB download just to abandon it.
-   */
   async stream(key: string, range?: ByteRange): Promise<Readable> {
     assertSafeKey(key);
     const out = await this.client.send(
@@ -226,12 +162,8 @@ export class S3StorageProvider implements StorageProvider {
     return out.Body;
   }
 
-  /**
-   * A plain PutObject from this process (the server rendered the bytes), no
-   * create-only condition: re-deriving a photo replaces its rendering. The
-   * bucket policy's create-only rule covers `original.*` keys only, and the
-   * guard keeps this method off them.
-   */
+  // No create-only condition: re-deriving replaces the rendering. The bucket
+  // policy's create-only rule covers `original.*` keys only.
   async writeDerivative(key: string, body: Buffer, contentType: string): Promise<void> {
     assertDerivativeWritable(key);
     await this.client.send(
@@ -244,16 +176,8 @@ export class S3StorageProvider implements StorageProvider {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
   }
 
-  /**
-   * Every version of `key` and every delete marker, gone. A plain
-   * DeleteObject on a versioned bucket (production's is) only hides the
-   * object behind a marker; a family that deleted a photo is owed more than
-   * that. On an unversioned bucket the listing shows the one "null" version,
-   * and deleting it is the ordinary delete.
-   *
-   * Needs `s3:ListBucketVersions`, `s3:DeleteObject` and
-   * `s3:DeleteObjectVersion` on the key (docs/aws/iam-policy.json).
-   */
+  // On a versioned bucket a plain DeleteObject only hides the object behind a marker.
+  // Needs s3:ListBucketVersions, s3:DeleteObject and s3:DeleteObjectVersion.
   async purgeForFamilyDelete(key: string): Promise<void> {
     assertSafeKey(key);
     let keyMarker: string | undefined;
@@ -286,12 +210,7 @@ export class S3StorageProvider implements StorageProvider {
     }
   }
 
-  /**
-   * Every version and delete marker of every key under `<familyId>/`, a page
-   * (up to 1,000) at a time — the most one DeleteObjects takes. Same
-   * permissions as `purgeForFamilyDelete`: `s3:ListBucketVersions` on the
-   * bucket, `s3:DeleteObject` and `s3:DeleteObjectVersion` on its objects.
-   */
+  // A listing page holds at most 1,000 entries, the most one DeleteObjects takes.
   async purgeFamilyObjects(familyId: string): Promise<void> {
     assertFamilyPrefix(familyId);
     const prefix = `${familyId}/`;
@@ -334,12 +253,6 @@ export class S3StorageProvider implements StorageProvider {
     return true;
   }
 
-  // ---- Not part of StorageProvider: the local→S3 copy script uses this ------
-
-  /**
-   * Store an existing original, create-only. Returns "exists" rather than
-   * overwriting when the key is already taken, so a re-run is harmless.
-   */
   async putOriginalIfAbsent(input: {
     key: string;
     body: Readable;
@@ -366,14 +279,6 @@ export class S3StorageProvider implements StorageProvider {
   }
 }
 
-/**
- * Which checksum HeadObject reported, as `<algorithm>:<base64>`, in order of
- * preference. S3 attaches CRC64NVME by default; the others appear only when
- * an uploader asked for them. A COMPOSITE checksum (a multipart upload's
- * checksum of part checksums, suffixed `-<parts>`) doesn't describe the bytes
- * as a whole, so it's ignored and finalize hashes the object instead. Our
- * uploads are single PUTs, which S3 always checksums as FULL_OBJECT.
- */
 const CHECKSUM_FIELDS = [
   ["crc64nvme", "ChecksumCRC64NVME"],
   ["sha256", "ChecksumSHA256"],
@@ -382,10 +287,11 @@ const CHECKSUM_FIELDS = [
   ["sha1", "ChecksumSHA1"],
 ] as const;
 
-/** Plain base64, no part-count suffix. */
+// Plain base64; a multipart checksum carries a `-<parts>` suffix.
 const CHECKSUM_VALUE = /^[A-Za-z0-9+/]+={0,2}$/;
 
 export function fullObjectChecksum(out: HeadObjectCommandOutput): string | undefined {
+  // A COMPOSITE (multipart) checksum doesn't describe the bytes as a whole.
   if (out.ChecksumType === "COMPOSITE") return undefined;
   for (const [algorithm, field] of CHECKSUM_FIELDS) {
     const value = out[field];

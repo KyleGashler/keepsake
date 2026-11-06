@@ -16,18 +16,8 @@ import {
 import { assetSnapshotSchema } from "../media-host/MediaHost.js";
 import { muxWebhookSecret, verifyMuxWebhook } from "../media-host/index.js";
 
-/**
- * `POST /api/webhooks/mux`. Mounted ahead of `express.json` and auth (see
- * index.ts): the body must stay raw bytes for the signature check, and the
- * signature is the caller's only credential.
- *
- * Every event is merged into the MuxAsset row as facts that can't move
- * backwards (media-host/assets.ts), so a replayed or out-of-order delivery
- * changes nothing. Nothing here calls Mux back: when an event means there is
- * something to fetch (a caption track's text), the `mux.sync` job is poked to
- * do it. Answers 200 for events about uploads this database doesn't know (a
- * different environment sharing the webhook URL, a dashboard test event).
- */
+// Mounted ahead of `express.json` and auth: the body must stay raw bytes for the
+// signature check, and the signature is the caller's only credential.
 export const muxWebhookRouter = Router();
 
 const uploadData = z.object({
@@ -75,10 +65,7 @@ muxWebhookRouter.post("/", express.raw({ type: "*/*", limit: "1mb" }), async (re
   res.json({ received: true });
 });
 
-/**
- * Merge one event into its MuxAsset row. Returns the row after the merge,
- * null when no row matches, undefined for events this app doesn't use.
- */
+// null when no row matches; undefined for events this app doesn't use.
 async function applyEvent(type: string, data: unknown) {
   switch (type) {
     case "video.upload.asset_created":
@@ -103,9 +90,7 @@ async function applyEvent(type: string, data: unknown) {
       return updateMuxAsset({ assetId: snap.id, uploadId: snap.upload_id }, (r) => snapshotPatch(r, snap));
     }
 
-    // Temporary master access, which a download asks for (lib/downloads.ts).
-    // The body is the asset, `master` and all; `asset.updated` above carries
-    // it too, and either way it merges the same.
+    // Mux sends the whole asset, `master` included, as these events' body.
     case "video.asset.master.preparing":
     case "video.asset.master.ready":
     case "video.asset.master.errored": {
@@ -120,8 +105,7 @@ async function applyEvent(type: string, data: unknown) {
     case "video.asset.track.ready":
     case "video.asset.track.errored": {
       const track = trackData.parse(data);
-      // Only the generated captions matter here; the audio and video tracks
-      // arrive with `video.asset.ready`.
+      // Audio and video tracks arrive with `video.asset.ready`; only generated captions come here.
       if (track.type !== "text" || track.text_source !== "generated_vod") return undefined;
       const status = type === "video.asset.track.ready" ? "ready" : "errored";
       return updateMuxAsset({ assetId: track.asset_id }, (r) => captionTrackPatch(r, { id: track.id, status }));

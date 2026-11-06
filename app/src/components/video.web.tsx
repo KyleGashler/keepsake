@@ -6,17 +6,6 @@ import { useHlsSource } from "./web-hls";
 
 export type { VideoClipProps, VideoMeta };
 
-/**
- * The web player: a plain `<video>`. The browser's own controls are the best
- * ones on offer. It plays a MediaRecorder blob (the recorder's review) as is,
- * and a Mux HLS stream natively in Safari or through hls.js elsewhere
- * (`web-hls.ts`).
- *
- * A clip the browser can't decode either errors or loads metadata with no
- * picture; both count as `onError`. Chrome's MediaRecorder WebM has no
- * duration in its header, so `durationS` is left out rather than reported as
- * Infinity.
- */
 export function VideoClip({
   uri,
   posterUrl,
@@ -32,9 +21,8 @@ export function VideoClip({
   const [source] = useState(uri);
   const video = useRef<HTMLVideoElement | null>(null);
   const played = useHlsSource(video, source, onError);
-  // A still tile needs a frame to show; Safari won't paint one for
-  // preload="metadata" unless asked to seek a hair past zero. A stream has a
-  // poster for that instead.
+  // Safari won't paint a frame for preload="metadata" unless asked to seek a
+  // hair past zero. A stream has a poster for that instead.
   const src =
     played && !controls && !autoPlay && !isHlsUrl(played) && !played.includes("#")
       ? `${played}#t=0.001`
@@ -54,10 +42,12 @@ export function VideoClip({
         onError: () => onError?.(),
         onLoadedMetadata: (e: { currentTarget: HTMLVideoElement }) => {
           const el = e.currentTarget;
+          // A clip the browser can't decode may load metadata with no picture.
           if (el.videoWidth === 0) {
             onError?.();
             return;
           }
+          // Chrome's MediaRecorder WebM has no duration in its header: Infinity.
           const meta: VideoMeta = {
             durationS: Number.isFinite(el.duration) && el.duration > 0 ? el.duration : undefined,
             width: el.videoWidth,

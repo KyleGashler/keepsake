@@ -5,7 +5,6 @@ import { fieldBox } from "./field-styles";
 
 export type { DateFieldProps };
 
-/** The browser's own date picker, `<input type="date">`, dressed as a field. */
 export function DateField({ value, onChange, accessibilityLabel = "Date" }: DateFieldProps) {
   return (
     <View className={fieldBox}>

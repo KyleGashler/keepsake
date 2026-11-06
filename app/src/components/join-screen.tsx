@@ -8,20 +8,9 @@ import { Splash, VerifyToJoin } from "./account-screens";
 import { AuthFrame, Notice, SignedOutFlow, TextLink } from "./auth-screens";
 import { SheetButton, SheetError } from "./sheet";
 
-/**
- * Where an invite link lands: `/join/<token>`. The root layout draws this in
- * place of the usual phase screen — signed out, signed in with no family, or
- * in an archive already — so the link works from wherever someone is, and
- * nobody is walked through creating a family they don't want first.
- *
- * Preview (public: who's inviting you to what) → sign up or in → verify the
- * email → Join, which switches into the family. `onDone` hands back to the
- * usual phase screen: after joining that's the archive; "Not now" leaves the
- * person wherever they would otherwise have been.
- */
 export function JoinScreen({ token, onDone }: { token: string; onDone: () => void }) {
   const session = useSession();
-  // Public, and the person's rather than any family's: it's read signed out.
+  // Account-scoped: it is read while signed out.
   const preview = useApiQuery<{ invite: InvitePreview }>(`/api/invites/${encodeURIComponent(token)}`, {
     scope: "account",
   });
@@ -116,7 +105,6 @@ export function JoinScreen({ token, onDone }: { token: string; onDone: () => voi
   );
 }
 
-/** The invitation itself: who, to what, as what. */
 function Invitation({
   invite,
   children,

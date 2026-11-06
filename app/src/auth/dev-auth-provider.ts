@@ -7,21 +7,11 @@ import {
   type AuthUser,
 } from "./auth-provider";
 
-/**
- * AsyncStorage is the device's storage natively and `window.localStorage` on
- * the web (that is its web implementation), so one key covers both.
- */
 const STORAGE_KEY = "littlebylittle.devAuth.email";
 
-/** Seeded OWNER of the demo family — what the dev sign-in form starts with. */
 export const DEV_DEFAULT_EMAIL = "demo@littlebylittle.local";
 
-/**
- * Development sign-in: an email and nothing else. The token is `dev:<email>`,
- * which the server's DevTokenVerifier believes without proof (and which a
- * server in firebase mode rejects). Exists so local development, the seed
- * data and Expo Go work with no Firebase project at all.
- */
+// The server's DevTokenVerifier believes a `dev:<email>` token without proof; firebase mode rejects it.
 export class DevAuthProvider implements AuthProvider {
   readonly mode = "dev" as const;
   private email: string | null = null;
@@ -33,7 +23,6 @@ export class DevAuthProvider implements AuthProvider {
   }
 
   get currentUser(): AuthUser | null {
-    // Nothing to prove in dev, so every address counts as verified.
     return this.email ? { email: this.email, emailVerified: true } : null;
   }
 
@@ -45,7 +34,6 @@ export class DevAuthProvider implements AuthProvider {
     };
   }
 
-  /** No password: the email is the whole credential. */
   async signIn(email: string) {
     const normalized = normalizeEmail(email);
     if (!looksLikeEmail(normalized)) throw new AuthError("That doesn't look like an email address.");
@@ -54,7 +42,6 @@ export class DevAuthProvider implements AuthProvider {
   }
 
   async signUp(email: string) {
-    // A dev account comes into being on its first request; signing up is signing in.
     await this.signIn(email);
   }
 
@@ -79,7 +66,6 @@ export class DevAuthProvider implements AuthProvider {
     return this.email ? `dev:${this.email}` : null;
   }
 
-  /** No password to check and no identity to delete: the server's side is all of it. */
   async deleteAccount({ deleteOnServer }: { password?: string; deleteOnServer: () => Promise<void> }) {
     if (!this.email) throw new AuthError("Sign in first.");
     await deleteOnServer();

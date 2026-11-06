@@ -1,14 +1,3 @@
-/**
- * One-shot setup for the local S3 emulator (`s3-init` in docker-compose.yml):
- * create the bucket, turn versioning on, allow the app's origins to PUT/GET.
- * Idempotent, and it waits for the emulator to come up first.
- *
- * Emulator only. It refuses to run without `S3_ENDPOINT`, so it can't be
- * pointed at a real AWS bucket by accident — that bucket is configured by hand
- * from docs/aws/ (README, "Storage").
- *
- *   npm run storage:s3-setup
- */
 import {
   CreateBucketCommand,
   HeadBucketCommand,

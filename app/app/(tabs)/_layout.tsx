@@ -4,11 +4,6 @@ import { Sparkle } from "../../src/components/journey";
 import { TabBar } from "../../src/components/tab-bar";
 import { useColor } from "../../src/theme";
 
-/**
- * Five primary destinations, Capture in the middle as a raised disc (its icon
- * is drawn by the tab bar). Library holds its own stack (library/_layout.tsx),
- * so the bar stays put while you browse and re-tapping Library pops to its root.
- */
 export default function TabsLayout() {
   const paper = useColor("paper");
   return (
@@ -32,6 +27,7 @@ export default function TabsLayout() {
           tabBarIcon: ({ color, size }) => <Ionicons name="book-outline" size={size} color={color} />,
         }}
       />
+      {/* TabBar draws Capture's raised disc, so it has no tabBarIcon. */}
       <Tabs.Screen name="capture" options={{ title: "Capture" }} />
       <Tabs.Screen
         name="timeline"

@@ -18,7 +18,6 @@ import { collectionDto } from "../lib/serialize.js";
 
 export const birthdaysRouter = Router();
 
-/** A child's Birthdays: one tile per added birthday. */
 birthdaysRouter.get("/collections/:id/birthdays", async (req, res) => {
   const family = req.ctx.family;
   const birthdays = await findBirthdays(family.id, req.params.id);
@@ -35,7 +34,6 @@ const looseQuery = archiveFilters.extend({
   birthday: z.union([z.literal("unsorted"), z.coerce.number().int().min(1).max(MAX_BIRTHDAY)]),
 });
 
-/** The archive of memories filed straight in Birthdays nearest one birthday, or none added ("unsorted"). */
 birthdaysRouter.get("/collections/:id/loose", async (req, res) => {
   const family = req.ctx.family;
   const parsed = looseQuery.safeParse(req.query);
@@ -63,7 +61,6 @@ birthdaysRouter.post("/collections/:id/birthdays", requireContributor, async (re
 
 const categoriesQuery = z.object({ q: z.string().trim().max(120).optional() });
 
-/** One birthday's categories, and the memories filed straight in Birthdays nearest it. */
 birthdaysRouter.get("/collections/:id/categories", async (req, res) => {
   const family = req.ctx.family;
   const parsed = categoriesQuery.safeParse(req.query);

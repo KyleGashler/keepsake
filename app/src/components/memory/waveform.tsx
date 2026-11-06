@@ -10,23 +10,15 @@ const BAR = 2.5;
 const GAP = 2;
 const HEIGHT = 34;
 
-/**
- * A recording as the memory page shows it: a round deep-teal play button, a
- * waveform you can tap or drag to scrub, and the time. There's no waveform
- * data yet, so the bars are a stand-in drawn from the clip's id — the same
- * clip always draws the same shape.
- */
 export function WaveformPlayer({
   id,
   uri,
   durationS,
   label,
 }: {
-  /** Seeds the waveform's shape. */
   id: string;
   uri: string;
   durationS?: number | null;
-  /** What a screen reader calls it — "Voice recording". */
   label: string;
 }) {
   const { playing, position, total, failed, toggle, seek, scrub } = useClipPlayback(uri, durationS);
@@ -64,7 +56,6 @@ export function WaveformPlayer({
           onCommit={seek}
           label={label}
           onWidth={setWidth}
-          // ScrubTrack takes a style, not a className; HEIGHT and GAP also size the bars.
           style={{
             flex: 1,
             height: HEIGHT + 8,
@@ -77,7 +68,6 @@ export function WaveformPlayer({
           {bars.map((bar, i) => (
             <View
               key={bar.key}
-              // Dusk blue is the part of the clip still to come.
               className={`pointer-events-none w-[2.5px] rounded-[1.25px] ${
                 (i + 0.5) / bars.length <= played ? "bg-primary" : "bg-dusk-blue"
               }`}

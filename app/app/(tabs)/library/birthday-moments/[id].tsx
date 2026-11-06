@@ -3,11 +3,6 @@ import { ArchiveScreen, type ArchiveView } from "../../../../src/components/coll
 import { ordinal } from "../../../../src/format";
 import { routes } from "../../../../src/routes";
 
-/**
- * Memories filed straight in a child's Birthdays, not in a category: those
- * nearest the birthday this was opened from ("Other moments"), or, from the
- * grid, those nearest no birthday added yet.
- */
 export default function BirthdayMomentsScreen() {
   const { id, birthday, from } = useLocalSearchParams<{ id: string; birthday?: string; from?: string }>();
   const near = birthday && from ? { n: Number(birthday), from } : null;

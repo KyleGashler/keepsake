@@ -6,15 +6,6 @@ import { useSession } from "../auth/session-context";
 import { Wordmark } from "./brand";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
-/**
- * The screens before the archive: sign in, create an account, reset a
- * password. They render in place of the app (see app/_layout.tsx), so the
- * URL a person arrived at survives signing in.
- *
- * Calm and plain on purpose — paper, the wordmark, a display-serif title and
- * the sheet's form controls. Nothing here should feel like a dashboard.
- */
-
 export function AuthFrame({
   eyebrow,
   title,
@@ -37,9 +28,7 @@ export function AuthFrame({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Forms read best narrower than the app's 720pt content column. */}
         <View className="w-full max-w-[440px] self-center">
-          {/* Wordmark takes a style, not a className. */}
           <Wordmark width={148} style={{ marginBottom: 36 }} />
           {eyebrow ? <Text className="mb-1 type-eyebrow">{eyebrow}</Text> : null}
           <Text className="font-display text-[40px] leading-[46px] tracking-[-0.5px] text-ink" accessibilityRole="header">
@@ -56,7 +45,6 @@ export function AuthFrame({
 
 const LINK = "font-sans-bold text-[15px] text-ink underline";
 
-/** "New to little by little? Create an account" — a sentence with a tappable end. */
 export function TextLink({ lead, label, onPress }: { lead?: string; label: string; onPress: () => void }) {
   return (
     <Text className="text-center font-sans text-[15px] leading-[21px] text-ink-soft">
@@ -75,18 +63,10 @@ function messageOf(err: unknown) {
 
 type Step = "signIn" | "signUp" | "forgot";
 
-/**
- * Everything a signed-out person can do, one screen at a time.
- *
- * `startWith` and `context` are for arriving with a purpose (an invite link):
- * which form comes first, and a line shown above it saying why.
- */
 export function SignedOutFlow({ startWith = "signIn", context }: { startWith?: "signIn" | "signUp"; context?: string }) {
   const session = useSession();
   const notice = context ?? session.notice;
   const [step, setStep] = useState<Step>(startWith);
-  // Carried between steps so "forgot password" doesn't make anyone retype it.
-  // An invitee isn't the demo owner, so their form starts empty.
   const [email, setEmail] = useState(auth.mode === "dev" && !context ? DEV_DEFAULT_EMAIL : "");
 
   if (auth.mode === "dev") return <DevSignIn email={email} setEmail={setEmail} notice={notice} />;
@@ -279,11 +259,6 @@ function ForgotPassword({ email, setEmail, go }: StepProps) {
   );
 }
 
-/**
- * Dev mode: an email, no password. The API's DevTokenVerifier takes the
- * address at its word; demo@littlebylittle.local opens the seeded family, and any
- * other address starts a new, empty account.
- */
 function DevSignIn({
   email,
   setEmail,
@@ -321,7 +296,6 @@ function DevSignIn({
   );
 }
 
-/** A quiet panel for something the person should know but didn't do wrong. */
 export function Notice({ children }: { children: ReactNode }) {
   return (
     <View className="rounded-[12px] bg-accent-soft p-3">

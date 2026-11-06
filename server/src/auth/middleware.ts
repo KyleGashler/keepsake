@@ -5,16 +5,9 @@ import { prisma } from "../lib/prisma.js";
 import { AUTH_MODE } from "./index.js";
 import type { TokenVerifier, VerifiedIdentity } from "./TokenVerifier.js";
 
-/**
- * Dev mode only: a request with no Authorization header at all is treated as
- * `Bearer dev:<DEV_DEFAULT_USER>`. The app always sends a token now (A8); this
- * survives so `curl localhost:4000/api/home` works against compose without
- * one. Unset the variable and the API behaves like production: no token, no
- * access. Never read in firebase mode.
- */
+// Dev mode only: a tokenless request acts as this user. Never read in firebase mode.
 const DEV_DEFAULT_USER = process.env.DEV_DEFAULT_USER;
 
-/** `Authorization: Bearer <token>` → `<token>`. Anything else → null. */
 function bearerFrom(req: Request): string | null {
   const header = req.headers.authorization;
   if (header) {
@@ -27,32 +20,12 @@ function bearerFrom(req: Request): string | null {
   return null;
 }
 
-/**
- * Why an identity the provider vouched for still can't be let in:
- *
- * - `verify_email` — the address already belongs to a dev-era account, and only
- *   a verified address may take it over. Verifying fixes it; the client shows
- *   its verify-email state.
- * - `email_in_use` — the address belongs to a different real account (another
- *   Firebase uid, e.g. one deleted and re-created). Nothing the person can do
- *   in the app fixes that.
- */
 export type AccountConflict = "verify_email" | "email_in_use";
 
 export type ResolvedUser = { user: User } | { conflict: AccountConflict };
 
-/**
- * Mirror the provider's identity into a local `User`. Email and display name
- * are recorded the first time we see the account and left alone afterwards —
- * the provider is the source of truth for identity, but the archive is the
- * source of truth for how a person appears in it.
- *
- * `User.email` is unique as well as `authProviderId`, so a new provider
- * identity can meet an existing row by email. The one takeover allowed is of a
- * `dev:` account by a verified address: that is how the families created
- * under dev auth (the hosted demo among them) pass to the real account with
- * the same email. Anything else is a conflict, never a silent merge.
- */
+// The one takeover allowed is of a `dev:` account by a verified address; anything else
+// sharing the email is a conflict, never a silent merge.
 export async function resolveUser(identity: VerifiedIdentity, attempt = 0): Promise<ResolvedUser> {
   const known = await prisma.user.findUnique({ where: { authProviderId: identity.providerId } });
   if (known) return { user: known };
@@ -81,7 +54,6 @@ export async function resolveUser(identity: VerifiedIdentity, attempt = 0): Prom
       );
       return { user: { ...sameEmail, authProviderId: identity.providerId } };
     }
-    // Lost the race: the row moved under us. Look again, once.
     return attempt === 0 ? resolveUser(identity, 1) : { conflict: "email_in_use" };
   }
 
@@ -95,20 +67,15 @@ export async function resolveUser(identity: VerifiedIdentity, attempt = 0): Prom
     });
     return { user };
   } catch (err) {
-    // Two first requests from the same new account can race the create. The
-    // loser sees a unique-constraint violation; one more pass finds the row.
+    // Two first requests from the same new account can race the create; one more pass finds the row.
     const isUniqueViolation = err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
     if (isUniqueViolation && attempt === 0) return resolveUser(identity, 1);
     throw err;
   }
 }
 
-/**
- * Resolve the caller. 401 for a missing, malformed, or unverifiable token —
- * the response never says which, because that difference is only useful to
- * someone guessing. 503 when the verifier couldn't decide (its provider is
- * unreachable): a 401 would sign the client out over someone else's outage.
- */
+// 401 never says why a token failed. 503 when the provider is unreachable: a 401 would
+// sign the client out over someone else's outage.
 export function requireUser(verifier: TokenVerifier): RequestHandler {
   return async (req: Request, res: Response, next: NextFunction) => {
     const bearer = bearerFrom(req);
@@ -129,8 +96,6 @@ export function requireUser(verifier: TokenVerifier): RequestHandler {
         const status = resolved.conflict === "verify_email" ? 403 : 409;
         return res.status(status).json({ error: resolved.conflict });
       }
-      // `family` and `role` land in `requireFamily`, one middleware later.
-      // See the note on RequestContext in src/types/express.d.ts.
       // oxlint-disable-next-line typescript/consistent-type-assertions -- half-built until requireFamily runs
       req.ctx = { user: resolved.user, emailVerified: identity.emailVerified } as Request["ctx"];
       next();
@@ -140,12 +105,6 @@ export function requireUser(verifier: TokenVerifier): RequestHandler {
   };
 }
 
-/**
- * Choose the family this request is about, and prove the caller belongs to it.
- *
- * `x-family-id` is explicit and wins; without it a single membership is
- * unambiguous, several are not, and none means there is nothing to look at yet.
- */
 export const requireFamily: RequestHandler = async (req, res, next) => {
   try {
     const memberships = await prisma.familyMembership.findMany({
@@ -159,8 +118,6 @@ export const requireFamily: RequestHandler = async (req, res, next) => {
 
     if (requested) {
       const membership = memberships.find((m) => m.familyId === requested);
-      // Deliberately 403 and not 404: the caller named a specific family, and
-      // pretending it doesn't exist would only make them retry.
       if (!membership) return res.status(403).json({ error: "forbidden" });
       req.ctx.family = membership.family;
       req.ctx.role = membership.role;
@@ -188,18 +145,8 @@ export const requireFamily: RequestHandler = async (req, res, next) => {
   }
 };
 
-/**
- * Let the request through only if the caller's role in this family is one of
- * `roles`. Mounted per route, after `requireFamily` (which sets `req.ctx.role`).
- *
- * 403 `forbidden_role`, naming the roles that would have been enough, so the
- * client can tell "you can't do that in this family" from "this isn't your
- * family" (`forbidden`).
- *
- * Generic in the route's params so that, placed between a path and its
- * handler, it doesn't stand in for the path when TypeScript infers what
- * `req.params` holds.
- */
+// Generic in the params so that, between a path and its handler, it doesn't stand in
+// for the path when TypeScript infers `req.params`.
 export function requireRole(...roles: MembershipRole[]) {
   return <P>(req: Request<P>, res: Response, next: NextFunction) => {
     if (roles.includes(req.ctx.role)) return next();
@@ -207,11 +154,6 @@ export function requireRole(...roles: MembershipRole[]) {
   };
 }
 
-/**
- * Add to and edit the archive: memories, media, people, collections, covers.
- * A VIEWER reads, and keeps their own favourites (per user, not the family's).
- */
 export const requireContributor = requireRole("OWNER", "CONTRIBUTOR");
 
-/** Who's in the family: invites, roles, removing members. */
 export const requireOwner = requireRole("OWNER");

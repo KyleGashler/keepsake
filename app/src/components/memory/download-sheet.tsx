@@ -11,20 +11,16 @@ import { InlineError } from "../ui";
 import { Thumb } from "./gallery";
 import { SheetHeader } from "./sheet";
 
-/** While a video is being prepared, ask again this often. */
 const POLL_MS = 10_000;
-/** A URL this close to lapsing is fetched afresh before saving. */
 const FRESH_FOR_MS = 60_000;
 
 const KIND: Record<DownloadFile["type"], string> = { PHOTO: "Photo", VIDEO: "Video", AUDIO: "Recording" };
 
-/** A URL with time left to start a download on (checked when tapped, never while rendering). */
 function stillFresh(file: DownloadFile) {
   const expires = file.expiresAt ? Date.parse(file.expiresAt) : 0;
   return Boolean(file.url) && expires - Date.now() > FRESH_FOR_MS;
 }
 
-/** The person's zone, so a filename's date is the day they see on the memory. */
 function timeZone(): string | undefined {
   try {
     return Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -33,18 +29,9 @@ function timeZone(): string | undefined {
   }
 }
 
-/**
- * memory ⋯ → Download: every photo, video and recording on the memory, each
- * with its own save button. Photos are the originals; a video is Mux's
- * full-quality copy, which is prepared on request — it shows "Preparing"
- * for a few minutes and this sheet keeps asking until it's ready.
- */
 export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const familyId = useFamilyId();
-  // A POST, because asking is what starts a video's copy being prepared; it's
-  // still a read — the same answer until something is ready — so it's a
-  // query: polled while anything is preparing, and never cached past the
-  // sheet (the URLs in it lapse).
+  // A POST because asking is what starts Mux preparing a video's full-quality copy.
   const downloads = useQuery({
     queryKey: [...familyKey(familyId, `/api/memories/${memory.id}`), "downloads"],
     queryFn: () =>
@@ -64,7 +51,6 @@ export function DownloadList({ memory, onClose }: { memory: Memory; onClose: () 
     };
   }, []);
 
-  /** The file with a URL good for a while yet, asking again if it's about to lapse. */
   async function fresh(file: DownloadFile): Promise<DownloadFile | null> {
     if (stillFresh(file)) return file;
     const next = (await downloads.refetch()).data;

@@ -46,25 +46,11 @@ import { collectionHref, goBackOr, openInLibrary } from "../../src/routes";
 import { Image, Ionicons } from "../../src/styled";
 import { layout, MAX_WIDTH } from "../../src/theme";
 
-/** How often to look again while a clip is being prepared or transcribed. */
 const POLL_MS = 3000;
-/** How far the content card rides up over the hero. */
 const CARD_OVERLAP = 24;
 
-/**
- * One memory, immersive: the photo or video full-bleed at the top, then a
- * card with the family's words (Story, or the Original Words that were
- * recorded), who was there, every photo and video, the recordings, where and
- * when, and memories like it. Every section is there only when it has
- * something to show, so a memory of words alone is a whole page — not a
- * photo memory with holes. Everything stays editable: AI may draft, families
- * decide.
- */
 export default function MemoryScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  // Mux prepares each clip, and then its transcript, in the background after
-  // upload; keep looking until both settle so the player and the words appear
-  // without a refresh.
   const query = useApiQuery<{ memory: Memory }>(`/api/memories/${id}`, {
     refetchInterval: (data) => (data && isSettling(data.memory) ? POLL_MS : false),
   });
@@ -79,15 +65,10 @@ export default function MemoryScreen() {
   const [sheet, setSheet] = useState<SheetKind | null>(null);
   const [viewerAt, setViewerAt] = useState<number | null>(null);
   const [videoFailed, setVideoFailed] = useState(false);
-  // Bumped by "Try again" so the hero builds a new player on a fresh URL.
   const [videoAttempt, setVideoAttempt] = useState(0);
   const [pastHero, setPastHero] = useState(false);
-  // A VIEWER reads (and keeps favourites, which are their own); every way
-  // into editing the memory is left out for them.
   const canContribute = useCanContribute();
 
-  // Coming back from a related memory (or one deleted from there) shows
-  // what's true now. The hero pauses while you're away.
   useRefreshOnFocus(query);
   const [focused, setFocused] = useState(true);
   useFocusEffect(
@@ -97,8 +78,6 @@ export default function MemoryScreen() {
     }, []),
   );
 
-  // Optimistic: the heart fills on tap, and goes back if the server says no.
-  // A favourite is the person's own, shown only on this page.
   const favorite = useMutation({
     mutationFn: (next: boolean) => apiSend(`/api/memories/${id}/favorite`, next ? "PUT" : "DELETE"),
     onMutate: (next) => setFavoriteHere(id, next),
@@ -112,15 +91,12 @@ export default function MemoryScreen() {
   const retryTranscript = useMutation({
     mutationFn: (mediaIds: string[]) =>
       Promise.allSettled(mediaIds.map((m) => apiSend(`/api/memories/${id}/media/${m}/transcribe`, "POST", {}))),
-    // Whatever didn't re-queue still shows as failed once this looks again.
     onSettled: () => queryClient.invalidateQueries({ queryKey: memoryKey(id), exact: true }),
   });
 
   const transcriptStatus = data?.memory.transcriptStatus ?? null;
 
-  // Deleted (here, or by someone else while this was open), from another
-  // family, or a stale link. Checked before `data` so a refresh that finds it
-  // gone doesn't leave the old memory up.
+  // Checked before `data`, so a refetch that finds it gone doesn't leave the old memory up.
   if (isNotFound(error)) {
     return (
       <View className="flex-1 justify-center bg-paper" style={{ paddingTop: insets.top }}>
@@ -132,7 +108,6 @@ export default function MemoryScreen() {
       </View>
     );
   }
-  // A failed poll shouldn't blank a page that's already showing the memory.
   if (!data) {
     return (
       <View className="flex-1 bg-paper" style={{ paddingTop: insets.top }}>
@@ -152,7 +127,6 @@ export default function MemoryScreen() {
   const visuals = memory.media.filter((m) => m.type === "PHOTO" || m.type === "VIDEO");
   const recordings = memory.media.filter((m) => m.type === "AUDIO");
   const hero = visuals[0];
-  // Audio and video clips: anything that is being (or was) transcribed.
   const clips = memory.media.filter((m) => m.transcriptStatus !== null);
 
   const hasStory = Boolean(memory.story?.trim());
@@ -197,7 +171,6 @@ export default function MemoryScreen() {
       favorite={isFavorite}
       onBack={back}
       onFavorite={toggleFavorite}
-      // A VIEWER's menu holds only Download, so they get ⋯ when there's media.
       onMore={can.more ?? (memory.media.length > 0 ? () => setSheet("options") : undefined)}
     />
   );
@@ -253,7 +226,7 @@ export default function MemoryScreen() {
                 videoAttempt={videoAttempt}
                 onVideoError={() => setVideoFailed(true)}
                 onVideoRetry={() => {
-                  // A fresh signed URL (the old token may have lapsed), then a new player.
+                  // A fresh signed URL: the old token may have lapsed.
                   void refetch().then(() => {
                     setVideoFailed(false);
                     setVideoAttempt((n) => n + 1);
@@ -265,7 +238,6 @@ export default function MemoryScreen() {
           ) : null}
 
           <View
-            // Over a hero, -mt-6 rides the card up by CARD_OVERLAP.
             className={`grow rounded-t-[24px] bg-surface px-6 pt-[18px] ${hero ? "-mt-6" : "mt-2 shadow-card"}`}
             style={{ paddingBottom: insets.bottom + layout.bottom }}
           >
@@ -354,14 +326,12 @@ export default function MemoryScreen() {
               </View>
             ) : null}
 
-            {/* The hero already shows a lone photo or video; the gallery is for more than one. */}
             {visuals.length > 1 ? (
               <Section title="Media">
                 <MediaGallery items={visuals} onOpen={setViewerAt} />
               </Section>
             ) : null}
 
-            {/* Original Words carries its own players at the top. */}
             {recordings.length && view !== "transcript" ? (
               <Section title="Audio">
                 <View className="gap-3">{players}</View>
@@ -380,9 +350,6 @@ export default function MemoryScreen() {
       </ScrollView>
 
       {hero ? (
-        // Once the hero has scrolled away, a white strip settles in behind
-        // the buttons so they don't sit on top of the words. Until then its
-        // hairline is there but transparent.
         <View
           className={`absolute top-0 right-0 left-0 items-center pb-2 ${pastHero ? "border-line bg-surface" : "border-transparent"}`}
           style={{ pointerEvents: "box-none", paddingTop: insets.top + 8, borderBottomWidth: StyleSheet.hairlineWidth }}
@@ -406,12 +373,10 @@ export default function MemoryScreen() {
   );
 }
 
-/** Whether Mux is still preparing a clip, or a transcript is still being written. */
 function isSettling(memory: Memory) {
   return memory.transcriptStatus === "PENDING" || memory.media.some((m) => mediaStatus(m) === "PROCESSING");
 }
 
-/** The heart on this memory's page, filled or not, ahead of (or instead of) the server's word. */
 function setFavoriteHere(memoryId: string, isFavorite: boolean) {
   queryClient.setQueryData<{ memory: Memory }>(memoryKey(memoryId), (old) =>
     old ? { memory: { ...old.memory, isFavorite } } : old,
@@ -423,22 +388,13 @@ function back() {
   else router.replace("/");
 }
 
-/**
- * Which words show: the toggle's choice when there are both, else whichever
- * exists, else none. With both, Story leads.
- */
 function wordsView(hasStory: boolean, hasWords: boolean, chosen: WordsView | null): WordsView | null {
   if (hasStory && hasWords) return chosen ?? "story";
   if (hasStory) return "story";
-  // A fresh recording has no story yet — open on the transcript it's waiting for.
   if (hasWords) return "transcript";
   return null;
 }
 
-/**
- * The photo, or the video with its own controls — "Preparing video…" while
- * Mux is still at it, and a plain word if it failed or won't play.
- */
 function HeroMedia({
   hero,
   paused,
@@ -449,7 +405,6 @@ function HeroMedia({
   onOpen,
 }: {
   hero: MediaItem;
-  /** The viewer is open or the page is covered: the video stops. */
   paused: boolean;
   videoFailed: boolean;
   videoAttempt: number;
@@ -464,8 +419,7 @@ function HeroMedia({
     if (videoFailed) return <VideoFallback onRetry={onVideoRetry} />;
     return (
       <HeroVideo
-        // Keyed by id: a new signed URL on each poll must not rebuild the
-        // player. "Try again" bumps the attempt to build a new one on purpose.
+        // Keyed by id: a new signed URL on each poll must not rebuild the player.
         key={`${hero.id}:${videoAttempt}`}
         uri={mediaUrl(hero.url)}
         posterUrl={hero.posterUrl}
@@ -493,11 +447,6 @@ function HeroMedia({
   );
 }
 
-/**
- * Back on the left; favourite and ⋯ on the right. Over a hero they float as
- * white discs and stay put while the page scrolls under them; without one
- * they're an ordinary bar on paper.
- */
 type EditHandlers = {
   more?: () => void;
   edit?: () => void;
@@ -505,7 +454,6 @@ type EditHandlers = {
   editTranscript?: () => void;
 };
 
-/** Every way into changing the memory — or none, for someone who can only view. */
 function editHandlers(canContribute: boolean, handlers: Required<EditHandlers>): EditHandlers {
   return canContribute ? handlers : {};
 }
@@ -520,9 +468,7 @@ function TopActions({
   floating: boolean;
   favorite?: boolean;
   onBack: () => void;
-  /** Absent until there's a memory to favourite. */
   onFavorite?: () => void;
-  /** Absent for a VIEWER when there's nothing to download: every other option changes the memory. */
   onMore?: () => void;
 }) {
   const disc = `h-10 w-10 items-center justify-center rounded-full ${
@@ -563,10 +509,8 @@ function TopActions({
   );
 }
 
-/** Happened in · Where · Collection — each only when it has a value. */
 function MemoryDetails({ memory }: { memory: Memory }) {
   const collections = memory.collections;
-  // Filed under two children ("Day-to-Day Moments" twice)? Say whose is whose.
   const names = collections.map((c) => c.name);
   const ambiguous = names.some((n, i) => names.indexOf(n) !== i);
   const { data: people } = useApiQuery<{ people: Person[] }>(ambiguous ? "/api/people" : null);
@@ -599,7 +543,6 @@ function MemoryDetails({ memory }: { memory: Memory }) {
   );
 }
 
-/** The transcript side: where transcription stands, the words, and a way to edit them. */
 function TranscriptPanel({
   memory,
   status,
@@ -612,7 +555,6 @@ function TranscriptPanel({
   status: TranscriptStatus | null;
   severalClips: boolean;
   retrying: boolean;
-  /** Both absent for a VIEWER, who reads the transcript but can't change it. */
   onRetry?: () => void;
   onEdit?: () => void;
 }) {
@@ -649,7 +591,6 @@ function TranscriptPanel({
           <Text className="font-sans text-[15.5px] leading-[25px] text-ink">{memory.transcript}</Text>
         </Pressable>
       ) : null}
-      {/* Typing one in by hand is always allowed; the pipeline never overwrites it. */}
       {onEdit && (memory.transcript || status !== "PENDING") ? (
         <Pressable onPress={onEdit} className="mt-2 flex-row items-center gap-1.5" accessibilityRole="button">
           <Ionicons name="create-outline" size={15} colorClassName="accent-accent-deep" />
@@ -711,7 +652,6 @@ function AiDraftNote({ hasWords }: { hasWords: boolean }) {
   );
 }
 
-/** The hero while Mux prepares a fresh upload: a minute or so, then the player. */
 function VideoPreparing() {
   return (
     <View className="flex-1 items-center justify-center gap-2 p-4">
@@ -721,11 +661,6 @@ function VideoPreparing() {
   );
 }
 
-/**
- * Instead of a black box. Without `onRetry` Mux couldn't make the file
- * playable (FAILED) and there's nothing to retry; with it, the player gave up
- * on a ready clip (a lapsed link, a dropped connection) and can try again.
- */
 function VideoFallback({ onRetry }: { onRetry?: () => void }) {
   return (
     <View className="flex-1 items-center justify-center gap-2 p-4">

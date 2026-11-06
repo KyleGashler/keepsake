@@ -21,15 +21,6 @@ import { memberName } from "./invites.js";
 
 export const familyRouter = Router();
 
-/**
- * Family Hub: administrative rather than emotional, hence its own modal.
- *
- * `members` are the accounts in the family (FamilyMembership), each with the
- * role that decides what they can do. `people` are everyone else in the
- * archive — children, and adults who haven't joined — with whether an invite
- * can name them. `role` is the caller's own, so the client can leave out what
- * it would only be refused.
- */
 familyRouter.get("/family", async (req, res) => {
   const { family, role, user } = req.ctx;
   const isOwner = role === "OWNER";
@@ -67,8 +58,6 @@ familyRouter.get("/family", async (req, res) => {
     .filter((p) => p.membership === null)
     .map((p) => ({
       ...personDto(p),
-      // Children are Person rows and never accounts; anyone else without one
-      // can be named by an invite.
       invitable: p.role !== "CHILD" && p.userId === null,
     }));
 
@@ -89,21 +78,12 @@ familyRouter.get("/family", async (req, res) => {
 const newInvite = z
   .object({
     role: z.enum(["OWNER", "CONTRIBUTOR", "VIEWER"]).default("CONTRIBUTOR"),
-    /** Also email the link here. Optional: the link is shared by hand either way. */
     email: z.string().trim().toLowerCase().email().max(254).optional(),
-    /** An existing Person in this family the invite is for: unlinked and not a child. */
     personId: z.string().min(1).optional(),
-    /** For someone not in the archive yet: what to call the Person accept creates. */
     name: z.string().trim().min(1).max(80).optional(),
   })
   .refine((v) => !(v.personId && v.name), { message: "Give personId or name, not both" });
 
-/**
- * Make an invite link. Single use, a week long, revocable. With an email it
- * is also sent there (EmailSender — the log until B6); a send that fails
- * still leaves a working link to share by hand. `emailed` says whether it is
- * on its way to an inbox — false for a failed send and for the console sender.
- */
 familyRouter.post("/family/invites", requireOwner, async (req, res) => {
   const { family, user } = req.ctx;
   const parsed = newInvite.safeParse(req.body);
@@ -148,7 +128,6 @@ familyRouter.post("/family/invites", requireOwner, async (req, res) => {
           url: dto.url,
         }),
       );
-      // Only true if it can reach an inbox: the console sender just logs it.
       emailed = emailSender().delivers;
     } catch (err) {
       req.log.error({ err: errorMessage(err), inviteId: invite.id }, "invite email failed to send");
@@ -158,7 +137,6 @@ familyRouter.post("/family/invites", requireOwner, async (req, res) => {
   res.status(201).json({ invite: dto, emailed });
 });
 
-/** Pending invites, newest first. Used, revoked and expired ones drop off. */
 familyRouter.get("/family/invites", requireOwner, async (req, res) => {
   const invites = await prisma.invite.findMany({
     where: { familyId: req.ctx.family.id, ...pendingInviteWhere() },
@@ -168,7 +146,6 @@ familyRouter.get("/family/invites", requireOwner, async (req, res) => {
   res.json({ invites: invites.map((i) => inviteDto(req, i)) });
 });
 
-/** Revoke: the link stops working at once. One already used can't be taken back here — remove the member. */
 familyRouter.delete("/family/invites/:id", requireOwner, async (req, res) => {
   const { family } = req.ctx;
   const { count } = await prisma.invite.updateMany({
@@ -182,7 +159,6 @@ familyRouter.delete("/family/invites/:id", requireOwner, async (req, res) => {
   res.status(409).json({ error: inviteStatus(invite) });
 });
 
-/** Thrown inside a membership transaction to refuse and roll back. */
 class MembershipRefusal extends Error {
   constructor(
     readonly status: number,
@@ -192,11 +168,7 @@ class MembershipRefusal extends Error {
   }
 }
 
-/**
- * Run a change to who's in the family with the family row locked, so two
- * owners demoting or removing each other at once can't leave it with none:
- * the second waits for the first, then counts again.
- */
+// The family row lock stops two owners demoting or removing each other at once and leaving none.
 async function withMembershipLock<T>(familyId: string, work: (tx: Prisma.TransactionClient) => Promise<T>) {
   return prisma.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Family" WHERE id = ${familyId} FOR UPDATE`;
@@ -211,7 +183,6 @@ async function refuseLastOwner(tx: Prisma.TransactionClient, familyId: string) {
 
 const rolePatch = z.object({ role: z.enum(["OWNER", "CONTRIBUTOR", "VIEWER"]) });
 
-/** Change what a member can do. The last owner can't be demoted. */
 familyRouter.patch("/family/members/:userId", requireOwner, async (req, res) => {
   const { family } = req.ctx;
   const parsed = rolePatch.safeParse(req.body);
@@ -238,12 +209,6 @@ familyRouter.patch("/family/members/:userId", requireOwner, async (req, res) => 
   res.json({ member: { userId: req.params.userId, role, permission: ROLE_LABELS[role] } });
 });
 
-/**
- * Take someone out of the family. Their Person stays — memories they wrote or
- * appear in are the family's — but it no longer signs in. The last owner can't
- * be removed (by anyone, themselves included); an owner may remove themselves
- * when another owner remains.
- */
 familyRouter.delete("/family/members/:userId", requireOwner, async (req, res) => {
   const { family } = req.ctx;
   try {
@@ -257,7 +222,6 @@ familyRouter.delete("/family/members/:userId", requireOwner, async (req, res) =>
       await tx.familyMembership.delete({
         where: { userId_familyId: { userId: target.userId, familyId: family.id } },
       });
-      // The global back-link, if it points at this family's Person.
       if (target.personId) {
         await tx.person.updateMany({
           where: { id: target.personId, userId: target.userId },
@@ -273,11 +237,6 @@ familyRouter.delete("/family/members/:userId", requireOwner, async (req, res) =>
   res.status(204).end();
 });
 
-/**
- * Delete this family, for everyone (A16). Owners only. Every member loses it;
- * every memory, person, collection and file goes — rows at once, files and
- * Mux assets through `media.purge`. There is no trash and no restore. 204.
- */
 familyRouter.delete("/family", requireOwner, async (req, res) => {
   const { family, user } = req.ctx;
   const deleted = await deleteFamily(jobQueue(), family.id);

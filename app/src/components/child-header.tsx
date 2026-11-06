@@ -9,12 +9,6 @@ import { Image, Ionicons } from "../styled";
 import { useColor } from "../theme";
 import { Sparkle } from "./journey";
 
-/**
- * A child's face in the Library journey: their uploaded photo, or — before
- * anyone has added one — a monogram in their own accent colour. Never the
- * generated avatar gradient on its own, which reads as a broken image at
- * this size.
- */
 export function ChildPortrait({
   child,
   size,
@@ -24,7 +18,6 @@ export function ChildPortrait({
 }: {
   child: Pick<Person, "name" | "accentColor" | "initials">;
   size: number;
-  /** A photo URL (relative API paths resolve); null shows the monogram. */
   uri: string | null | undefined;
   style?: StyleProp<ViewStyle>;
   className?: string;
@@ -46,11 +39,6 @@ export function ChildPortrait({
   );
 }
 
-/**
- * What a child's photo card shows until they have a photo: a warm wash of
- * their accent colour with their monogram where a face would be, so the card
- * looks intentional rather than empty.
- */
 export function ChildCardBackdrop({ child }: { child: Pick<Person, "name" | "accentColor" | "initials"> }) {
   const id = `wash-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const surfaceAlt = useColor("surface-alt");
@@ -73,7 +61,6 @@ export function ChildCardBackdrop({ child }: { child: Pick<Person, "name" | "acc
   );
 }
 
-/** "‹ Child Profiles" on the left, an optional gear or ⋯ on the right. */
 export function BackRow({
   label,
   parent,
@@ -83,7 +70,6 @@ export function BackRow({
   moreLabel = "Options",
 }: {
   label: string;
-  /** The screen back returns to, even on a cold deep link (routes.ts `backTo`). */
   parent: Href;
   onSettings?: () => void;
   settingsLabel?: string;
@@ -129,17 +115,10 @@ export function BackRow({
 }
 
 const PORTRAIT = 88;
-/** The flourish canvas overhangs the portrait so the dashes and star can sit outside it. */
 const FLOURISH_PAD = 22;
 
-/**
- * The top of a child's screens (design/mockups/03): the round photo with a
- * small teal sparkle above it and three teal dashes beside it, then the
- * child's name and their age and counts. Below a back row the screen draws.
- */
 export function ChildHeader({ child }: { child: ChildSummary }) {
   const c = PORTRAIT / 2 + FLOURISH_PAD;
-  // Three short radial strokes off the photo's lower left, like a little burst of joy.
   const dashes = [174, 160, 146].map((deg) => {
     const rad = (deg * Math.PI) / 180;
     const from = PORTRAIT / 2 + 7;
@@ -183,8 +162,6 @@ export function ChildHeader({ child }: { child: ChildSummary }) {
         <Text className="type-display" numberOfLines={2} accessibilityRole="header">
           {child.name}
         </Text>
-        {/* Each part stays whole; a long line wraps between parts, never inside one,
-            and the dot stays with the part before it so a new line never starts with one. */}
         <View className="flex-row flex-wrap mt-0.5" accessible accessibilityLabel={meta.join(", ")}>
           {meta.map((part, i) => (
             <Text key={part} className="font-sans text-[14px] leading-[20px] text-ink-soft">

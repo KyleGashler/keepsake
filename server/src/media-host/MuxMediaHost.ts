@@ -15,35 +15,21 @@ export interface MuxConfig {
   tokenId: string;
   tokenSecret: string;
   signingKeyId: string;
-  /** The URL signing key's private half: a PEM, or (as Mux hands it out) base64 of one. */
+  // A PEM, or (as Mux hands it out) base64 of one.
   signingKeyPrivate: string;
 }
 
-/** Poster frames are drawn at this width; cards and heroes scale them down. */
 const POSTER_WIDTH = 1200;
 
-/** A small poster fetched for its colours is a few KB; past this something is wrong. */
 const POSTER_FETCH_MAX_BYTES = 2 * 1024 * 1024;
 
-/**
- * How long one signed URL is reused for. Signing per response would give
- * every response a new URL, and a new URL is a cache miss for every poster
- * the client has already drawn. Within this window the same clip gets the
- * same URL; its token is signed to outlive the window by the full TTL.
- */
+// Signing per response would give every response a new URL: a cache miss for
+// every poster the client has already drawn.
 const TOKEN_REUSE_SECONDS = 10 * 60;
 const TOKEN_CACHE_MAX = 5000;
 
-/** Long enough for Mux to answer; a hung request mustn't hold a job forever. */
 const REQUEST_TIMEOUT_MS = 30_000;
 
-/**
- * Mux Video through the official SDK: direct uploads, asset reads, caption
- * generation and RS256 playback tokens. Every asset is created with the
- * settings in docs/PLAN.md ("Decision: Mux for video and audio"): signed
- * playback only, basic quality, 1080p cap, auto-language captions, and for
- * audio the `audio.m4a` static rendition so it plays as a plain file.
- */
 export class MuxMediaHost implements MediaHost {
   private readonly mux: Mux;
   private readonly tokens = new Map<string, { token: string; reuseUntil: number }>();
@@ -55,7 +41,7 @@ export class MuxMediaHost implements MediaHost {
       jwtSigningKey: config.signingKeyId,
       jwtPrivateKey: config.signingKeyPrivate,
       timeout: REQUEST_TIMEOUT_MS,
-      // The job queue owns retries and backoff; one place, one policy.
+      // The job queue owns retries and backoff.
       maxRetries: 0,
     });
   }
@@ -116,7 +102,6 @@ export class MuxMediaHost implements MediaHost {
     try {
       await call(() => this.mux.video.assets.delete(assetId));
     } catch (err) {
-      // Already gone is the outcome we wanted.
       if (err instanceof MediaHostError && err.status === 404) return;
       throw err;
     }
@@ -178,10 +163,8 @@ export class MuxMediaHost implements MediaHost {
     return body;
   }
 
-  /** A signed `thumbnail.jpg`, `width` wide, at the clip's poster moment. */
   private async thumbnailUrl(playbackId: string, durationS: number | null, width: number): Promise<string> {
-    // A couple of seconds in rather than frame 0, which is often black; the
-    // middle of a clip shorter than that.
+    // A couple of seconds in: frame 0 is often black.
     const time = durationS && durationS > 0 ? Math.min(2, Math.floor(durationS / 2)) : 0;
     // Mux reads thumbnail options from the token's claims on a signed
     // playback id, and refuses them in the query string.
@@ -190,8 +173,7 @@ export class MuxMediaHost implements MediaHost {
   }
 
   async audioDownloadUrl(playbackId: string, filename: string): Promise<string> {
-    // On a signed playback id, Mux wants playback options in the token's
-    // claims rather than the query string, so the URL carries only `token`.
+    // Same for playback options: in the token's claims, not the query string.
     const token = await this.sign(playbackId, "video", 0, { download: filename });
     return `https://stream.mux.com/${playbackId}/audio.m4a?token=${token}`;
   }
@@ -208,11 +190,6 @@ export class MuxMediaHost implements MediaHost {
     }
   }
 
-  /**
-   * A playback JWT (RS256, `sub` playback id, `aud` v or t, `kid`), reused
-   * for TOKEN_REUSE_SECONDS. Each one is valid for at least
-   * READ_URL_TTL_SECONDS + `extraSeconds` from the moment it is served.
-   */
   private async sign(
     playbackId: string,
     type: "video" | "thumbnail",
@@ -245,11 +222,6 @@ export class MuxMediaHost implements MediaHost {
 
 const webhookEnvelope = z.object({ id: z.string(), type: z.string(), data: z.unknown() });
 
-/**
- * Verify a webhook's `mux-signature` (HMAC-SHA256 over `<t>.<body>`, at most
- * five minutes old) and parse it. Needs only the webhook secret, so it works
- * whether or not API credentials are set. Throws on any mismatch.
- */
 export async function verifyMuxWebhook(
   rawBody: string,
   headers: Record<string, string | string[] | undefined>,
@@ -290,7 +262,6 @@ function toHostMaster(master: { status?: string | null; url?: string | null } | 
   return { status: master.status, url: master.url ?? null };
 }
 
-/** Run an SDK call, turning its errors into MediaHostError with a retry opinion. */
 async function call<T>(fn: () => PromiseLike<T>): Promise<T> {
   try {
     return await fn();

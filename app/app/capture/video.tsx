@@ -22,21 +22,11 @@ type Phase = "asking" | "denied" | "ready" | "recording" | "stopping" | "review"
 
 type Clip = { uri: string; durationS: number; width?: number; height?: number };
 
-/** A recording shorter than this can fail to finalise on Android; Stop waits for it. */
+// A recording shorter than this can fail to finalise on Android.
 const MIN_RECORDING_MS = 1000;
 
-/**
- * The in-app video recorder (iOS and Android; the web build uses
- * `video.web.tsx`). A full-screen camera with a hard length cap derived from
- * the upload ceiling, then a review step. Nothing is uploaded here — "Use
- * video" hands the clip to compose like any other captured media.
- *
- * The camera is released by unmounting it: the review step renders the
- * player instead, and leaving the screen unmounts everything.
- */
 export default function VideoScreen() {
   const params = useLocalSearchParams<ComposeParams>();
-  // Without an answer, the recorder falls back to a safe budget rather than refusing.
   const { data: limits, error: limitsError } = useApiQuery<UploadLimits>("/api/media/limits", { staleTime: Infinity });
   const maxBytes = limits?.maxUploadBytes ?? (limitsError ? FALLBACK_MAX_UPLOAD_BYTES : null);
   const budget = maxBytes
@@ -94,7 +84,7 @@ export default function VideoScreen() {
     };
   }, [requestCamera, requestMicrophone]);
 
-  // The clock, and a backstop in case the native cap is ever late.
+  // The +2s check is a backstop in case the native cap is ever late.
   const maxDurationS = budget?.maxDurationS;
   useEffect(() => {
     if (phase !== "recording" || maxDurationS === undefined) return;
@@ -116,8 +106,7 @@ export default function VideoScreen() {
     setElapsedMs(0);
     setPhase("recording");
     try {
-      // Resolves when Stop is pressed or either cap is reached. On iOS the
-      // bitrate only applies when a codec is named; H.264 also plays in every
+      // On iOS the bitrate only applies when a codec is named; H.264 also plays in every
       // browser, where an HEVC original might not.
       const result = await camera.recordAsync({
         maxDuration: budget.maxDurationS,
@@ -141,7 +130,6 @@ export default function VideoScreen() {
 
   function stop() {
     setPhase("stopping");
-    // A tap straight after starting is held until the file has something in it.
     const wait = MIN_RECORDING_MS - (Date.now() - startedAtRef.current);
     if (wait > 0) setTimeout(() => liveCameraRef.current?.stopRecording(), wait);
     else liveCameraRef.current?.stopRecording();
@@ -165,7 +153,7 @@ export default function VideoScreen() {
   }
 
   function onReviewLoad(meta: VideoMeta) {
-    // The player's reading beats the stopwatch, and the camera reports no size.
+    // The camera reports no size, and the player's duration beats the stopwatch.
     setClip((current) =>
       current
         ? {
@@ -186,7 +174,7 @@ export default function VideoScreen() {
     try {
       bytes = new FsFile(clip.uri).size;
     } catch {
-      // Size is only for compose's early over-the-limit check; init still enforces it.
+      // Size only feeds compose's early limit check; upload init still enforces it.
     }
     const { mime, ext } = normalizeVideoType(null, clip.uri);
     const asset: DraftAsset = {
@@ -251,7 +239,6 @@ export default function VideoScreen() {
   );
 }
 
-/** Camera first; the microphone is only asked for once the camera is allowed. */
 async function accessGranted(
   requestCamera: () => Promise<{ granted: boolean }>,
   requestMicrophone: () => Promise<{ granted: boolean }>,

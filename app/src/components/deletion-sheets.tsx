@@ -10,14 +10,6 @@ import { SUPPORT_EMAIL } from "../support";
 import { Ionicons, type IoniconName } from "../styled";
 import { Field, Sheet, SheetButton, SheetError, SheetInput } from "./sheet";
 
-/**
- * Deleting a family, and deleting an account (A16). Both are for good: rows
- * and files go at once, for every member, with no trash and no restore. So
- * each sheet says plainly what goes, says how to save what matters first,
- * and asks for something typed before the red button works.
- */
-
-/** Where saving a memory lives (A17). Said the same way in both sheets. */
 const SAVE_FIRST =
   "Open a memory, tap ⋯ → Download, for each one you want to keep. Let the others in the family know, so they can save theirs too.";
 
@@ -105,7 +97,6 @@ export function DeleteFamilySheet({
 
 export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
   const session = useSession();
-  // Asked afresh each time the sheet opens: it's what's about to be deleted.
   const preview = useApiQuery<DeletionPreview>("/api/me/deletion", { scope: "account", staleTime: 0 });
   const [answer, setAnswer] = useState("");
   const [busy, setBusy] = useState(false);
@@ -117,7 +108,6 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
     setBusy(true);
     setError(null);
     try {
-      // Signs out when it's done; the session takes it from there.
       await session.deleteAccount(needsPassword ? answer : undefined);
     } catch (err) {
       setError(accountDeleteError(err));
@@ -160,7 +150,6 @@ export function DeleteAccountSheet({ onClose }: { onClose: () => void }) {
   }
 
   const families = data.deletes.length;
-  // Someone else loses a family too.
   const shared = data.deletes.some((f) => f.members > 1);
   return (
     <Sheet
@@ -257,7 +246,6 @@ function accountDeleteError(err: unknown) {
   return friendlyError(err, "Couldn't delete your account just now. Nothing was deleted.");
 }
 
-/** Typed to confirm: the name as shown, give or take spaces and capitals. */
 function sameName(typed: string, name: string) {
   return typed.trim().toLocaleLowerCase() === name.trim().toLocaleLowerCase();
 }
@@ -266,7 +254,6 @@ function plural(n: number, one: string, many = `${one}s`) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** The bold first line and the body of the Warning and SaveFirst notes. */
 const NOTE_TITLE = "font-sans-bold text-[15.5px] leading-[21px] text-ink";
 const NOTE_TEXT = "font-sans text-[14.5px] leading-[21px] text-ink";
 

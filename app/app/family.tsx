@@ -45,30 +45,18 @@ const SETTINGS = [
   { icon: "help-circle-outline" as const, label: "Support", detail: SUPPORT_EMAIL },
 ];
 
-/**
- * Family Hub is administrative rather than emotional, which is why it's a modal
- * instead of a permanent destination.
- *
- * Who's here comes from the family's memberships, each with its role. An owner
- * also sees the invite form, the pending invites and the member controls;
- * everyone else sees who's here and what they can do — the API refuses the
- * rest anyway (`403 forbidden_role`).
- */
 export default function FamilyHubScreen() {
   const query = useApiQuery<FamilyPayload>("/api/family");
   const { data, error } = query;
-  // Back from a person's page: their edits mark this stale as they save.
   useRefreshOnFocus(query);
   const isOwner = data?.role === "OWNER";
   const pending = useApiQuery<{ invites: Invite[] }>(isOwner ? "/api/family/invites" : null);
-  // Members and invites are Family Hub's; an invite also ticks Home's Getting Started.
   const membership = useMutation({
     mutationFn: ({ member, role }: { member: FamilyMember; role: MembershipRole | null }) =>
       role
         ? apiSend(`/api/family/members/${member.userId}`, "PATCH", { role })
         : apiSend(`/api/family/members/${member.userId}`, "DELETE"),
-    // Not after leaving: the family isn't theirs to read any more, and the
-    // account reload that follows forgets it.
+    // Not after leaving: the family is no longer theirs to read.
     onSettled: (_res, err, { member, role }) =>
       err || !(member.isYou && role === null) ? invalidate(["family"]) : undefined,
   });
@@ -83,7 +71,6 @@ export default function FamilyHubScreen() {
   const [removing, setRemoving] = useState<FamilyMember | null>(null);
   const [inviteActions, setInviteActions] = useState<Invite | null>(null);
   const [addingPerson, setAddingPerson] = useState(false);
-  // Home's "Invite" links here with ?invite=1, which opens the invite sheet.
   const linkedInvite = useLocalSearchParams<{ invite?: string }>().invite;
   const openInvite = inviting ?? (linkedInvite && isOwner ? {} : null);
   const closeInvite = () => {
@@ -96,9 +83,7 @@ export default function FamilyHubScreen() {
   if (!data) return <HubUnavailable error={error} retrying={query.isFetching} onRetry={() => void query.refetch()} />;
 
   const invitable = data.people.filter((p) => p.invitable);
-  // Adding (and, on their page, editing or deleting) people is contributors' work.
   const canContribute = data.role !== "VIEWER";
-  /** Do `work`, say what went wrong if it did (under `section`); true when it worked. */
   const attempt = async (section: HubNotice["section"], work: () => Promise<unknown>, fallback: string) => {
     setNotice(null);
     try {
@@ -116,7 +101,6 @@ export default function FamilyHubScreen() {
       () => membership.mutateAsync({ member, role }),
       "Couldn't change their role just now.",
     );
-    // Your own role changed: what the app lets you do changes with it.
     if (ok && member.isYou) await session.refreshAccount();
   };
 
@@ -126,8 +110,6 @@ export default function FamilyHubScreen() {
       () => membership.mutateAsync({ member, role: null }),
       "Couldn't remove them just now.",
     );
-    // You left (another owner remains): this family is no longer yours to
-    // look at. Reloading the account forgets what was cached for it.
     if (ok && member.isYou) leaveFor(() => void session.refreshAccount());
   };
 
@@ -374,7 +356,6 @@ export default function FamilyHubScreen() {
   );
 }
 
-/** Loading, or couldn't load — with the header, so there's always a way out of the modal. */
 function HubUnavailable({ error, retrying, onRetry }: { error: Error | null; retrying: boolean; onRetry: () => void }) {
   return (
     <>
@@ -396,7 +377,6 @@ const ROLE_ICON: Record<MembershipRole, IoniconName> = {
   VIEWER: "eye-outline",
 };
 
-/** The API's refusals here, in words. Anything else gets `fallback`. */
 const HUB_ERRORS: Record<string, string> = {
   last_owner: "A family needs at least one owner. Make someone else an owner first.",
   used: "That invite has already been used.",
@@ -414,11 +394,6 @@ function inviteMessage(familyName: string) {
   return `Join ${familyName} on little by little:`;
 }
 
-/**
- * "Also in the archive": children, and adults without an account. Each opens
- * their page (where a contributor edits or deletes them); an owner can invite
- * an adult from here, and a contributor can add someone new.
- */
 function OthersSection({
   people,
   isOwner,
@@ -472,11 +447,6 @@ function OthersSection({
   );
 }
 
-/**
- * Who's signed in, and the way out: switch family, sign out, and — for an
- * owner of any family — delete the account (A16). Anyone else is told who
- * can, and where to write instead.
- */
 function AccountSection({
   role,
   onSwitch,
@@ -533,7 +503,7 @@ function AccountSection({
   );
 }
 
-/** Every row's leading disc, so text lines up down the whole screen. `DISC` is the same size. */
+// `DISC` (h-10) is the same 40px.
 const LEADING = 40;
 const DISC = "h-10 w-10 items-center justify-center rounded-full";
 
@@ -542,13 +512,11 @@ const ROW_TITLE = "font-sans-semibold text-[15.5px] leading-[21px]";
 
 type HubNotice = { section: "members" | "invites"; text: string };
 
-/** What just happened (or went wrong), shown at the top of the section it happened in. */
 function Notice({ notice, section }: { notice: HubNotice | null; section: HubNotice["section"] }) {
   if (notice?.section !== section) return null;
   return <Text className="mb-2 type-caption text-accent-deep">{notice.text}</Text>;
 }
 
-/** A white card of `Row`s. */
 function Group({ children }: { children: ReactNode }) {
   return <View className="overflow-hidden rounded-md border border-line bg-surface">{children}</View>;
 }
@@ -562,7 +530,6 @@ function Row({
   destructive = false,
   first = false,
 }: {
-  /** The top row of its group: no hairline above it. */
   first?: boolean;
   leading: ReactNode;
   title: string;
@@ -579,7 +546,7 @@ function Row({
       className="min-h-16 flex-row items-center gap-3 px-4 py-3 active:bg-surface-alt"
     >
       {first ? null : (
-        // Between rows, starting under the text — past the row's padding, the leading disc and the gap.
+        // Starts past the row padding (16), the leading disc and the gap (12).
         <View
           className="absolute top-0 right-0 bg-line"
           style={{ left: 16 + LEADING + 12, height: StyleSheet.hairlineWidth }}
@@ -611,9 +578,7 @@ function LeadingIcon({
   tintClassName = "bg-surface-alt",
 }: {
   name: IoniconName;
-  /** An `accent-*` class for the glyph. */
   colorClassName?: string;
-  /** A `bg-*` class for the disc. */
   tintClassName?: string;
 }) {
   return (
@@ -637,11 +602,6 @@ function Initials({ name }: { name: string }) {
   );
 }
 
-/**
- * Make an invite: who it's for (someone already in the archive, or someone
- * new), what they'll be able to do, and optionally an address to email it to.
- * Then the link itself, to share however the family talks to each other.
- */
 function InviteSheet({
   familyName,
   people,
@@ -655,7 +615,6 @@ function InviteSheet({
 }) {
   const makeInvite = useMutation({
     mutationFn: (body: InviteCreate) => apiSend<{ invite: Invite; emailed: boolean }>("/api/family/invites", "POST", body),
-    // The waiting list, and Home's "Invite family to join".
     onSuccess: () => invalidate(["family", "home"]),
   });
   // "new" is someone not in the archive yet; otherwise a Person's id.
@@ -742,7 +701,6 @@ function InviteSheet({
       subtitle={`A link to join ${familyName}. It works once and lasts a week.`}
       footer={<SheetButton label="Create the link" onPress={() => void create()} busy={busy} />}
     >
-      {/* Only worth asking when there's someone in the archive to pick. */}
       {people.length ? (
         <Field label="Who is this?">
           <View className="flex-row flex-wrap gap-2">

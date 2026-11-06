@@ -1,26 +1,5 @@
-/**
- * One-off (A6): queue `media.derive` for every uploaded photo that doesn't
- * have both its THUMB and DISPLAY yet — the photos uploaded before the job
- * existed. Each run's `memory.refresh` then gives its memory a real palette.
- *
- *   npm run media:derive-backfill -- --dry-run   # count what would be queued
- *   npm run media:derive-backfill                # queue; a worker runs them
- *   npm run media:derive-backfill -- --wait      # queue, then run a worker here until they're done
- *
- * On Fly (compiled):
- *   fly ssh console -C "sh -c 'cd /app && node dist/scripts/derive-backfill.js --wait'"
- *
- * `--wait` matters there: the API's inline worker would pick the jobs up
- * too, but the machine suspends when no HTTP request holds it awake, and an
- * SSH session doesn't count. Running a worker in the script keeps the work
- * going for as long as the session lasts (the two workers share the queue
- * safely — SKIP LOCKED). `--family <id>` limits it to one family.
- *
- * Idempotent: a photo with a `media.derive` already waiting or running is
- * skipped, and the job itself skips a photo that has both renditions. Dates:
- * memories made before A6 have `occurredAtSource` HUMAN, so the backfill
- * fills `Media.capturedAt` but moves no memory's date.
- */
+// npm run media:derive-backfill -- [--dry-run] [--wait] [--family <id>]
+// Use --wait on Fly: the machine suspends when no HTTP request holds it awake, and an SSH session doesn't count.
 import type { Prisma } from "@prisma/client";
 import { jobQueue, startWorker } from "../jobs/index.js";
 import { logger } from "../lib/logger.js";
@@ -38,8 +17,6 @@ async function main() {
   const where: Prisma.MediaWhereInput = {
     type: "PHOTO",
     storageKey: { not: null },
-    // Missing either rendition (a run that died between the two writes
-    // leaves no rows at all, but be exact).
     OR: PHOTO_DERIVATIVE_KINDS.map((kind) => ({ derivatives: { none: { kind } } })),
     ...(familyId ? { memory: { familyId } } : {}),
   };
@@ -79,7 +56,6 @@ async function main() {
   await worker.stop();
 }
 
-/** The photo a queued `media.derive` is for, read defensively (it's JSON). */
 function queuedMediaId(payload: Prisma.JsonValue): string[] {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return [];
   const id = payload.mediaId;

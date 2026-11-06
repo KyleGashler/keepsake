@@ -21,22 +21,6 @@ import { Image, Ionicons, type IoniconName } from "../styled";
 import { layout, useColor } from "../theme";
 import { Twinkle } from "./brand";
 
-
-/**
- * The visual language of the Library journey redesign (design/mockups/):
- * big display titles over paper, photo cards with a soft light scrim, round
- * coloured discs for collections, hairline lists. Every screen in the journey
- * is assembled from these. The disc icon registry lives in src/icons.ts.
- */
-
-// ---------------------------------------------------------------------------
-// Sparkle
-// ---------------------------------------------------------------------------
-
-/**
- * The four-point star (the brand kit's twinkle) — beside a page title, and the
- * Mosaic tab's icon. Outlined by default, as the mockups draw it.
- */
 export function Sparkle({
   size = 22,
   color,
@@ -46,10 +30,9 @@ export function Sparkle({
   className,
 }: {
   size?: number;
-  /** Honey (`accent`) unless given. */
   color?: ColorValue;
   variant?: "outline" | "filled";
-  /** Outline weight in viewBox units (24), so it scales with `size`. */
+  /** In viewBox units (24), so it scales with `size`. */
   strokeWidth?: number;
   style?: StyleProp<ViewStyle>;
   className?: string;
@@ -65,11 +48,6 @@ export function Sparkle({
   );
 }
 
-// ---------------------------------------------------------------------------
-// IconDisc
-// ---------------------------------------------------------------------------
-
-/** A registry glyph (src/icons.ts) on its own. Unknown keys show sparkles. */
 export function Glyph({ icon, size, color }: { icon: string; size: number; color: string }) {
   const spec = iconSpec(icon);
   return spec.set === "ion" ? (
@@ -79,7 +57,6 @@ export function Glyph({ icon, size, color }: { icon: string; size: number; color
   );
 }
 
-/** A coloured circle with a glyph — a collection's face. Unknown icon keys fall back to sparkles. */
 export function IconDisc({
   icon,
   color,
@@ -88,7 +65,6 @@ export function IconDisc({
   className = "",
 }: {
   icon: string;
-  /** Disc colour, hex. */
   color: string;
   size?: number;
   style?: StyleProp<ViewStyle>;
@@ -104,17 +80,6 @@ export function IconDisc({
   );
 }
 
-// ---------------------------------------------------------------------------
-// PageHeader
-// ---------------------------------------------------------------------------
-
-/**
- * The top of every journey screen: an optional "‹ Library" back label, the
- * honey eyebrow, a big display title (with the sparkle, if asked), a
- * teal-grey subtitle, and an optional gear on the right. It sits inside the
- * screen's scroll content, so it scrolls away with the page.
- */
-/** Below this window width, a header's accessory moves up to the eyebrow's line. */
 const NARROW = 520;
 
 export function PageHeader({
@@ -132,30 +97,20 @@ export function PageHeader({
   children,
 }: {
   title: string;
-  /** e.g. "Little by little" — rendered in spaced capitals. */
   eyebrow?: string;
   subtitle?: string;
-  /** Shows "‹ {backLabel}" above the title. Goes back, or to `backFallback` on a cold deep link. */
   backLabel?: string;
   onBack?: () => void;
   backFallback?: Href;
-  /** The gold four-point star after the title. */
   sparkle?: boolean;
-  /** Puts the sparkle at the far right of the title line, as Child Profiles draws it. */
   sparkleAtEnd?: boolean;
-  /** Shows the gear button top-right. */
   onSettings?: () => void;
-  /** Shows a search button beside the gear. */
   onSearch?: () => void;
-  /** Sits before the search and gear buttons, e.g. `FamilyPill`. */
   accessory?: ReactNode;
-  /** Anything that belongs between the subtitle and the page body. */
   children?: ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
-  // On a phone the title, the accessory and the buttons don't fit on one
-  // line, so the accessory moves up to the eyebrow's, above the buttons.
   const eyebrowRow = !backLabel && !!eyebrow && !!accessory && width < NARROW;
   const besideButtons = eyebrowRow ? null : accessory;
   const goBack =
@@ -187,7 +142,6 @@ export function PageHeader({
         </View>
       ) : null}
       {eyebrowRow ? (
-        // mb-1: close to the title, as the eyebrow is when it sits alone.
         <View className="flex-row items-center justify-between mb-1 gap-3 min-h-11">
           <Text className="type-eyebrow">{eyebrow}</Text>
           {accessory}
@@ -207,10 +161,8 @@ export function PageHeader({
             {sparkle ? <Sparkle size={26} className={sparkleAtEnd ? "ml-auto pl-3 mt-1" : "ml-1.5 mt-0.5"} /> : null}
           </View>
         </View>
-        {/* Without a back row, the buttons sit level with the title (mt-3.5), as on the Library landing. */}
         {actions && !backLabel ? <View className={eyebrow ? "mt-3.5" : undefined}>{actions}</View> : null}
       </View>
-      {/* Full width, under the gear too, so a one-line subtitle stays one line. */}
       {subtitle ? <Text className="font-sans text-[16.5px] leading-[23px] text-ink-soft mt-1">{subtitle}</Text> : null}
       {children}
     </View>
@@ -243,15 +195,6 @@ function HeaderButton({
   );
 }
 
-// ---------------------------------------------------------------------------
-// PhotoCard
-// ---------------------------------------------------------------------------
-
-/**
- * A full-width rounded photo with its name over a soft paper-coloured scrim on
- * the left, a white chevron disc bottom-right, and an optional pencil top-right.
- * Without a photo it's a warm empty card, so a missing cover never looks broken.
- */
 export function PhotoCard({
   title,
   subtitle,
@@ -267,16 +210,12 @@ export function PhotoCard({
 }: {
   title: string;
   subtitle?: string | null;
-  /** Relative API paths are resolved with mediaUrl. */
   imageUrl?: string | null;
   onPress: () => void;
-  /** Shows the pencil button top-right. */
   onEdit?: () => void;
   editLabel?: string;
   height?: number;
-  /** Drawn instead of the photo when there's no `imageUrl` (e.g. a child's monogram). */
   backdrop?: ReactNode;
-  /** Swaps the pencil for a spinner while a new photo uploads. */
   busy?: boolean;
   style?: StyleProp<ViewStyle>;
   className?: string;
@@ -284,10 +223,8 @@ export function PhotoCard({
   const paper = useColor("paper");
   const gradientId = `scrim-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const uri = mediaUrl(imageUrl);
-  // The pencil is the card's sibling, not its child: a button inside a button
-  // is invalid on the web and steals the card's press on native.
+  // The pencil is the card's sibling: a button inside a button is invalid on the web and steals the press on native.
   return (
-    // Measured off design/mockups/01 and 02 (≈2.07 px per pt).
     <View className={`w-full rounded-[14px] bg-surface-alt shadow-card ${className}`} style={[{ height }, style]}>
       <Pressable
         onPress={onPress}
@@ -300,7 +237,6 @@ export function PhotoCard({
         ) : (
           backdrop
         )}
-        {/* Paper fading in from the left and the bottom, so ink type reads over any photo. */}
         <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" preserveAspectRatio="none">
           <Defs>
             <LinearGradient id={`${gradientId}-x`} x1="0" y1="0" x2="1" y2="0">
@@ -354,11 +290,6 @@ export function PhotoCard({
   );
 }
 
-// ---------------------------------------------------------------------------
-// SearchField
-// ---------------------------------------------------------------------------
-
-/** A pill-outlined search box. Filtering is the caller's job. */
 export function SearchField({
   value,
   onChangeText,
@@ -378,7 +309,7 @@ export function SearchField({
       style={style}
     >
       <Ionicons name="search" size={20} colorClassName="accent-ink" />
-      {/* outline-0: the web draws a focus ring on the input inside the pill; the pill is the field. */}
+      {/* outline-0: the web draws a focus ring on the input inside the pill. */}
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -403,14 +334,6 @@ export function SearchField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// ListRow
-// ---------------------------------------------------------------------------
-
-/**
- * A disc (or any leading element), a serif title, a sans description, a
- * chevron, and a hairline under the text. Pass `divider={false}` on the last row.
- */
 export function ListRow({
   title,
   description,
@@ -421,14 +344,11 @@ export function ListRow({
 }: {
   title: string;
   description?: string | null;
-  /** Usually an <IconDisc />. */
   leading?: ReactNode;
   onPress?: () => void;
   divider?: boolean;
-  /** Replaces the chevron. */
   trailing?: ReactNode;
 }) {
-  // The mockup's rhythm (03): discs nearly touching, about 58pt a row.
   return (
     <Pressable
       onPress={onPress}
@@ -457,11 +377,6 @@ export function ListRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// ArrangeButton
-// ---------------------------------------------------------------------------
-
-/** A small round icon button for moving or removing an item in a list being arranged. */
 export function ArrangeButton({
   icon,
   label,
@@ -490,11 +405,6 @@ export function ArrangeButton({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Layout helper
-// ---------------------------------------------------------------------------
-
-/** Centres journey content at phone width on a wide browser. */
 export function Column({
   children,
   style,

@@ -7,13 +7,8 @@ import { routes } from "../../routes";
 import { Image, Ionicons, type IoniconName } from "../../styled";
 import { paragraphs, pseudoWaveform } from "./helpers";
 
-// ---------------------------------------------------------------------------
-// Story / Original Words
-// ---------------------------------------------------------------------------
-
 export type WordsView = "story" | "transcript";
 
-/** The two-way pill at the top of the content card; the chosen side fills deep teal. */
 export function WordsToggle({ value, onChange }: { value: WordsView; onChange: (next: WordsView) => void }) {
   return (
     <View
@@ -42,16 +37,8 @@ export function WordsToggle({ value, onChange }: { value: WordsView; onChange: (
   );
 }
 
-/** Past this, a lead in the display serif reads as a wall; it falls back to the sans. */
 const SERIF_LEAD_MAX = 220;
 
-/**
- * The story. The first paragraph is the lead, set larger in teal-grey under
- * the title; the rest reads below it. A memory with nothing but words is all
- * story, so it's set bigger and roomier: the lead in the display serif (when
- * it's short enough to carry it — DM Serif is a display face) and the rest
- * in generous sans.
- */
 export function StoryText({ story, textOnly }: { story: string; textOnly: boolean }) {
   const [lead, ...rest] = paragraphs(story);
   if (!lead) return null;
@@ -81,13 +68,8 @@ export function StoryText({ story, textOnly }: { story: string; textOnly: boolea
   );
 }
 
-// ---------------------------------------------------------------------------
-// People
-// ---------------------------------------------------------------------------
-
 const STACK = 4;
 
-/** Who was there: overlapping faces, "+N" past four. "+N" opens the rest. */
 export function AvatarStack({ people }: { people: Person[] }) {
   const [all, setAll] = useState(false);
   const shown = all ? people : people.slice(0, STACK);
@@ -125,11 +107,6 @@ export function AvatarStack({ people }: { people: Person[] }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sections
-// ---------------------------------------------------------------------------
-
-/** A titled block under a hairline — "Media", "Audio", "Memory Details". */
 export function Section({ title, children, divider = true }: { title: string; children: ReactNode; divider?: boolean }) {
   return (
     <View
@@ -144,7 +121,6 @@ export function Section({ title, children, divider = true }: { title: string; ch
   );
 }
 
-/** One line of Memory Details: glyph and label on the left, the value on the right. */
 export function DetailRow({
   icon,
   label,
@@ -175,10 +151,6 @@ export function DetailValue({ children, onPress }: { children: string; onPress?:
     </Pressable>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Related
-// ---------------------------------------------------------------------------
 
 export function RelatedRow({ memories, linkedIds }: { memories: MemoryCard[]; linkedIds: string[] }) {
   const linked = new Set(linkedIds);
@@ -227,11 +199,6 @@ function RelatedCard({ memory, linked }: { memory: MemoryCard; linked: boolean }
   );
 }
 
-/**
- * A small card's picture. A photo when there is one; a memory of words gets
- * its opening words; a video with no photo shows its poster under a play
- * glyph; a recording gets a quiet waveform, never the generated stand-in.
- */
 export function CardArt({ memory, compact = false }: { memory: MemoryCard; compact?: boolean }) {
   const types = memory.mediaTypes;
   if (memory.isTextOnly) {
@@ -248,8 +215,7 @@ export function CardArt({ memory, compact = false }: { memory: MemoryCard; compa
     );
   }
   if (!types.includes("PHOTO") && types.includes("VIDEO")) {
-    // `heroUrl` is the video's poster frame. The deep tile shows through
-    // while the clip is still being prepared, and the glyph sits on top.
+    // `heroUrl` is the video's poster frame.
     return (
       <View className="absolute inset-0 items-center justify-center bg-ink">
         <Image

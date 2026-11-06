@@ -12,27 +12,6 @@ import { prisma } from "./prisma.js";
 import { extensionFor } from "./mime.js";
 import { mediaInclude, type MediaRow } from "./serialize.js";
 
-/**
- * Per-memory download (A17): every file a memory holds, as something a
- * person can save — the reason account and family deletion can say
- * "download what you want to keep first".
- *
- * - **Photos** are the original bytes: a short-lived storage read URL that
- *   answers `Content-Disposition: attachment`.
- * - **Recordings** are Mux's `audio.m4a` rendition (what plays), signed with
- *   Mux's `download` option so it saves under our filename.
- * - **Videos** (and a recording whose m4a never came) are Mux's master, the
- *   full-quality copy Mux keeps, through *temporary master access*: asked
- *   for on the first download, ready a little later, then good for 24 hours
- *   from the request. Until it's ready the file is `preparing`, and the
- *   client asks again. Mux refuses a second request while a master exists,
- *   so the state lives on the MuxAsset row (`master*`), fed by this module
- *   and by the `video.asset.master.*` webhooks.
- *
- * The demo family's generated placeholder images aren't files anyone
- * uploaded: they're counted as `unavailable`, not listed.
- */
-
 export type DownloadStatus = "ready" | "preparing" | "failed";
 
 export type DownloadFile = {
@@ -40,25 +19,15 @@ export type DownloadFile = {
   type: MediaType;
   filename: string;
   status: DownloadStatus;
-  /** Only when ready. Absolute, except a local-disk photo (`/media/o/…`, relative to the API). */
+  // Absolute, except a local-disk photo (`/media/o/…`, relative to the API).
   url?: string;
-  /** ISO-8601; when `url` stops working. */
   expiresAt?: string;
 };
 
-/** Look at Mux for a preparing master at most this often (the client polls every ~10s). */
 const MASTER_RECHECK_MS = 8_000;
-/** After Mux failed to prepare a master, wait this long before asking again. */
 const MASTER_RETRY_AFTER_ERROR_MS = 60_000;
-/** Don't hand out a master URL this close to lapsing; a download needs time to start. */
 const MASTER_MIN_REMAINING_MS = 2 * 60_000;
 
-/**
- * The memory's files, in the family's order (`Media.sortOrder`). Null when
- * the memory isn't this family's. Safe to call repeatedly — it's what the
- * client polls: a master already asked for is only looked at, never asked
- * for again until it lapses or failed.
- */
 export async function memoryDownloads(
   familyId: string,
   memoryId: string,
@@ -85,8 +54,6 @@ export async function memoryDownloads(
         return { ...base, ...(await fileFor(m, filename, host, now)) };
       } catch (err) {
         if (!(err instanceof MediaHostError)) throw err;
-        // One clip's trouble with Mux shouldn't sink the whole list. A
-        // retryable failure stays `preparing`, so the client asks again.
         options.log.warn({ err, mediaId: m.id }, "download: Mux request failed");
         return { ...base, status: err.retryable ? "preparing" : "failed" };
       }
@@ -100,25 +67,23 @@ type FileState = Pick<DownloadFile, "status" | "url" | "expiresAt">;
 async function fileFor(m: MediaRow, filename: string, host: MediaHost | null, now: Date): Promise<FileState> {
   const asset = m.muxAsset;
   if (!asset) {
-    // A photo, as uploaded. (Only rows with a key get here.)
     if (!m.storageKey) return { status: "failed" };
     const url = await storage().getReadUrl(m.storageKey, READ_URL_TTL_SECONDS, { downloadAs: filename });
     return { status: "ready", url, expiresAt: after(now, READ_URL_TTL_SECONDS * 1000) };
   }
   if (!host) return { status: "failed" }; // No Mux credentials on this server.
   if (asset.status === "FAILED") return { status: "failed" };
-  // Still uploading or transcoding: nothing to download yet.
   if (asset.status !== "READY" || !asset.assetId) return { status: "preparing" };
 
   if (m.type === "AUDIO" && asset.renditionStatus === "ready" && asset.playbackId) {
-    // Signed for at least READ_URL_TTL_SECONDS from now (see MuxMediaHost#sign).
     const url = await host.audioDownloadUrl(asset.playbackId, filename);
     return { status: "ready", url, expiresAt: after(now, READ_URL_TTL_SECONDS * 1000) };
   }
   return masterFile(host, asset, asset.assetId, filename, now);
 }
 
-/** The asset's master: hand it out if ready, look again if preparing, ask if there's none. */
+// Mux refuses a second temporary-master request while one exists (each lasts 24h from the
+// request), so the master's state lives on the MuxAsset row.
 async function masterFile(
   host: MediaHost,
   initial: MuxAsset,
@@ -143,8 +108,7 @@ async function masterFile(
       if (nowReady) return nowReady;
       if (row.masterStatus !== "errored") return { status: "preparing" };
     } else {
-      // Mux has no master after all (withdrawn early, or the request was
-      // lost): forget ours and ask again below.
+      // Mux withdrew the master early or lost the request.
       row = await update((r) => masterGonePatch(r));
     }
   }
@@ -152,17 +116,13 @@ async function masterFile(
     return { status: "failed" };
   }
 
-  // Never asked, lapsed, or failed a while ago: ask.
   const result = await host.requestMaster(assetId);
   row = await update((r) => masterRequestedPatch(r, result, now));
   return readyMaster(row, filename, now) ?? { status: row.masterStatus === "errored" ? "failed" : "preparing" };
 }
 
-/**
- * The master as a ready file, or null when there's no URL with time left on
- * it. The URL is Mux's with `download=<filename>` added — the one change
- * Mux allows to it, which makes the response an attachment under that name.
- */
+// Appending `download=<filename>` is the one change Mux allows to the URL; it makes the
+// response an attachment under that name.
 function readyMaster(row: MuxAsset, filename: string, now: Date): FileState | null {
   const { masterUrl: url, masterExpiresAt: expires } = row;
   if (row.masterStatus !== "ready" || !url || !expires) return null;
@@ -183,12 +143,6 @@ function after(now: Date, ms: number) {
   return new Date(now.getTime() + ms).toISOString();
 }
 
-/**
- * The saved file's extension. A photo keeps its original's (from the storage
- * key, which init derived from the type). A recording is the m4a rendition,
- * or an audio-only master, which is MP4-contained audio too; a video's
- * master is an MP4.
- */
 function extensionOf(m: MediaRow): string {
   if (m.muxAsset) return m.type === "AUDIO" ? ".m4a" : ".mp4";
   const key = m.storageKey ?? "";
@@ -197,10 +151,6 @@ function extensionOf(m: MediaRow): string {
   return /^\.[a-z0-9]{1,5}$/.test(fromKey) ? fromKey : extensionFor(m.mimeType ?? "") || ".bin";
 }
 
-/**
- * The memory's date as YYYY-MM-DD in the person's time zone (the client
- * sends it; the app picks dates in local time), else UTC.
- */
 export function calendarDay(date: Date, timeZone?: string): string {
   if (timeZone) {
     try {
@@ -209,7 +159,7 @@ export function calendarDay(date: Date, timeZone?: string): string {
         date,
       );
     } catch {
-      // Not a zone this runtime knows: fall through to UTC.
+      // Not a zone this runtime knows.
     }
   }
   return date.toISOString().slice(0, 10);
@@ -217,12 +167,6 @@ export function calendarDay(date: Date, timeZone?: string): string {
 
 const MAX_SLUG = 60;
 
-/**
- * `first-day-of-school-2024-09-03-2.jpg`: the title as plain ASCII words,
- * the date, the file's place among the memory's files (only when there's
- * more than one, zero-padded so they sort), and the extension. Safe in any
- * filesystem and in a URL; "memory" when the title has nothing usable.
- */
 export function downloadFilename(title: string, day: string, index: number, total: number, ext: string): string {
   const slug =
     title

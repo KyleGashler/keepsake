@@ -7,18 +7,8 @@ import { SUPPORT_EMAIL } from "../support";
 import { AuthFrame, Notice, TextLink } from "./auth-screens";
 import { Field, SheetButton, SheetError, SheetInput } from "./sheet";
 
-/**
- * Where the links in sign-in emails land — Firebase's "custom action URL",
- * in place of its unbranded hosted page. Firebase appends `mode`, `oobCode`,
- * `apiKey`, `continueUrl` and `lang`; only the first two matter here (when
- * the person is done they go to the app's start, which is where the continue
- * URL points anyway).
- *
- * The root layout shows this at AUTH_ACTION_PATH in every session phase,
- * signed out included, and calls `onDone` when the person moves on — from
- * then on the usual phase screen (sign-in, the archive, …) takes over.
- */
-
+// Firebase's custom action URL appends mode, oobCode, apiKey, continueUrl and
+// lang; only the first two matter here.
 type Mode = "verifyEmail" | "resetPassword" | "recoverEmail";
 
 function isMode(mode: string | undefined): mode is Mode {
@@ -57,25 +47,14 @@ export function AuthActionScreen({ onDone }: { onDone: () => void }) {
 
 type ModeProps = { code: string; codes: ActionCodes; onDone: () => void };
 
-// ---------------------------------------------------------------------------
-// Spending a code exactly once
-
-/**
- * Codes are single-use, and StrictMode (or a remount) runs effects twice — a
- * second `apply` would fail with "already used" and hide the success. So each
- * code's work starts once per page load, and its promise is kept here, one
- * map per kind of work.
- */
+// Codes are single-use and StrictMode runs effects twice, so each code's work
+// starts once per page load and its promise is kept here.
 const verifyRuns = new Map<string, Promise<{ email: string | null }>>();
 const resetChecks = new Map<string, Promise<string>>();
 const recoverRuns = new Map<string, Promise<ActionCodeInfo>>();
 
 type Outcome<T> = { status: "pending" } | { status: "done"; value: T } | { status: "failed"; error: AuthError };
 
-/**
- * Runs `work` once per `key` (not at all while `key` is null) and reports
- * how it went; `retry` starts it afresh.
- */
 function useOnce<T>(runs: Map<string, Promise<T>>, key: string | null, work: () => Promise<T>) {
   const [outcome, setOutcome] = useState<Outcome<T>>({ status: "pending" });
   const [attempt, setAttempt] = useState(0);
@@ -109,24 +88,16 @@ function useOnce<T>(runs: Map<string, Promise<T>>, key: string | null, work: () 
   return [outcome, retry] as const;
 }
 
-// ---------------------------------------------------------------------------
-// verifyEmail
-
 function VerifyEmail({ code, codes, onDone }: ModeProps) {
   const session = useSession();
-  // Wait for the saved session: whether someone is signed in here decides
-  // what happens after the code is applied.
   const restored = session.phase !== "restoring";
   const [outcome, retry] = useOnce(verifyRuns, restored ? code : null, async () => {
     const { email } = await codes.check(code);
     await codes.apply(code);
     const here = session.user;
     if (here && email && here.email.toLowerCase() === email.toLowerCase()) {
-      // Signed in as the person just verified: reload them and mint a token
-      // that says email_verified, so the API sees it now. This is also what
-      // finishes a dev-account takeover that was waiting on verify_email.
-      // The code is spent either way, so a failure here isn't the link's
-      // fault — Family Hub's "I've verified" can finish the job.
+      // Mint a token whose email_verified claim the API sees now. The code is spent
+      // either way, so a failure here isn't the link's fault.
       await session.confirmVerified().catch(() => false);
     }
     return { email };
@@ -179,7 +150,6 @@ function VerifyEmail({ code, codes, onDone }: ModeProps) {
   );
 }
 
-/** Expired verify link while signed in here: offer a fresh one. */
 function ResendVerification({ onDone }: { onDone: () => void }) {
   const { user, resendVerification } = useSession();
   const [busy, setBusy] = useState(false);
@@ -218,21 +188,16 @@ function ResendVerification({ onDone }: { onDone: () => void }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// resetPassword
-
 function ResetPassword({ code, codes, onDone }: ModeProps) {
   const session = useSession();
   const [checked, retry] = useOnce(resetChecks, code, () => codes.verifyPasswordReset(code));
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  /** After the new password is set: signing in with it, or (if that failed) asking them to. */
   const [stage, setStage] = useState<"form" | "entering" | "changed" | "expired">("form");
 
   const email = checked.status === "done" ? checked.value : null;
 
-  // Into the app once the provider reports the person signed in.
   const signedInAs = session.user?.email.toLowerCase() ?? null;
   useEffect(() => {
     if (stage === "entering" && email && signedInAs === email.toLowerCase()) onDone();
@@ -305,11 +270,6 @@ function ResetPassword({ code, codes, onDone }: ModeProps) {
   );
 }
 
-/**
- * An expired reset (or recovery) link: ask for a new reset email right here,
- * since the person may well be signed out and the old code can't tell us
- * whose it was.
- */
 function RequestReset({ kind, onDone }: { kind: "reset" | "recover"; onDone: () => void }) {
   const { user } = useSession();
   const [email, setEmail] = useState(user?.email ?? "");
@@ -375,10 +335,6 @@ function RequestReset({ kind, onDone }: { kind: "reset" | "recover"; onDone: () 
   );
 }
 
-// ---------------------------------------------------------------------------
-// recoverEmail
-
-/** Someone changed the account's email; this link changes it back. */
 function RecoverEmail({ code, codes, onDone }: ModeProps) {
   const [outcome, retry] = useOnce(recoverRuns, code, async () => {
     const info = await codes.check(code);
@@ -426,9 +382,6 @@ function RecoverEmail({ code, codes, onDone }: ModeProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Shared states
-
 function Checking({ title = "One moment", subtitle = "Checking your link…" }: { title?: string; subtitle?: string }) {
   return (
     <AuthFrame title={title} subtitle={subtitle}>
@@ -439,7 +392,6 @@ function Checking({ title = "One moment", subtitle = "Checking your link…" }: 
   );
 }
 
-/** Not the link's fault — usually the network. The code may still be good. */
 function Failed({ error, retry, onDone }: { error: AuthError; retry: () => void; onDone: () => void }) {
   return (
     <AuthFrame

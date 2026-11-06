@@ -8,11 +8,6 @@ import { draft } from "../../src/draft";
 import { pickLibraryMedia, takePhoto } from "../../src/pick-media";
 import { Ionicons } from "../../src/styled";
 
-/**
- * Capture should disappear into the background: pick how the moment wants to be
- * preserved, then get out of the way. Every path lands on the same compose
- * screen so nothing is lost if you change your mind halfway through.
- */
 const OPTIONS = [
   {
     key: "camera",
@@ -40,7 +35,6 @@ const OPTIONS = [
   },
 ];
 
-/** A VIEWER has no Capture tab, but a link can still land here. */
 export default function CaptureRoute() {
   if (!useCanContribute()) {
     return (
@@ -55,7 +49,6 @@ export default function CaptureRoute() {
 
 function CaptureScreen() {
   const [busy, setBusy] = useState<string | null>(null);
-  // "Capture a moment" opens in place to ask which: a photo or a video.
   const [momentOpen, setMomentOpen] = useState(false);
 
   async function choose(key: string) {
@@ -84,7 +77,6 @@ function CaptureScreen() {
     <>
       <AppHeader subtitle="Capture" title="Preserve a moment" />
       <Screen>
-        {/* Whimsical shape 4/6 — shooting star, for the moment that's going past. */}
         <View className="mb-4 flex-row items-center gap-3">
           <ShootingStar size={46} />
           <Text className="flex-1 type-body">

@@ -19,7 +19,6 @@ const PILLARS = [
     tagline: "The story of waiting, meeting, and falling in love.",
     description:
       "The anticipation, preparation, and transformation surrounding a child's arrival — however they came to you.",
-    /** Arrival Stories and Child Profiles are browsed one child at a time. */
     selectsPerson: true,
     coverSeed: "pillar-arrival",
   },
@@ -43,11 +42,6 @@ const PILLARS = [
 
 const PILLAR_KEYS = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"] as const satisfies readonly Pillar[];
 
-/**
- * A pillar card. `coverUrl` is the family's own cover when they've set one
- * (`customCover`) — its DISPLAY rendition, or the original until that's
- * made — else the generated default.
- */
 async function pillarDto(
   p: (typeof PILLARS)[number],
   cover: { storageKey: string; derivedKey: string | null } | undefined,
@@ -81,7 +75,6 @@ async function pillarsFor(familyId: string) {
   );
 }
 
-/** Children in the order the Library lists them. */
 function findChildren(familyId: string) {
   return prisma.person.findMany({
     where: { familyId, role: "CHILD" },
@@ -98,11 +91,6 @@ libraryRouter.get("/library", async (req, res) => {
 const pillarParam = z.enum(PILLAR_KEYS);
 const coverBody = z.object({ key: z.string().min(1).max(512) });
 
-/**
- * Set a pillar card's cover to an upload the family has finalized. The cover
- * it replaces is deleted, unless something else still holds it
- * (`setPicture`, lib/pictures.ts).
- */
 libraryRouter.put("/library/pillars/:key/cover", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const pillar = pillarParam.safeParse(req.params.key);
@@ -119,10 +107,6 @@ libraryRouter.put("/library/pillars/:key/cover", requireContributor, async (req,
   res.json({ pillar: pillars.find((p) => p.key === pillar.data) });
 });
 
-/**
- * Back to the generated default. The cover is deleted, unless something else
- * still holds it.
- */
 libraryRouter.delete("/library/pillars/:key/cover", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const pillar = pillarParam.safeParse(req.params.key);
@@ -183,7 +167,6 @@ libraryRouter.get("/collections", async (req, res) => {
   res.json({ collections: collections.map(collectionDto) });
 });
 
-/** One collection's archive (lib/archive.ts). */
 libraryRouter.get("/collections/:id", async (req, res) => {
   const family = req.ctx.family;
   const parsed = archiveFilters.safeParse(req.query);
@@ -210,7 +193,6 @@ const newCollection = z.object({
     .optional(),
 });
 
-/** "Add Collection" — families can shape the archive around their own life. */
 libraryRouter.post("/collections", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = newCollection.safeParse(req.body);
@@ -254,7 +236,6 @@ libraryRouter.post("/collections", requireContributor, async (req, res) => {
 
 const editCollection = z.object({
   name: z.string().trim().min(1).max(80).optional(),
-  /** Null (or empty) clears it. */
   description: z.string().trim().max(400).nullable().optional(),
   icon: z.enum(COLLECTION_ICONS).optional(),
   color: z
@@ -263,13 +244,7 @@ const editCollection = z.object({
     .optional(),
 });
 
-/**
- * Rename a collection, or change its description, glyph or colour. Any
- * collection, a child's defaults included: their `kind` is what the app
- * knows them by, so "Milestones" can become "Firsts" and still be drawn as
- * milestones (and the boot-time backfill leaves a renamed default alone).
- * Which pillar and child it belongs to don't change.
- */
+// Defaults are known by `kind`, so a renamed one is still drawn as its kind and the boot-time backfill leaves it alone.
 libraryRouter.patch("/collections/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = editCollection.safeParse(req.body);
@@ -295,11 +270,7 @@ libraryRouter.patch("/collections/:id", requireContributor, async (req, res) => 
   res.json({ collection: collectionDto(collection) });
 });
 
-/**
- * Delete a collection. The memories in it stay in the archive (and in any
- * other collection they're filed in); only this filing goes. A child's
- * defaults are suggestions and go like any other.
- */
+// The memories stay in the archive; only this filing goes.
 libraryRouter.delete("/collections/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const collection = await prisma.collection.findFirst({
@@ -312,7 +283,6 @@ libraryRouter.delete("/collections/:id", requireContributor, async (req, res) =>
   res.status(204).end();
 });
 
-/** Both of this family, or null — an id from elsewhere reads as absent. */
 async function findFiling(familyId: string, collectionId: string, memoryId: string) {
   const [collection, memory] = await Promise.all([
     prisma.collection.findFirst({ where: { id: collectionId, familyId }, select: { id: true } }),
@@ -321,7 +291,6 @@ async function findFiling(familyId: string, collectionId: string, memoryId: stri
   return collection && memory ? { collectionId: collection.id, memoryId: memory.id } : null;
 }
 
-/** File a memory in this collection. Already filed is a no-op. */
 libraryRouter.put("/collections/:id/memories/:memoryId", requireContributor, async (req, res) => {
   const filing = await findFiling(req.ctx.family.id, req.params.id, req.params.memoryId);
   if (!filing) return res.status(404).json({ error: "Not found" });
@@ -329,7 +298,6 @@ libraryRouter.put("/collections/:id/memories/:memoryId", requireContributor, asy
   res.status(204).end();
 });
 
-/** Take a memory out of this collection. The memory itself stays. Not filed is a no-op. */
 libraryRouter.delete("/collections/:id/memories/:memoryId", requireContributor, async (req, res) => {
   const filing = await findFiling(req.ctx.family.id, req.params.id, req.params.memoryId);
   if (!filing) return res.status(404).json({ error: "Not found" });

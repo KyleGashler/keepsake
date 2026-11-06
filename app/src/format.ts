@@ -15,7 +15,6 @@ export function shortDate(iso: string) {
   return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
-/** Journal-style relative time for the Family Updates feed. */
 export function relativeTime(iso: string) {
   const diff = Date.now() - new Date(iso).getTime();
   const mins = Math.round(diff / 60_000);
@@ -35,7 +34,6 @@ export function duration(seconds?: number | null) {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** A length limit in words: "2 minutes", "1 minute", "90 seconds". */
 export function lengthInWords(seconds: number) {
   if (seconds >= 60 && seconds % 60 === 0) {
     const m = seconds / 60;
@@ -44,7 +42,6 @@ export function lengthInWords(seconds: number) {
   return `${seconds} second${seconds === 1 ? "" : "s"}`;
 }
 
-/** Always-on m:ss for timers and scrubbers — "0:00" rather than nothing. */
 export function clock(seconds: number) {
   const total = Number.isFinite(seconds) && seconds > 0 ? Math.floor(seconds) : 0;
   const h = Math.floor(total / 3600);
@@ -53,19 +50,16 @@ export function clock(seconds: number) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
-/** Whole months from a birth date to `at`; negative before it. */
 function monthsOld(birthIso: string, at: Date) {
   const birth = new Date(birthIso);
   const months = (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth());
   return at.getDate() < birth.getDate() ? months - 1 : months;
 }
 
-/** Whole years old today; 0 without a birth date. */
 export function yearsOld(birthIso: string | null | undefined) {
   return birthIso ? Math.floor(monthsOld(birthIso, new Date()) / 12) : 0;
 }
 
-/** "5 years old" / "2 years, 4 months" — used on person cards. */
 export function ageFrom(birthIso?: string | null) {
   if (!birthIso) return null;
   const months = monthsOld(birthIso, new Date());
@@ -74,7 +68,6 @@ export function ageFrom(birthIso?: string | null) {
   return `${years} years`;
 }
 
-/** "Age 5", "Age 8 months", "Newborn" — how a child's card and header read. */
 export function childAge(birthIso?: string | null) {
   if (!birthIso) return null;
   const months = monthsOld(birthIso, new Date());
@@ -83,18 +76,15 @@ export function childAge(birthIso?: string | null) {
   return `Age ${Math.floor(months / 12)}`;
 }
 
-/** "1st", "22nd", "111th". */
 export function ordinal(n: number) {
   const teen = n % 100 >= 11 && n % 100 <= 13;
   return `${n}${teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
 }
 
-/** "6th Birthday · Friend Party" for a birthday's category; the name for everything else. */
 export function collectionName(c: { name: string; parentName: string | null }) {
   return c.parentName ? `${c.parentName} · ${c.name}` : c.name;
 }
 
-/** What deleting a collection leaves alone, for its confirmation. */
 export function deleteCollectionMessage(memoryCount: number) {
   if (memoryCount === 0) return "It's empty, so nothing else changes.";
   const memories =
@@ -104,31 +94,23 @@ export function deleteCollectionMessage(memoryCount: number) {
   return `${memories} Only this collection goes.`;
 }
 
-/** "Banks's" — copy names a child rather than guessing a pronoun. */
 export function possessive(name: string) {
   return `${name}'s`;
 }
 
-/** "1 memory", "248 memories". */
 export function count(n: number, singular: string, plural = `${singular}s`) {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
-/** What a caught error says, or `fallback` when what was thrown isn't an Error. */
 export function errorMessage(err: unknown, fallback = "") {
   return err instanceof Error ? err.message : fallback;
 }
 
-/** "Sep 2" — a date under a year heading, where the year is already said. */
 export function monthDay(iso: string) {
   const d = new Date(iso);
   return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}`;
 }
 
-/**
- * How old a child was on a given day: "age 4", "18 months", "newborn". Null
- * without a birthday, or for a day before it.
- */
 export function ageOn(birthIso: string | null | undefined, atIso: string) {
   if (!birthIso) return null;
   const months = monthsOld(birthIso, new Date(atIso));
@@ -140,11 +122,8 @@ export function ageOn(birthIso: string | null | undefined, atIso: string) {
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 
-/**
- * Birthdays are calendar dates the server stores as UTC midnight, so they're
- * read and written in UTC — a local reading puts a birthday a day early
- * anywhere west of Greenwich.
- */
+// Birthdays are stored as UTC midnight, so read and write them in UTC: local time puts them a day early
+// west of Greenwich.
 export function birthdayInput(iso?: string | null) {
   if (!iso) return "";
   const d = new Date(iso);
@@ -152,10 +131,6 @@ export function birthdayInput(iso?: string | null) {
   return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
 }
 
-/**
- * "2020-05-14" → the ISO the API takes; "" → null (no birthday); anything
- * that isn't a real date between 1900 and today → undefined (invalid).
- */
 export function parseBirthday(input: string): string | null | undefined {
   const text = input.trim();
   if (!text) return null;
@@ -168,7 +143,6 @@ export function parseBirthday(input: string): string | null | undefined {
   return date.toISOString();
 }
 
-/** "May 14, 2020" from a stored birthday, read in UTC (see birthdayInput). */
 export function birthdayLabel(iso?: string | null) {
   if (!iso) return null;
   const d = new Date(iso);
@@ -176,7 +150,6 @@ export function birthdayLabel(iso?: string | null) {
   return `${MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}, ${d.getUTCFullYear()}`;
 }
 
-/** "Age 6", "7 Collections", "248 Memories" — a child's header line, in parts. */
 export function childMeta(child: { birthDate: string | null; collectionCount: number; memoryCount: number }) {
   return [
     childAge(child.birthDate),
@@ -185,11 +158,6 @@ export function childMeta(child: { birthDate: string | null; collectionCount: nu
   ].filter((part): part is string => Boolean(part));
 }
 
-/**
- * What went wrong, in words a family can read. The API answers errors with
- * JSON (`{ error: "…" }`, or a validation dump); upload failures already
- * arrive as sentences.
- */
 export function friendlyError(err: unknown, fallback: string) {
   const message = err instanceof Error ? err.message : "";
   if (!message) return fallback;
@@ -207,13 +175,11 @@ export function friendlyError(err: unknown, fallback: string) {
   return /failed to fetch|network/i.test(message) ? "Can't reach the archive right now." : message;
 }
 
-/** The API's refusals of a delete or reorder, in words. */
 const REFUSALS: Record<string, string> = {
   person_is_member: "They have an account in this family. An owner can remove them in Family Hub first.",
   order_mismatch: "Something changed while you were arranging. Close this and try again.",
 };
 
-/** Like `friendlyError`, but with the API's known refusal codes said in words. */
 export function refusalMessage(err: unknown, fallback: string) {
   if (err instanceof ApiError && err.code && REFUSALS[err.code]) return REFUSALS[err.code];
   return friendlyError(err, fallback);
@@ -221,27 +187,17 @@ export function refusalMessage(err: unknown, fallback: string) {
 
 const SEASONS = ["Winter", "Spring", "Summer", "Fall"] as const;
 
-/**
- * "Summer 2026" — the season a date fell in, northern hemisphere, by
- * meteorological season (Dec–Feb winter, Mar–May spring, …). December belongs
- * to the winter of its own calendar year, so a date never reads as a year it
- * wasn't.
- */
+// Northern-hemisphere meteorological seasons; December counts toward its own year's winter.
 export function seasonOf(iso: string) {
   const d = new Date(iso);
   return `${SEASONS[Math.floor(((d.getMonth() + 1) % 12) / 3)]} ${d.getFullYear()}`;
 }
 
-/** "2026-08-18" — the local calendar day, as `<input type="date">` and the date fields use it. */
 export function isoDay(iso: string) {
   const d = new Date(iso);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-/**
- * `iso` moved to the calendar day `day` ("YYYY-MM-DD", local time), keeping
- * its time of day. Null if `day` isn't a real date.
- */
 export function withDay(iso: string, day: string) {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day.trim());
   if (!m) return null;

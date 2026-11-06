@@ -5,7 +5,6 @@ import { leaveFor } from "../routes";
 import { Ionicons } from "../styled";
 import { ActionSheet } from "./sheet";
 
-/** Every archive the person belongs to; picking another one switches to it. */
 export function FamilySwitchSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const session = useSession();
   return (
@@ -25,10 +24,6 @@ export function FamilySwitchSheet({ visible, onClose }: { visible: boolean; onCl
   );
 }
 
-/**
- * Beside search and settings on the tab landings: which family's archive this
- * is. For someone in more than one, it's also the way to switch — tap it.
- */
 export function FamilyPill() {
   const session = useSession();
   const [switching, setSwitching] = useState(false);
@@ -59,5 +54,5 @@ export function FamilyPill() {
   );
 }
 
-/** The height and fill of the round search and gear buttons beside it. */
+// Matches the height and fill of the round search and gear buttons beside it.
 const PILL = "h-11 max-w-[160px] rounded-full px-3 flex-row items-center gap-1 bg-surface-alt";

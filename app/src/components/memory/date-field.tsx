@@ -9,11 +9,6 @@ export type DateFieldProps = {
   accessibilityLabel?: string;
 };
 
-/**
- * A calendar day. On a phone it's typed as YYYY-MM-DD — the app has no
- * native date picker dependency yet; the web build uses the browser's own
- * (date-field.web.tsx). The caller validates with `withDay` (src/format.ts).
- */
 export function DateField({ value, onChange, accessibilityLabel = "Date" }: DateFieldProps) {
   return (
     <View className={`${fieldBox} flex-row items-center`}>

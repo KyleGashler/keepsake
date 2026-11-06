@@ -7,25 +7,15 @@ import { Ionicons, type IoniconName } from "../styled";
 import { AppHeader, Button } from "./ui";
 import { VideoClip, type VideoMeta } from "./video";
 
-/**
- * The parts of the video recorder that don't care how the frames are made.
- * `app/capture/video.tsx` (expo-camera) and `video.web.tsx` (getUserMedia +
- * MediaRecorder) each own their capture pipeline and render these, so the two
- * look and behave the same.
- */
-
 export type Facing = "front" | "back";
 
-/** The camera's black column, capped like every page so a wide browser keeps the phone layout. */
 const STAGE = "w-full max-w-page flex-1 self-center bg-black";
-// Record (or Retake) centred, with equal-width sides so it stays centred
-// whichever side buttons are showing.
+// Equal-width sides keep the record button centred whichever side buttons show.
 const CONTROLS = "flex-row items-center self-stretch";
 const CONTROLS_SIDE = "flex-1 flex-row items-center gap-2";
 const HINT = "text-center type-caption text-white/85";
 const STAGE_ERROR = "overflow-hidden rounded-sm bg-error/85 px-3 py-1.5 text-center type-caption text-surface";
 
-/** Asking for access, or explaining why there isn't any — the light pages around the camera. */
 export function RecorderNotice({
   state,
   onRetry,
@@ -33,7 +23,6 @@ export function RecorderNotice({
 }: {
   state: "asking" | "denied" | "insecure" | "unavailable";
   onRetry?: () => void;
-  /** For "unavailable": what went wrong, in words. */
   message?: string;
 }) {
   const web = Platform.OS === "web";
@@ -91,10 +80,6 @@ function stageHint(recording: boolean, nearlyDone: boolean, maxDurationS: number
   return nearlyDone ? "Almost out of time — it stops on its own." : "Recording…";
 }
 
-/**
- * The live camera: preview behind, controls over it. The timer always shows
- * how much is left, so the cap is never a surprise.
- */
 export function RecorderStage({
   preview,
   recording,
@@ -112,13 +97,11 @@ export function RecorderStage({
 }: {
   preview: ReactNode;
   recording: boolean;
-  /** Starting, stopping, or not ready yet: the button waits. */
   busy: boolean;
   elapsedS: number;
   maxDurationS: number;
   canFlip: boolean;
   onFlip: () => void;
-  /** Undefined hides the torch control (front camera, or the web). */
   torch?: boolean;
   onToggleTorch?: () => void;
   onRecord: () => void;
@@ -136,8 +119,7 @@ export function RecorderStage({
       <View className={STAGE}>
         <View className="absolute inset-0">{preview}</View>
 
-        {/* Every control lives down here: the top of the screen is where system
-            banners and browser prompts land, and they'd cover anything we put there. */}
+        {/* Controls stay at the bottom: system banners and browser permission prompts cover the top. */}
         <View
           className="absolute inset-x-0 bottom-0 items-center gap-3 px-4 pt-4"
           style={{ paddingBottom: insets.bottom + 24 }}
@@ -185,7 +167,6 @@ export function RecorderStage({
   );
 }
 
-/** Watch it back, then keep it or try again. */
 export function RecorderReview({
   uri,
   onLoad,

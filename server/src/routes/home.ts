@@ -4,7 +4,6 @@ import { imageUrl, mediaInclude, memoryCardDtos, personDto } from "../lib/serial
 
 export const homeRouter = Router();
 
-/** Warm, rotating lines that reinforce why the archive exists. */
 const WELCOME_LINES = [
   "Your family's story grew a little today.",
   "Somewhere in today is a moment worth keeping.",
@@ -15,14 +14,9 @@ const WELCOME_LINES = [
   "Today is already becoming a memory.",
 ];
 
-/** Said instead of a welcome line until the family's first memory. */
 const FIRST_DAY_LINE = "Welcome to your family's archive. Start with one small moment.";
 
-/**
- * Prompts for a family that has none of its own — every family made in the
- * app, since only the seed writes CapturePrompt rows — so Home always has
- * one moment to suggest.
- */
+// Only the seed writes CapturePrompt rows, so families made in the app use these.
 const DEFAULT_PROMPTS = [
   {
     id: "default-ordinary-day",
@@ -95,13 +89,9 @@ homeRouter.get("/home", async (req, res) => {
     prisma.familyMembership.count({ where: { familyId: family.id } }),
   ]);
 
-  // Prompts rotate daily. In a later version this is where the AI-generated
-  // prompt (upcoming birthdays, growth spurts, seasons) would come from.
   const promptPool = prompts.length ? prompts : DEFAULT_PROMPTS;
   const prompt = promptPool[dayIndex(now) % promptPool.length];
   const memoryCount = await prisma.memory.count({ where: { familyId: family.id } });
-  // Greet the person signed in, not the family; the account name stands in
-  // when they have no Person here.
   const viewerName = membership?.person?.name ?? req.ctx.user.displayName;
 
   res.json({
@@ -126,8 +116,6 @@ homeRouter.get("/home", async (req, res) => {
       createdAt: u.createdAt.toISOString(),
     })),
     stats: { memoryCount, personCount: people.length },
-    // Home's getting-started checklist; the app decides which steps this
-    // person's role can take, and hides the list once those are done.
     gettingStarted: {
       firstMemory: memoryCount > 0,
       addedSomeone: people.some((p) => p.role !== "CHILD" && p.id !== membership?.personId),

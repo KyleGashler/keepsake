@@ -13,18 +13,11 @@ type Results = { q: string; memories: MemoryCard[]; people: Person[]; collection
 
 const SUGGESTIONS = ["moon", "Grandma", "first", "Bear Lake", "laugh"];
 
-
-/**
- * One search across the whole archive — memories, transcripts, people, places.
- * Semantic search is a later conversation; this is honest keyword matching.
- */
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
-  // The server hears about it once typing pauses; a cleared box stops at once.
   const settled = useSettled(query.trim(), 220);
   const term = query.trim().length >= 2 && settled.length >= 2 ? settled : null;
   const search = useApiQuery<Results>(term ? `/api/search?q=${encodeURIComponent(term)}` : null, {
-    // The last results stay up while the next ones load.
     keepPrevious: true,
   });
   const results = term ? (search.data ?? null) : null;

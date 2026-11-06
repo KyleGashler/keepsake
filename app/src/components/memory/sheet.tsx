@@ -11,12 +11,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Ionicons, type IoniconName } from "../../styled";
 
-
-/**
- * A panel that rises from the bottom over a dimmed page. One Modal hosts
- * every sheet on the memory page and swaps what's inside, so moving from the
- * options menu to, say, the edit form never has two native modals in flight.
- */
+// One Modal hosts every sheet on the memory page and swaps its content, so two native modals are never in flight.
 export function Sheet({
   visible,
   onClose,
@@ -26,7 +21,6 @@ export function Sheet({
   visible: boolean;
   onClose: () => void;
   children: ReactNode;
-  /** Forms and pickers: most of the screen, so a list has room to scroll. */
   tall?: boolean;
 }) {
   const insets = useSafeAreaInsets();
@@ -53,7 +47,6 @@ export function Sheet({
   );
 }
 
-/** "Cancel · Edit Memory · Save" — the bar across the top of a form sheet. */
 export function SheetHeader({
   title,
   onCancel,
@@ -63,7 +56,6 @@ export function SheetHeader({
   title: string;
   onCancel?: () => void;
   cancelLabel?: string;
-  /** The deep-teal pill on the right. */
   action?: { label: string; onPress: () => void; disabled?: boolean };
 }) {
   return (
@@ -98,7 +90,6 @@ export function SheetHeader({
   );
 }
 
-/** One row of the options menu: an outline glyph, a label, a hairline under it. */
 export function SheetRow({
   icon,
   label,
@@ -113,7 +104,6 @@ export function SheetRow({
   onPress?: () => void;
   danger?: boolean;
   disabled?: boolean;
-  /** Quiet words on the right — "Coming soon". */
   note?: string;
   divider?: boolean;
 }) {
@@ -136,7 +126,6 @@ export function SheetRow({
   );
 }
 
-/** Small spaced capitals over a form field — "TITLE", "DATE". */
 export function FieldLabel({ children }: { children: string }) {
   return (
     <Text className="mb-1.5 font-sans-bold text-[11.5px] tracking-[1.2px] text-muted uppercase">{children}</Text>

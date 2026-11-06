@@ -18,12 +18,6 @@ import { useSettled } from "../../../../src/use-settled";
 
 type Category = BirthdayPayload["categories"][number];
 
-/**
- * One birthday: its categories as long rows (picture with media marks, name,
- * a line of story), any memories filed straight in Birthdays that belong
- * here, and Add a Category. Parents add, rename, reorder and remove
- * categories; tapping one opens its memories.
- */
 export default function BirthdayScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const [text, setText] = useState("");
@@ -70,7 +64,6 @@ export default function BirthdayScreen() {
 
   const { birthday, birthdays, child, otherMoments } = data;
   const n = birthday.birthday;
-  // While a new order saves, show it rather than the one the server last sent.
   const byId = new Map(data.categories.map((c) => [c.collection.id, c]));
   const categories = reorder.isPending
     ? reorder.variables.flatMap((cid) => byId.get(cid) ?? [])
@@ -278,7 +271,6 @@ function CategoryNameSheet({
   submitLabel: string;
   initial: string;
   onClose: () => void;
-  /** Saves, and marks stale what it changed. */
   onSubmit: (name: string) => Promise<void>;
 }) {
   const [name, setName] = useState(initial);

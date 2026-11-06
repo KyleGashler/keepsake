@@ -12,14 +12,8 @@ import { MediaHostError, mediaHost } from "../media-host/index.js";
 import { prisma } from "../lib/prisma.js";
 import { PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js";
 
-/**
- * How long a chain of polls keeps looking. Long enough for Mux to transcode
- * and caption a 40-minute clip several times over; past it, whatever is
- * still pending is marked FAILED (a webhook arriving later still fixes it).
- */
 export const SYNC_GIVE_UP_AFTER_MS = 6 * 60 * 60 * 1000;
 
-/** Quick at first (a short clip is ready in seconds), then easing off. */
 export function nextPollDelayMs(elapsedMs: number) {
   if (elapsedMs < 2 * 60_000) return 3_000;
   if (elapsedMs < 15 * 60_000) return 10_000;
@@ -27,20 +21,8 @@ export function nextPollDelayMs(elapsedMs: number) {
   return 2 * 60_000;
 }
 
-/**
- * `mux.sync`: ask Mux where one upload stands and merge the answer in.
- *
- * Enqueued at finalize (and poked by webhooks and the transcript retry), it
- * reads the upload until there's an asset, then the asset until it is
- * playable and its caption track is ready, then fetches the transcript text.
- * Each run that finds the asset unsettled queues the next look itself, with
- * a delay that grows with the time since the chain began. That's the safety
- * net for missed webhooks, and the whole mechanism in development, where
- * Mux can't reach the server.
- *
- * Mux errors that a retry can fix (network, 5xx, 429) are thrown, and the
- * queue retries them with its own backoff; anything else is permanent.
- */
+// Polling is the safety net for missed webhooks, and the only mechanism in
+// development, where Mux can't reach the server.
 export function muxSyncHandler(queue: JobQueue): JobHandler<"mux.sync"> {
   return {
     async run({ muxAssetId, startedAt }, ctx) {
@@ -87,8 +69,6 @@ export function muxSyncHandler(queue: JobQueue): JobHandler<"mux.sync"> {
     },
 
     async onFinalFailure({ muxAssetId }) {
-      // Mux kept refusing (or never answered). Stop showing "Preparing…"
-      // forever; a webhook that arrives later still moves it on.
       await updateMuxAsset({ id: muxAssetId }, giveUpPatch);
     },
   };

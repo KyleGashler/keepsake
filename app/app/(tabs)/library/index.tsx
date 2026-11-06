@@ -15,22 +15,14 @@ import { invalidate, useApiQuery, useRefreshOnFocus } from "../../../src/query";
 import { routes } from "../../../src/routes";
 import { layout } from "../../../src/theme";
 
-/** Child Profiles has its own screens; the other two pillars list their collections. */
 function open(pillar: LibraryPillar) {
   router.push(pillar.key === "CHILD_PROFILES" ? routes.children : routes.pillar(pillar.key));
 }
 
-/**
- * Library landing (design/mockups/01): the three Story Pillars as photo cards.
- * Child Profiles opens the children; the other two open their own
- * collections. The pencil on a card chooses its cover photo — or, once the
- * family has chosen one, offers to go back to the default.
- */
 export default function LibraryScreen() {
   const library = useApiQuery<LibraryPayload>("/api/library");
   const { data, error } = library;
   useRefreshOnFocus(library);
-  // A cover is the Library's alone.
   const cover = useMutation({
     mutationFn: ({ pillar, key }: { pillar: PillarKey; key: string | null }) =>
       key
@@ -71,8 +63,7 @@ export default function LibraryScreen() {
     }
   }
 
-  // A default cover goes straight to the picker (the press is what lets a
-  // browser open it); a chosen one asks first, so "back to default" is findable.
+  // A default cover goes straight to the picker: browsers only open it from the press itself.
   function editCover(pillar: LibraryPillar) {
     if (pillar.customCover) setMenuFor(pillar);
     else void chooseCover(pillar);
@@ -111,7 +102,6 @@ export default function LibraryScreen() {
             <SheetError message={problem} />
           </View>
         ) : null}
-        {/* Cards run wider than the type above them, as in the mockup. */}
         <View className="-mx-2.5 gap-4">
           {pillars.map((pillar) => (
             <PhotoCard

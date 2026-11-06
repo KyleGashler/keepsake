@@ -34,13 +34,7 @@ import {
 import { SUPPORT_EMAIL } from "../support";
 import { persistence } from "./firebase-persistence";
 
-/**
- * Firebase Auth through the Firebase JS SDK — the same code on the web and in
- * Expo Go (no native module, so no dev build). Email + password only for now.
- *
- * Config comes from EXPO_PUBLIC_FIREBASE_* at bundle time. Each variable is
- * read by its full literal name because that is the only form Metro inlines.
- */
+// Each variable is read by its full literal name: that's the only form Metro inlines.
 function firebaseConfig(): FirebaseOptions {
   const config = {
     apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY,
@@ -60,39 +54,27 @@ function firebaseConfig(): FirebaseOptions {
   return config;
 }
 
-/** Fast Refresh re-runs this module; Firebase allows one app and one Auth per process. */
+// Fast Refresh re-runs this module; Firebase allows one app and one Auth per process.
 function firebaseAuth(): Auth {
   const app = getApps().length ? getApp() : initializeApp(firebaseConfig());
   let auth: Auth;
   try {
     auth = initializeAuth(app, { persistence });
   } catch {
-    // auth/already-initialized — the earlier instance is the one to use (and
-    // is already pointed at the emulator, if it should be).
+    // auth/already-initialized: reuse the earlier instance.
     return getAuth(app);
   }
-  // Development aid only: the local Firebase Auth emulator, which accepts any
-  // password and hands out emailed links' codes over HTTP (see README).
   const emulator = process.env.EXPO_PUBLIC_FIREBASE_AUTH_EMULATOR;
   if (emulator) connectAuthEmulator(auth, emulator, { disableWarnings: true });
   return auth;
 }
 
-/**
- * Where the "continue" in an emailed link should lead: the web app's own
- * origin. Natively there's no web origin the app can honestly claim (the
- * hosted demo is one deployment among several), so no continue URL is sent.
- */
 function continueSettings(): ActionCodeSettings | undefined {
   if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
   return { url: window.location.origin };
 }
 
-/**
- * Sends an email with a continue URL when there is one, and without when
- * Firebase refuses it — a domain missing from Authentication → Settings →
- * Authorized domains shouldn't stop anyone from getting their link.
- */
+// Firebase rejects a continue URL on a domain missing from Authorized domains; send without one then.
 async function sendWithContinueUrl(send: (settings?: ActionCodeSettings) => Promise<void>) {
   const settings = continueSettings();
   if (!settings) return send();
@@ -114,7 +96,6 @@ function codeOf(err: unknown) {
   return typeof err === "object" && err && "code" in err ? String(err.code) : undefined;
 }
 
-/** Firebase's error codes, said the way a family would want to hear them. */
 function friendly(err: unknown): AuthError {
   const code = codeOf(err);
   switch (code) {
@@ -144,7 +125,6 @@ function friendly(err: unknown): AuthError {
     case "auth/invalid-api-key":
     case "auth/api-key-not-valid":
     case "auth/api-key-not-valid.-please-pass-a-valid-api-key.":
-      // A build with the wrong (or placeholder) EXPO_PUBLIC_FIREBASE_* values.
       return new AuthError("Sign-in isn't set up correctly in this build. Please let us know.", code);
     case "auth/expired-action-code":
     case "auth/invalid-action-code":
@@ -154,7 +134,6 @@ function friendly(err: unknown): AuthError {
   }
 }
 
-/** For a password typed to confirm something (deleting the account): only the password can be wrong. */
 function friendlyReauth(err: unknown): AuthError {
   const code = codeOf(err);
   if (code === "auth/invalid-credential" || code === "auth/invalid-login-credentials" || code === "auth/wrong-password") {
@@ -163,10 +142,6 @@ function friendlyReauth(err: unknown): AuthError {
   return friendly(err);
 }
 
-/**
- * The same, for codes from emailed links: there, "user not found" means the
- * account behind the link is gone, not a mistyped password.
- */
 function friendlyLink(err: unknown): AuthError {
   if (codeOf(err) === "auth/user-not-found") {
     return new AuthError("The account this link was for no longer exists.", "auth/user-not-found");
@@ -174,7 +149,6 @@ function friendlyLink(err: unknown): AuthError {
   return friendly(err);
 }
 
-/** Firebase's out-of-band codes, behind the provider-neutral `ActionCodes`. */
 class FirebaseActionCodes implements ActionCodes {
   constructor(private readonly auth: Auth) {}
 
@@ -223,11 +197,7 @@ export class FirebaseAuthProvider implements AuthProvider {
   readonly actionCodes: ActionCodes;
   private readonly listeners = new Set<(user: AuthUser | null) => void>();
   private restored = false;
-  /**
-   * While signUp is between creating the account and setting its name, the
-   * new user isn't announced: the app's first API call would otherwise carry
-   * a token without the name, and the server records names on first sight.
-   */
+  // Held through signUp until the name is set: the server records a name from the first token it sees.
   private holdChanges = false;
 
   constructor() {
@@ -271,8 +241,6 @@ export class FirebaseAuthProvider implements AuthProvider {
         // The ID token minted at creation predates the name; mint one with it.
         await user.getIdToken(true);
       }
-      // Not awaited into failure: the account exists either way, and the
-      // verify-email nudge has a resend button.
       await sendWithContinueUrl((settings) => sendEmailVerification(user, settings)).catch(() => undefined);
     } catch (err) {
       throw friendly(err);
@@ -329,11 +297,7 @@ export class FirebaseAuthProvider implements AuthProvider {
     return user.getIdToken(forceRefresh);
   }
 
-  /**
-   * Reauthenticate first: it proves the password before anything is deleted,
-   * and it makes the sign-in recent, so `deleteUser` can't then fail with
-   * `auth/requires-recent-login` after the server's side is already gone.
-   */
+  // Reauthenticate first, so deleteUser can't fail with auth/requires-recent-login once the server's side is gone.
   async deleteAccount({ password, deleteOnServer }: { password?: string; deleteOnServer: () => Promise<void> }) {
     const user = this.auth.currentUser;
     if (!user?.email) throw new AuthError("Sign in first.");
@@ -349,8 +313,6 @@ export class FirebaseAuthProvider implements AuthProvider {
     try {
       await deleteUser(user);
     } catch (err) {
-      // The archive side is gone; the sign-in identity outlived it. Signing
-      // in with it again only starts a fresh, empty account.
       // oxlint-disable-next-line no-console -- worth seeing in the console; the person is signed out either way
       console.warn(`[auth] Deleted the account's data, but not its Firebase identity (${codeOf(err) ?? "unknown"}).`);
     }

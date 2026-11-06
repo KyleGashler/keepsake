@@ -9,7 +9,6 @@ import { layout } from "../theme";
 import { BrandMark, Wordmark } from "./brand";
 import { Sparkle } from "./journey";
 
-
 export function Screen({
   children,
   scroll = true,
@@ -20,7 +19,6 @@ export function Screen({
   padded?: boolean;
 }) {
   const insets = useSafeAreaInsets();
-  // pt-4: with the header's own pb-2, the page header's gap (after-header) above the content.
   const body = (
     <View className={`w-full max-w-page self-center pt-4 ${padded ? "px-gutter" : ""}`}>{children}</View>
   );
@@ -36,10 +34,6 @@ export function Screen({
   );
 }
 
-/**
- * Search and Family Hub live in the top-right corner on every destination,
- * per the product architecture.
- */
 export function AppHeader({
   title,
   subtitle,
@@ -53,16 +47,12 @@ export function AppHeader({
   subtitle?: string;
   back?: boolean;
   globalActions?: boolean;
-  /** A screen's own control on the right (a ⋯ menu), before the global ones. */
   action?: ReactNode;
-  /** Primary logo, in place of the label/title pair. Home only. */
   wordmark?: boolean;
-  /** The K mark, alongside the label/title pair. */
   mark?: boolean;
 }) {
   const insets = useSafeAreaInsets();
   return (
-    // pb-2: room under a pinned header's title before the page scrolls beneath it.
     <View className="bg-paper pb-2" style={{ paddingTop: insets.top + layout.top }}>
       <View className="w-full max-w-page self-center px-gutter flex-row items-center justify-between gap-3">
         <View className="flex-row items-center gap-2 shrink">
@@ -111,7 +101,6 @@ export function AppHeader({
 
 const ICON_BUTTON = "w-[38px] h-[38px] rounded-full items-center justify-center bg-surface border border-line";
 
-/** A round icon button for AppHeader's `action`, the same as its search and Family Hub buttons. */
 export function HeaderButton({
   icon,
   label,
@@ -135,7 +124,6 @@ export function SectionHeader({
 }: {
   label: string;
   action?: ReactNode;
-  /** Directly under the page header, which already leaves its own space. */
   first?: boolean;
 }) {
   return (
@@ -146,7 +134,6 @@ export function SectionHeader({
   );
 }
 
-/** A compact pill button, the size of a section header's action. */
 export function SmallButton({
   label,
   icon,
@@ -214,7 +201,6 @@ export function Avatar({ person, size = 56 }: { person: Person; size?: number })
         contentFit="cover"
         transition={200}
       />
-      {/* The avatar is a generated orb, so their initials say whose it is. */}
       <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
         <Text
           className="font-sans-bold text-cream tracking-[0.5px]"
@@ -357,11 +343,6 @@ export function Loading({ label = "Gathering memories…" }: { label?: string })
   );
 }
 
-/**
- * The shape every whole-screen state shares — error, not found, view only,
- * empty: a mark in a soft disc, a serif title, a line of explanation, and one
- * thing to do about it.
- */
 function StatePanel({
   mark,
   title,
@@ -374,7 +355,6 @@ function StatePanel({
   title: string;
   body?: string;
   action?: ReactNode;
-  /** On a warm panel (empty states), rather than straight on the page. */
   panel?: boolean;
   role?: "alert" | "summary";
 }) {
@@ -395,20 +375,13 @@ function StatePanel({
   );
 }
 
-/** What went wrong, for a family rather than a log. */
 function describeError(error: Error) {
-  // The API's own message names a status and a request path — useful in a
-  // log, not on a family's screen.
   if (isForbiddenRole(error)) return error.message;
   if (error instanceof ApiError) return `The archive couldn't answer just now (${error.status}). Please try again.`;
   if (/failed to fetch|network|load failed/i.test(error.message)) return "Check your connection and try again.";
   return error.message || "Something went wrong. Please try again.";
 }
 
-/**
- * A screen's data didn't load. `retrying` while the retry is in flight, so
- * the button says so instead of seeming to do nothing.
- */
 export function ErrorState({
   error,
   onRetry,
@@ -441,10 +414,6 @@ export function ErrorState({
   );
 }
 
-/**
- * Part of a screen or sheet didn't load — a list in a picker, a section
- * under a page that did. One line and a retry, in place.
- */
 export function InlineError({
   error,
   onRetry,
@@ -465,11 +434,6 @@ export function InlineError({
   );
 }
 
-/**
- * A query whose last fetch failed: in place, with a retry — and nothing while
- * it's trying again. For a section that has nothing else to show, or a
- * refresh that failed under data still on screen.
- */
 export function QueryError({
   query,
 }: {
@@ -479,10 +443,6 @@ export function QueryError({
   return <InlineError error={query.error} onRetry={() => void query.refetch()} />;
 }
 
-/**
- * A 404 from a screen opened by id: the thing was deleted, belongs to another
- * family, or the link is stale. Not an outage, so no retry — just a way back.
- */
 export function NotFoundState({
   title,
   body = "It may have been removed, or the link is out of date.",
@@ -505,10 +465,6 @@ export function NotFoundState({
   );
 }
 
-/**
- * A screen for adding to the archive, reached by someone whose role only lets
- * them look (a VIEWER, by a link or a stale tab). Says so, and offers a way out.
- */
 export function ViewOnlyState({ onBack }: { onBack: () => void }) {
   return (
     <StatePanel
@@ -521,11 +477,6 @@ export function ViewOnlyState({ onBack }: { onBack: () => void }) {
   );
 }
 
-/**
- * Nothing here yet — an invitation, not a dead end. On the warm panel the
- * first-memory and first-child invitations use, with the honey sparkle unless
- * an icon says more.
- */
 export function EmptyState({
   title,
   body,
@@ -549,7 +500,6 @@ export function EmptyState({
   );
 }
 
-/** Marks the places where a v0 stub stands in for a real capability. */
 export function PreviewNote({ children }: { children: ReactNode }) {
   return (
     <View className="flex-row gap-2 items-center bg-surface-alt rounded-md p-3 mt-4">

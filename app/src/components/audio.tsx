@@ -12,12 +12,6 @@ import { useClipPlayback } from "../audio";
 import { clock } from "../format";
 import { Ionicons } from "../styled";
 
-/**
- * One recording, playable in place: play/pause, a seekable track, and time.
- * Used in compose and on the recorder's review step, so a clip looks and
- * behaves the same everywhere it appears. The memory page draws the same
- * playback as a waveform (components/memory/waveform.tsx).
- */
 export function AudioClip({
   uri,
   title,
@@ -25,7 +19,6 @@ export function AudioClip({
 }: {
   uri: string;
   title: string;
-  /** What the server (or recorder) knows; see `useClipPlayback`. */
   durationS?: number | null;
 }) {
   const { playing, position, total, failed, toggle, seek, scrub } = useClipPlayback(uri, durationS);
@@ -70,13 +63,7 @@ export function AudioClip({
   );
 }
 
-/**
- * A seekable area: tap anywhere to jump, drag to scrub, seek on release, and
- * ±5 s from assistive tech. What it looks like is the children's business —
- * a rail and thumb, a waveform — and they must ignore touches
- * (`pointerEvents: "none"` in their style). Plain responders, so it works the same under
- * react-native-web and needs no slider dependency.
- */
+// Children must ignore touches (`pointer-events-none`) so locationX is measured from the track.
 export function ScrubTrack({
   value,
   max,
@@ -93,7 +80,6 @@ export function ScrubTrack({
   onScrub: (seconds: number) => void;
   onCommit: (seconds: number) => void;
   label?: string;
-  /** The track's laid-out width, for children that draw to it. */
   onWidth?: (width: number) => void;
   className?: string;
   style?: StyleProp<ViewStyle>;
@@ -122,7 +108,6 @@ export function ScrubTrack({
       onMoveShouldSetResponder={() => enabled}
       onResponderTerminationRequest={() => false}
       onResponderGrant={(e) => {
-        // Children ignore touches, so locationX is measured from the track.
         originX.current = e.nativeEvent.pageX - e.nativeEvent.locationX;
         onScrub(at(e));
       }}
@@ -145,7 +130,6 @@ export function ScrubTrack({
   );
 }
 
-/** A rail-and-thumb track. */
 function Scrubber({
   value,
   max,

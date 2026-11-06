@@ -3,7 +3,6 @@ import { ScrollView, Text, View } from "react-native";
 import { Column, PageHeader, Sparkle } from "../../src/components/journey";
 import { FamilyPill } from "../../src/components/family-switcher";
 
-/** A placeholder until the Timeline has its own milestone. */
 export default function TimelineScreen() {
   return (
     <ScrollView className="flex-1 bg-paper" showsVerticalScrollIndicator={false}>

@@ -2,21 +2,9 @@ import { Text, View, type ColorValue, type StyleProp, type ViewStyle } from "rea
 import Svg, { Circle, G, Path } from "react-native-svg";
 import { useColor } from "../theme";
 
-/**
- * The little by little brand kit.
- *
- * Two logo lockups — the wordmark and the mark — plus the six approved
- * whimsical shapes. The guide is explicit that the shapes are used "sparingly
- * to bring moments of wonder and delight", so each one appears exactly once in
- * the app; the map of where lives in the comment above each usage.
- *
- * Both lockups are typeset placeholders until the new logo artwork exists:
- * the name in the display serif with the twinkle. The app icons are drawn the
- * same way by design/make_icons.py — change both together.
- */
+// design/make_icons.py draws the app icons the same way; change both together.
 
 type ShapeProps = {
-  /** Width in points; height follows each shape's own aspect ratio. */
   size?: number;
   color?: string;
   opacity?: number;
@@ -24,34 +12,24 @@ type ShapeProps = {
   className?: string;
 };
 
-/** The signature four-point star. Every other sparkle in the kit reuses it. */
 const TWINKLE =
   "M12 1 C12.5 7.5 16.5 11.5 23 12 C16.5 12.5 12.5 16.5 12 23 " +
   "C11.5 16.5 7.5 12.5 1 12 C7.5 11.5 11.5 7.5 12 1 Z";
 
-// ---------------------------------------------------------------------------
-// Logos
-// ---------------------------------------------------------------------------
-
-/** Primary logo: the name with its twinkle. */
 export function Wordmark({
   width = 150,
   color,
   accent,
   style,
 }: {
-  /** Rendered width in points; the type is sized to fill it. */
   width?: number;
   color?: string;
   accent?: string;
   style?: StyleProp<ViewStyle>;
 }) {
-  // The logotype is drawn in a neutral near-black (logo-ink), not in the
-  // app's ink — the logo keeps its own colour wherever it appears.
   const logoInk = useColor("logo-ink");
   const honey = useColor("accent");
-  // DM Serif Display sets "little by little" about 6.6 ems wide; the twinkle
-  // takes the rest.
+  // DM Serif Display sets "little by little" about 6.6 ems wide; the twinkle takes the rest.
   const fontSize = width / 7.4;
   return (
     <View
@@ -73,10 +51,6 @@ export function Wordmark({
   );
 }
 
-/**
- * Icon / mark: "lbl" in its ring. For the app icon and small spaces where the
- * full logo does not fit.
- */
 export function BrandMark({
   size = 40,
   color,
@@ -114,14 +88,7 @@ export function BrandMark({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Whimsical shapes & accents
-// ---------------------------------------------------------------------------
-
-/**
- * Twinkle — the four-point star on its own. Pass `strokeWidth` (in 24-unit
- * viewBox terms) to draw it outlined, as the redesign's sparkle does.
- */
+// `strokeWidth` is in viewBox units (24 across).
 export function Twinkle({
   size = 14,
   color,
@@ -149,7 +116,6 @@ export function Twinkle({
   );
 }
 
-/** Stardust cluster — a scatter of dots with one small star among them. */
 export function StardustCluster({ size = 44, color, opacity = 1, style, className = "" }: ShapeProps) {
   const honey = useColor("accent");
   const tint = color ?? honey;
@@ -175,7 +141,6 @@ export function StardustCluster({ size = 44, color, opacity = 1, style, classNam
   );
 }
 
-/** Shooting star — a twinkle with its trail. */
 export function ShootingStar({ size = 44, color, opacity = 1, style, className = "" }: ShapeProps) {
   const honey = useColor("accent");
   const tint = color ?? honey;
@@ -198,7 +163,6 @@ export function ShootingStar({ size = 44, color, opacity = 1, style, className =
   );
 }
 
-/** Story arc — the dome a story travels over. */
 export function StoryArc({ size = 60, color, opacity = 1, style, className = "" }: ShapeProps) {
   const honey = useColor("accent");
   const tint = color ?? honey;
@@ -219,7 +183,6 @@ export function StoryArc({ size = 60, color, opacity = 1, style, className = "" 
   );
 }
 
-/** Dream cloud — flat-bottomed, soft on top. */
 export function DreamCloud({ size = 48, color, opacity = 1, style, className = "" }: ShapeProps) {
   const honey = useColor("accent");
   const tint = color ?? honey;
@@ -246,7 +209,6 @@ export function DreamCloud({ size = 48, color, opacity = 1, style, className = "
   );
 }
 
-/** Little moon — a thin crescent. */
 export function LittleMoon({ size = 24, color, opacity = 1, style, className = "" }: ShapeProps) {
   const honey = useColor("accent");
   const tint = color ?? honey;

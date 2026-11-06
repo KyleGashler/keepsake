@@ -5,16 +5,10 @@ import { duration } from "../../format";
 import { Image, Ionicons } from "../../styled";
 import { VideoStill } from "./video-still";
 
-/** Tiles in the row; the last becomes "+N" when there are more. */
 const TILES = 4;
-/** The row's `gap-2`, for sizing the tiles. */
+// Matches the row's `gap-2`.
 const GAP = 8;
 
-/**
- * "Media": every photo and video on the memory as a row of square tiles —
- * videos with a play glyph and their length — the fourth turning into "+N"
- * when there are more. Any tile opens the full-screen viewer there.
- */
 export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (index: number) => void }) {
   const [width, setWidth] = useState(0);
   const size = width > 0 ? (width - GAP * (TILES - 1)) / TILES : 0;
@@ -66,7 +60,6 @@ export function MediaGallery({ items, onOpen }: { items: MediaItem[]; onOpen: (i
   );
 }
 
-/** A photo, or a video's still. */
 export function Thumb({ item }: { item: MediaItem }) {
   if (item.type === "VIDEO") return <VideoStill item={item} />;
   return (

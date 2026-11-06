@@ -1,4 +1,4 @@
-/** heic-decode 2.x ships no types. Only the one-image form is used (lib/photo-derivatives.ts). */
+// heic-decode 2.x ships no types.
 declare module "heic-decode" {
   function decode(input: { buffer: Uint8Array | ArrayBufferLike }): Promise<{
     width: number;

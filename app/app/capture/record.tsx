@@ -23,10 +23,8 @@ import { Ionicons, type IoniconName } from "../../src/styled";
 
 type Phase = "asking" | "denied" | "ready" | "starting" | "recording" | "paused" | "stopping" | "review";
 
-/** The asking and denied pages: one message in the middle of the page. */
 const CENTRE = "flex-1 items-center justify-center px-4 py-12";
 
-/** How many bars the meter keeps — the most recent ~3 seconds at the poll rate. */
 const BARS = 36;
 const POLL_MS = 90;
 
@@ -47,10 +45,8 @@ function RecordScreen() {
   const [addingTo, setAddingTo] = useState(params.memoryId ?? null);
   const insets = useSafeAreaInsets();
 
-  // Declared before the recorder hook on purpose: React runs unmount cleanups
-  // in declaration order, so this stops a live recording before the hook
-  // releases the native recorder (and, on the web, turns the mic light off —
-  // the web recorder is never released on its own).
+  // Declared before the recorder hook: unmount cleanups run in declaration order, so this stops a live
+  // recording before the hook releases the recorder (the web one never releases the mic on its own).
   const recorderRef = useRef<AudioRecorder | null>(null);
   const liveRef = useRef(false);
   const mountedRef = useRef(true);
@@ -99,8 +95,6 @@ function RecordScreen() {
     };
   }, []);
 
-  // Feed the meter and the clock while recording. Pausing flattens the meter
-  // rather than leaving a frozen spike.
   useEffect(() => {
     if (phase !== "recording") return;
     const timer = setInterval(() => {
@@ -122,7 +116,6 @@ function RecordScreen() {
       await recorder.prepareToRecordAsync();
       recorder.record();
       if (!mountedRef.current) {
-        // Left while the microphone was still opening: close it again.
         await stopQuietly(recorder);
         return;
       }
@@ -191,8 +184,7 @@ function RecordScreen() {
       let rawMime: string | null = null;
       let bytes: number | undefined;
       if (Platform.OS === "web") {
-        // The Blob says what the browser actually wrote — WebM/Opus in Chrome,
-        // WebM or MP4 in Safari depending on version.
+        // The Blob says what the browser actually wrote: WebM/Opus in Chrome, WebM or MP4 in Safari.
         const blob = await (await fetch(clip.uri)).blob();
         rawMime = blob.type;
         bytes = blob.size;
@@ -319,7 +311,6 @@ function recordingName(ext: string) {
   return `recording-${Date.now()}${ext}`;
 }
 
-/** The line under the cluster, for whichever phase the recorder is in. */
 function caption(phase: Phase) {
   if (phase === "review") return "Have a listen, then keep it or start over.";
   if (phase === "paused") return "Paused. Pick up where you left off.";
@@ -333,12 +324,11 @@ function microphoneGranted() {
     .catch(() => false);
 }
 
-/** Stop a recorder that may already have stopped; there's nothing to recover. */
 function stopQuietly(recorder: AudioRecorder) {
   return recorder.stop().catch(() => undefined);
 }
 
-/** Put iOS back on the speaker for playback; a no-op elsewhere. */
+// Puts iOS back on the speaker for playback; a no-op elsewhere.
 async function resetAudioMode() {
   try {
     await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
@@ -347,7 +337,7 @@ async function resetAudioMode() {
   }
 }
 
-/** Alert has no web implementation, so the browser's own dialog stands in. */
+// Alert has no web implementation.
 function confirm(title: string, message: string, action: string): Promise<boolean> {
   if (Platform.OS === "web") return Promise.resolve(window.confirm(`${title}\n\n${message}`));
   return new Promise((resolve) =>
@@ -389,7 +379,6 @@ function deniedAdvice(web: boolean, insecure: boolean) {
   return "To record a conversation, little by little needs to use the microphone. You can turn it on in Settings.";
 }
 
-/** A rolling level: newest bar on the right, each one a ~90 ms sample. */
 function Meter({ levels, active }: { levels: number[]; active: boolean }) {
   return (
     <View
@@ -443,7 +432,6 @@ function SideButton({
   onPress: () => void;
   hidden: boolean;
 }) {
-  // Kept in the layout while hidden so the record button doesn't jump sideways.
   return (
     <View
       className={`w-[76px] items-center ${hidden ? "opacity-0" : "opacity-100"}`}

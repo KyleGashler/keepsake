@@ -16,11 +16,6 @@ import { backTo, collectionHref, routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
 import { layout } from "../../../../src/theme";
 
-/**
- * One child's Collections (design/mockups/03): their photo, name, age and
- * counts; their collections, searchable by name and description; and a way
- * to make a new one. The gear edits the child — photo, name, birthday.
- */
 export default function ChildCollectionsScreen() {
   const { id: childId } = useLocalSearchParams<{ id: string }>();
   const childQuery = useApiQuery<ChildPayload>(`/api/children/${childId}`);
@@ -34,7 +29,6 @@ export default function ChildCollectionsScreen() {
   const insets = useSafeAreaInsets();
   const canContribute = useCanContribute();
 
-  // Counts move when memories are added or filed deeper in the stack.
   useRefreshOnFocus(childQuery);
 
   const needle = query.trim().toLowerCase();
@@ -45,8 +39,6 @@ export default function ChildCollectionsScreen() {
       c.name.toLowerCase().includes(needle) ||
       (c.description ?? "").toLowerCase().includes(needle),
   );
-  // A child removed while you were deeper in the stack 404s on the refresh
-  // back here; don't leave their stale collections up.
   const gone = isNotFound(error);
   const child = gone ? undefined : data?.child;
 
@@ -128,7 +120,6 @@ export default function ChildCollectionsScreen() {
                 accessibilityRole="button"
                 className="mt-4 flex-row items-center gap-4 rounded-[14px] border border-line py-2.5 pr-3 active:opacity-70"
               >
-                {/* Same width as a disc, so the title lines up with the list's. */}
                 <View className="w-[52px] items-end">
                   <View className="h-[38px] w-[38px] items-center justify-center rounded-full border-[1.5px] border-ink">
                     <Ionicons name="add" size={24} colorClassName="accent-ink" />

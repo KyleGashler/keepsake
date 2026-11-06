@@ -11,14 +11,6 @@ import { Sheet } from "./sheet";
 import { InlineError } from "./ui";
 import { useSettled } from "../use-settled";
 
-
-/**
- * Choose which of the family's memories are filed in this collection: tick
- * to add, untick to take one out (the memory itself stays in the archive).
- * Each tap saves at once, and marks the archives it changed stale.
- * The same filing a memory's "Add to Another Collection" changes, from the
- * collection's side.
- */
 export function FileMemoriesSheet({
   collection,
   onClose,
@@ -39,7 +31,6 @@ export function FileMemoriesSheet({
       apiSend(`/api/collections/${collection.id}/memories/${memoryId}`, filed ? "PUT" : "DELETE"),
     onSuccess: () => invalidate(FILING_VIEWS),
   });
-  // What this sheet has changed, over what the server said when it opened.
   const [overrides, setOverrides] = useState<Map<string, boolean>>(() => new Map());
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

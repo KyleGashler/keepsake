@@ -31,7 +31,6 @@ import { composeParams, type ComposeParams } from "../../src/routes";
 import { MEMORY_VIEWS, invalidate, useApiQuery } from "../../src/query";
 import { Image, Ionicons, type IoniconName } from "../../src/styled";
 
-/** Every text field's box; each sets its own text size (the story's is larger). */
 const INPUT = "rounded-md border border-line bg-surface px-4 py-[13px] text-ink";
 
 const PILLARS: PillarKey[] = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"];
@@ -42,7 +41,7 @@ const PILLAR_LABELS: Record<PillarKey, string> = {
   FAMILY_LIFE: "Family Life",
 };
 
-/** Local date, not UTC — an evening capture belongs to today, not tomorrow. */
+// Local date, not UTC: an evening capture belongs to today, not tomorrow.
 function today() {
   const now = new Date();
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -52,7 +51,6 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-/** Accepts YYYY-MM-DD; falls back to now so a typo can't lose the memory. */
 function toIso(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
@@ -62,7 +60,6 @@ function toggle(list: string[], id: string) {
   return list.includes(id) ? list.filter((x) => x !== id) : [...list, id];
 }
 
-/** Only someone who may add to the family composes; a VIEWER is told why not. */
 export default function ComposeRoute() {
   if (!useCanContribute()) {
     return (
@@ -79,18 +76,15 @@ function ComposeScreen() {
   const params = useLocalSearchParams<ComposeParams>();
   const peopleQuery = useApiQuery<{ people: Person[] }>("/api/people");
   const collectionsQuery = useApiQuery<{ collections: Collection[] }>("/api/collections");
-  // The ceiling is the server's configuration; it doesn't move under a session.
   const { data: limits } = useApiQuery<UploadLimits>("/api/media/limits", { staleTime: Infinity });
   const peopleData = peopleQuery.data;
   const collectionsData = collectionsQuery.data;
-  // A new memory shows up everywhere memories do.
   const createMemory = useMutation({
     mutationFn: (body: Record<string, unknown>) => apiSend<{ memory: Memory }>("/api/memories", "POST", body),
     onSuccess: () => invalidate(MEMORY_VIEWS),
   });
   const session = useSession();
 
-  // Media arrives through the draft: from Capture on first focus, from a recorder opened here on return.
   const [assets, setAssets] = useState<DraftAsset[]>([]);
   const addAssets = (added: DraftAsset[]) =>
     setAssets((current) => [...current, ...added.filter((a) => !current.some((c) => c.uri === a.uri))]);
@@ -116,8 +110,6 @@ function ComposeScreen() {
   const [title, setTitle] = useState("");
   const [story, setStory] = useState("");
   const [date, setDate] = useState(today());
-  // Untouched, a memory with photos takes its date from them (the server
-  // reads their EXIF); a date someone types is always kept.
   const [dateTouched, setDateTouched] = useState(false);
   const [location, setLocation] = useState("");
   const [authorId, setAuthorId] = useState<string | null>(null);
@@ -127,17 +119,13 @@ function ComposeScreen() {
   );
   const [pillar, setPillar] = useState<PillarKey>("FAMILY_LIFE");
   const [saving, setSaving] = useState(false);
-  // Uploads happen before the memory is written, and a video can take a while;
-  // say what's happening rather than leaving one word on the button.
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Said up front, before anyone writes a story for a video that can't be kept.
   // Assets whose size the picker didn't report are caught by init's 413 instead.
   const oversized = limits ? assets.find((a) => a.bytes !== undefined && a.bytes > limits.maxUploadBytes) : undefined;
   const oversizedMessage = oversized && limits ? tooLargeMessage(oversized.mime, limits.maxUploadBytes) : null;
 
-  // Audio rides as a playable card, never through <Image>.
   const recordings = assets.filter((a) => a.mime.startsWith("audio/"));
   const visuals = assets.filter((a) => !a.mime.startsWith("audio/"));
   const hasVideo = visuals.some((a) => a.mime.startsWith("video/"));
@@ -145,9 +133,6 @@ function ComposeScreen() {
   const photoDated = hasPhoto && !dateTouched;
 
   const people = peopleData?.people ?? [];
-  // Whoever is writing, by default: their own Person in this family (a
-  // grandparent who joined by invite writes as themselves), else the first
-  // parent, as before memberships carried one.
   const self = session.family?.personId;
   const author =
     authorId ??
@@ -157,7 +142,6 @@ function ComposeScreen() {
     null;
 
   const collections = useMemo(
-    // A birthday's categories are offered only when Capture started from one.
     () =>
       (collectionsData?.collections ?? []).filter(
         (c) => c.pillar === pillar && (c.parentId === null || c.id === params.collectionId),
@@ -270,7 +254,6 @@ function ComposeScreen() {
             </View>
           </Field>
           {recordings.length || hasVideo ? (
-            // Close under the media it's about, not a field's distance away.
             <Text className="-mt-4 type-caption">
               The transcript will be written automatically after you save.
             </Text>
@@ -406,10 +389,6 @@ function ComposeScreen() {
   );
 }
 
-/**
- * Compose needs the family's people and collections to offer; until both are
- * in, it says it's opening — or, if either didn't load, why not, with a retry.
- */
 function ComposeUnavailable({
   queries,
 }: {
@@ -434,11 +413,7 @@ function ComposeUnavailable({
   );
 }
 
-/**
- * A video rides as a still frame with a badge, never through <Image> (which
- * can't decode a video). If the device can't show a frame, the badge alone
- * still says what's attached.
- */
+// <Image> can't decode a video, so show a frame through VideoClip behind a badge.
 function VideoThumb({ asset }: { asset: DraftAsset }) {
   const [failed, setFailed] = useState(false);
   return (

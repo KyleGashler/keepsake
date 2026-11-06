@@ -10,11 +10,6 @@ import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
 import { routes } from "../../../../src/routes";
 import { layout } from "../../../../src/theme";
 
-/**
- * Arrival Stories and Family Life — minimally restyled until their own pass.
- * Arrival Stories is read one child at a time; Family Life belongs to everyone.
- * (Child Profiles has its own screens under children/.)
- */
 export default function PillarScreen() {
   const { pillar } = useLocalSearchParams<{ pillar: PillarKey }>();
   const insets = useSafeAreaInsets();
@@ -26,15 +21,12 @@ export default function PillarScreen() {
   const meta = library.data?.pillars.find((p) => p.key === pillar);
   const kids = children.data?.children ?? [];
   const personId = selectsChild ? (picked ?? kids[0]?.id ?? null) : null;
-  // Arrival Stories waits for a child to be chosen; Family Life loads straight away.
   const ready = !selectsChild || personId !== null;
 
   const collections = useApiQuery<{ collections: Collection[] }>(
     ready ? `/api/collections?pillar=${pillar}${personId ? `&personId=${personId}` : ""}` : null,
-    // Switching child keeps the last list up until the next one is in.
     { keepPrevious: true },
   );
-  // Counts move when memories are filed deeper in the stack.
   useRefreshOnFocus(collections);
 
   if (!meta) {
@@ -61,7 +53,6 @@ export default function PillarScreen() {
         <PageHeader backLabel="Library" title={meta.name} subtitle={meta.tagline} />
 
         {selectsChild && kids.length > 1 ? (
-          // Chips scroll edge to edge on a narrow phone, past the column's gutter.
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}

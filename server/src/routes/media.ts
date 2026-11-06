@@ -28,33 +28,22 @@ import { StorageKeyError, attachmentDisposition } from "../storage/StorageProvid
 
 export { MEDIA_DIR };
 
-/**
- * Build the provider at boot rather than on first upload: the local one
- * creates `MEDIA_DIR/objects` in its constructor (the health check probes it),
- * and an unrecognised `STORAGE_PROVIDER` should stop the process starting
- * rather than surface as a 500 the first time someone captures a memory.
- */
+// Built at boot: an unrecognised STORAGE_PROVIDER must stop startup, and the
+// local provider creates MEDIA_DIR/objects, which the health check probes.
 storage();
 
-/**
- * Two routers, two mounts. `mediaBytesRouter` serves bytes at `/media` and is
- * public — the client renders these as plain `<img>` URLs, and the signed token
- * in each path is the credential. `mediaApiRouter` is the two-phase upload
- * handshake at `/api/media`, behind auth and the upload rate limiter.
- */
+// mediaBytesRouter is public on purpose: the signed token in each path is the
+// credential, as a presigned S3 URL carries its own.
 export const mediaBytesRouter = Router();
 export const mediaApiRouter = Router();
 
-/** A query-string dimension, kept to a size worth drawing. */
 function clampDimension(v: unknown, fallback: number) {
   const n = Number(v);
   return Number.isFinite(n) ? Math.min(2000, Math.max(16, Math.round(n))) : fallback;
 }
 
-/** Generated stand-in imagery — see lib/placeholder.ts for why these exist. */
 mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
   const seed = req.params.seed;
-  // `c` pins the gradient to one colour — avatars pass the person's own.
   const base = typeof req.query.c === "string" ? req.query.c : null;
   const png = placeholderPng(seed, clampDimension(req.query.w, 1200), clampDimension(req.query.h, 900), base);
   res.setHeader("Content-Type", "image/png");
@@ -62,20 +51,6 @@ mediaBytesRouter.get("/gen/:seed.png", (req, res) => {
   res.send(png);
 });
 
-// ---------------------------------------------------------------------------
-// The local stand-in for a bucket's endpoint.
-//
-// Both routes are public on purpose: the signed token *is* the authorisation,
-// exactly as a presigned S3 URL carries its own. With STORAGE_PROVIDER=s3 they
-// answer 404 — the client PUTs to and reads from the bucket instead — which is
-// why they hold no business logic.
-// ---------------------------------------------------------------------------
-
-/**
- * Receive one authorised upload. The token fixes the key, the declared type
- * and the exact byte count, so the only thing left to check is that the client
- * sent what it said it would.
- */
 mediaBytesRouter.put("/local-upload/:token", async (req, res) => {
   const provider = localProvider();
   if (!provider) return res.status(404).json({ error: "Local uploads are not enabled" });
@@ -103,9 +78,8 @@ mediaBytesRouter.put("/local-upload/:token", async (req, res) => {
     return res.status(413).json({ error: `Uploads are limited to ${MAX_UPLOAD_BYTES} bytes` });
   }
 
-  // A key is written once. Replaying a still-valid token after finalize would
-  // otherwise let the uploader swap the bytes under a recorded sha256 — and
-  // originals are never overwritten.
+  // Write-once: replaying a still-valid token after finalize would otherwise
+  // swap the bytes under a recorded sha256.
   if (await provider.head(claims.key)) {
     return res.status(409).json({ error: "An object already exists at this key" });
   }
@@ -122,7 +96,6 @@ mediaBytesRouter.put("/local-upload/:token", async (req, res) => {
   res.status(201).json({ key: claims.key, bytes: written.bytes });
 });
 
-/** Serve a stored object for the life of its read token. */
 mediaBytesRouter.get("/o/:token", async (req, res) => {
   const provider = localProvider();
   if (!provider) return res.status(404).json({ error: "Local reads are not enabled" });
@@ -146,7 +119,6 @@ mediaBytesRouter.get("/o/:token", async (req, res) => {
   // Family media is not public: a shared cache must never hold it, and a
   // browser must not hold it longer than the token that fetched it is valid.
   res.setHeader("Cache-Control", `private, max-age=${remaining}`);
-  // A download URL (A17) saves as a file, as S3's signed disposition does.
   if (claims.downloadAs) res.setHeader("Content-Disposition", attachmentDisposition(claims.downloadAs));
 
   const body = await provider.stream(claims.key);
@@ -157,42 +129,23 @@ mediaBytesRouter.get("/o/:token", async (req, res) => {
   body.pipe(res);
 });
 
-// ---------------------------------------------------------------------------
-// Two-phase upload. These sit under /api, so they run after auth.
-// ---------------------------------------------------------------------------
-
 const initBody = z.object({
   mimeType: z.string().min(1).max(120),
-  // The ceiling is checked separately below so it can answer 413 with the
-  // number, rather than a validation error the client would have to parse.
+  // The ceiling is checked below so it can answer 413 with the number.
   bytes: z.number().int().positive(),
   filename: z.string().max(255).optional(),
 });
 
-/**
- * What the client should check before it asks for anything: lets the capture
- * screen say "too big" the moment a file is picked, instead of after the
- * family has written the story. The server stays the one source of the number.
- */
 mediaApiRouter.get("/limits", (_req, res) => {
   res.json({ maxUploadBytes: MAX_UPLOAD_BYTES });
 });
 
-/** Video and audio go to Mux; with no Mux credentials, they can't go anywhere. */
 const AV_UNAVAILABLE = {
   error: "Video and audio uploads aren't available on this server yet",
   code: "av_unavailable",
 } as const;
 
-/**
- * Phase one: authorise an upload, store nothing.
- *
- * Deliberately no `Media` row yet. A row created here would need a `memoryId`
- * the client doesn't have (a memory is composed *after* its photographs are
- * picked), and every abandoned upload would leave an orphan behind. The key is
- * the only thing that has to survive between the two calls, and it's derived,
- * not stored — the family prefix is what proves ownership at finalize.
- */
+// Stores nothing: the key's family prefix is what proves ownership at finalize.
 mediaApiRouter.post("/init", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = initBody.safeParse(req.body);
@@ -215,8 +168,8 @@ mediaApiRouter.post("/init", requireContributor, async (req, res) => {
 
   const type = mediaTypeFor(mimeType);
   if (type !== "PHOTO") {
-    // Video and audio: a Mux direct upload. The MuxAsset row is the record
-    // that this family asked for it — finalize and POST /memories check it.
+    // The MuxAsset row records that this family asked for the upload;
+    // finalize and POST /memories check it.
     const host = mediaHost();
     if (!host) return res.status(503).json(AV_UNAVAILABLE);
 
@@ -241,17 +194,15 @@ mediaApiRouter.post("/init", requireContributor, async (req, res) => {
       });
     } catch (err) {
       if (!isForeignKeyViolation(err)) throw err;
-      // The family was deleted while Mux was being asked (A16). Nothing of
-      // ours points at the upload, so cancel it: bytes sent to it later
-      // never become an asset. Best effort — the URL lapses on its own.
+      // The family was deleted mid-request: cancel so later bytes never become
+      // an asset. Best effort — the URL lapses on its own.
       await host.cancelUpload(upload.id).catch((cancelErr: unknown) => {
         req.log.warn({ err: cancelErr, uploadId: upload.id }, "couldn't cancel a Mux upload for a deleted family");
       });
       return res.status(403).json({ error: "forbidden" });
     }
     const expiresAt = new Date(Date.now() + UPLOAD_URL_TTL_SECONDS * 1000).toISOString();
-    // No headers to send: Mux's URL is a plain signed PUT that takes the
-    // file as the body. The client PUTs exactly as it does to storage.
+    // Mux's URL is a plain signed PUT that takes the file as the body.
     return res.status(201).json({
       uploadId: upload.id,
       key: muxKey(upload.id),
@@ -264,26 +215,14 @@ mediaApiRouter.post("/init", requireContributor, async (req, res) => {
   const key = originalKey(family.id, uploadId, extensionFor(mimeType));
   const target = await storage().createUploadTarget({ key, mimeType, bytes });
 
-  // `mimeType` is the normalised type the target was signed for; PUT with
-  // `target.headers` exactly, not the type the client declared.
+  // The client must PUT with `target.headers` exactly: they were signed.
   res.status(201).json({ uploadId, key, mimeType, target });
 });
 
 const finalizeBody = z.object({ key: z.string().min(1).max(512) });
 
-/**
- * Phase two: confirm what actually landed.
- *
- * The declared type from phase one is a claim; this is where it's checked
- * against the bytes. Returns the facts the memory route needs rather than
- * writing them — the `Media` row is created with the memory, in one
- * transaction, so a half-attached photograph is not a state that exists.
- *
- * A rejected or abandoned object is left on the volume rather than deleted.
- * Nothing references it, and the one rule this codebase will not bend is that
- * the delete path never runs against an `original.*` key; a sweeper that knows
- * which keys no `Media` row claims is the right owner of that cleanup.
- */
+// A rejected object is left in place: the delete path must never run against
+// an `original.*` key.
 mediaApiRouter.post("/finalize", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = finalizeBody.safeParse(req.body);
@@ -292,7 +231,6 @@ mediaApiRouter.post("/finalize", requireContributor, async (req, res) => {
 
   if (isMuxKey(key)) return finalizeMux(req, res, key);
 
-  // Every query filters by family; a storage key is no different.
   if (!keyBelongsTo(key, family.id)) return res.status(404).json({ error: "Upload not found" });
 
   const provider = storage();
@@ -303,7 +241,6 @@ mediaApiRouter.post("/finalize", requireContributor, async (req, res) => {
   if (meta.bytes <= 0) return res.status(415).json({ error: "The uploaded file is empty" });
 
   const declared = contentTypeForKey(key);
-  // A ranged read: the sniff needs the first few KB, not a 2 GB download.
   const head = await readHead(await provider.stream(key, { start: 0, end: SNIFF_BYTES - 1 }), SNIFF_BYTES);
   const sniffed = await fileTypeFromBuffer(head);
 
@@ -316,17 +253,13 @@ mediaApiRouter.post("/finalize", requireContributor, async (req, res) => {
     });
   }
 
-  // The object's digest. S3 already holds a full-object checksum it computed
-  // as the bytes arrived, so record that rather than download the object to
-  // hash it. Only a provider without one (local disk, emulators) gets read
-  // end to end.
+  // S3 already holds a full-object checksum; only providers without one get
+  // read end to end.
   const checksum = meta.checksum ?? null;
   const sha256 = checksum ? null : await hashObject(await provider.stream(key));
 
-  // Checked last, so it covers the reads above: if anything wrote over the
-  // upload — before finalize or while it was being hashed — the digest might
-  // describe bytes that are no longer the object. See S3StorageProvider for
-  // why this is a backstop and not the main guard.
+  // Checked last so it covers the reads above: an overwrite during hashing
+  // would leave the digest describing other bytes.
   if (!(await provider.writtenOnce(key))) {
     return res.status(409).json({
       error: "This upload was written more than once; upload the file again",
@@ -349,19 +282,11 @@ mediaApiRouter.post("/finalize", requireContributor, async (req, res) => {
   });
 });
 
-/** How long finalize waits for Mux to notice an upload that just finished. */
 const MUX_FINALIZE_WAIT_MS = 8_000;
 const MUX_FINALIZE_POLL_MS = 1_000;
 
-/**
- * Finalize for a `mux:` key: confirm with Mux that the upload is this
- * family's and has arrived. No sniff or checksum — Mux decodes the file
- * itself and fails the asset if it can't. Mux turns a finished upload into an
- * asset a moment after the PUT returns, so a `waiting` upload is asked about
- * again for a few seconds before finalize gives up with a 409.
- *
- * Starts the `mux.sync` job that follows the asset until it settles.
- */
+// No sniff: Mux decodes the file itself and fails the asset if it can't. It
+// creates the asset a moment after the PUT returns, hence the brief poll.
 async function finalizeMux(req: Request, res: Response, key: string) {
   const family = req.ctx.family;
   const row = await prisma.muxAsset.findFirst({ where: { uploadId: uploadIdFromKey(key), familyId: family.id } });
@@ -386,7 +311,6 @@ async function finalizeMux(req: Request, res: Response, key: string) {
     throw err;
   }
 
-  // Belt and braces: the row says it's ours, and so must Mux.
   if (upload.passthrough !== family.id) return res.status(404).json({ error: "Upload not found" });
   if (upload.status === "waiting") {
     return res.status(409).json({ error: "The upload hasn't arrived yet — PUT the file first", code: "upload_incomplete" });
@@ -400,8 +324,6 @@ async function finalizeMux(req: Request, res: Response, key: string) {
     });
   }
 
-  // Read the asset once now, best effort, so its playback id (and with it a
-  // poster URL) is known before the first sync run. The job covers a miss.
   if (upload.assetId) {
     try {
       const snap = await host.getAsset(upload.assetId);
@@ -418,17 +340,15 @@ async function finalizeMux(req: Request, res: Response, key: string) {
       type: settled.type,
       mimeType: settled.mimeType,
       bytes: settled.bytes,
-      // Nothing of ours to digest: the bytes went to Mux.
       sha256: null,
       checksum: null,
     },
   });
 }
 
-/** How much finalize reads to sniff a type: file-type's own sample size. */
+// file-type's own sample size.
 const SNIFF_BYTES = 4100;
 
-/** Enough of the object to identify it and read an image header. */
 async function readHead(source: Readable, limit: number): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let total = 0;
@@ -449,7 +369,6 @@ async function hashObject(source: Readable): Promise<string> {
   return hash.digest("hex");
 }
 
-/** Dimensions are a nicety: a header this tool can't read must not fail the upload. */
 function measure(head: Buffer): { width: number; height: number } | null {
   try {
     const { width, height } = imageSize(head);

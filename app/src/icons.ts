@@ -4,11 +4,7 @@ export type IconSpec =
   | { set: "ion"; name: keyof typeof Ionicons.glyphMap }
   | { set: "mci"; name: keyof typeof MaterialCommunityIcons.glyphMap };
 
-/**
- * Every glyph a collection disc can carry (`<IconDisc icon=… />`). The server
- * stores the key in `Collection.icon`, so keys are permanent: add, never
- * rename. Custom collections pick from this same set.
- */
+// Keys are stored in Collection.icon, so they're permanent: add, never rename.
 export const ICONS = {
   sparkles: { set: "ion", name: "sparkles-outline" },
   rainbow: { set: "mci", name: "looks" },
@@ -34,40 +30,27 @@ export function isIconKey(key: string): key is IconKey {
   return Object.hasOwn(ICONS, key);
 }
 
-/** In registry order — what an icon picker lists. */
 export const ICON_KEYS: IconKey[] = Object.keys(ICONS).filter(isIconKey);
 
-/** A stored key the app doesn't know (a newer server, a typo) shows sparkles. */
 export function iconSpec(key: string): IconSpec {
   return ICONS[isIconKey(key) ? key : "sparkles"];
 }
 
-/*
- * A disc's colour is data, not theme: the hex is saved in `Collection.color`
- * (the server seeds its defaults with hex too), compared as a string, and
- * fed to `glyphColorFor`. So these stay literal values here rather than
- * classes; a collection made last year keeps its colour if the brand
- * palette in src/global.css moves. They were taken from that palette.
- */
-
-/**
- * Disc colours a family can pick for a custom collection: the seven the
- * default child collections use, in their order (Milestones … Phases).
- */
+// Literal hex, not theme classes: a disc's colour is data saved in
+// Collection.color, and must not move if the brand palette does.
 export const DISC_COLORS = [
-  "#D4994A", // golden honey
-  "#8E9A74", // sage
-  "#123F45", // deep teal
-  "#D56947", // terracotta
-  "#1D543D", // forest
-  "#7DA2B3", // dusk blue
-  "#F0DCC8", // peach
+  "#D4994A",
+  "#8E9A74",
+  "#123F45",
+  "#D56947",
+  "#1D543D",
+  "#7DA2B3",
+  "#F0DCC8",
 ] as const;
 
-/** The seven default discs' colours, then the rest of the brand palette. */
-export const COLLECTION_SWATCHES = [...DISC_COLORS, "#4E6E73" /* teal grey */] as const;
+export const COLLECTION_SWATCHES = [...DISC_COLORS, "#4E6E73"] as const;
 
-/** The gold a glyph takes on a pale disc (the moon on peach); --color-pale-disc-glyph in src/global.css. */
+// Mirrors --color-pale-disc-glyph in src/global.css.
 const PALE_DISC_GLYPH = "#B5853F";
 
 function luminance(hex: string) {
@@ -81,7 +64,6 @@ function luminance(hex: string) {
   return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 }
 
-/** White on a coloured disc; gold on a pale one, where white would vanish. Returns a raw colour for an icon's `color` prop. */
 export function glyphColorFor(discColor: string) {
   return luminance(discColor) > 0.55 ? PALE_DISC_GLYPH : "#FFFFFF";
 }

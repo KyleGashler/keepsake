@@ -121,7 +121,6 @@ memoriesRouter.post("/memories", requireContributor, async (req, res) => {
         story: input.story ?? null,
         transcript: input.transcript ?? null,
         occurredAt: input.occurredAt ? new Date(input.occurredAt) : new Date(),
-        // No date sent: the photos' EXIF may give one (A6, memory.refresh).
         occurredAtSource: input.occurredAt ? "HUMAN" : "DEFAULT",
         location: input.location ?? null,
         authorId: input.authorId ?? null,
@@ -156,15 +155,9 @@ const editMemory = z.object({
   transcript: z.string().max(50_000).nullable().optional(),
   location: z.string().max(160).nullable().optional(),
   occurredAt: z.string().datetime().optional(),
-  /**
-   * The full set of collections the memory is filed in, replacing the old
-   * set — "add to another collection" sends old + new, "move" sends the new
-   * one alone. Empty unfiles it.
-   */
   collectionIds: z.array(z.string()).max(100).optional(),
 });
 
-/** AI assists, families decide — every narrative stays editable. */
 memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = editMemory.safeParse(req.body);
@@ -193,8 +186,6 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
     }
     return tx.memory.update({
       where: { id: existing.id },
-      // A date someone sets is theirs: no job moves it after this. A story
-      // someone writes or edits is theirs too, and stops reading as an AI draft.
       data: {
         ...rest,
         ...(occurredAt ? { occurredAt: new Date(occurredAt), occurredAtSource: "HUMAN" as const } : {}),
@@ -207,12 +198,6 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
   res.json({ memory: await memoryDetail(family.id, req.ctx.user.id, memory) });
 });
 
-/**
- * Delete a memory for good — there is no trash. Its rows go now (media,
- * participants, collection links, favourites and links cascade); its files
- * (photo originals and derivatives, Mux assets nothing else shows) are
- * purged by a `media.purge` job, so this answers without waiting on S3 or Mux.
- */
 memoriesRouter.delete("/memories/:id", requireContributor, async (req, res) => {
   const familyId = req.ctx.family.id;
   const deleted = await prisma.$transaction(async (tx) => {
@@ -249,13 +234,6 @@ memoriesRouter.post("/memories/:id/media", requireContributor, async (req, res) 
   res.status(201).json({ memory: await memoryDetail(familyId, req.ctx.user.id, updated) });
 });
 
-/**
- * Take one photo, video or recording off a memory, for good: the row goes
- * now and its files are purged by `media.purge`, as for a whole memory. If
- * the memory's transcript is still the machine's copy of its clips, it's
- * rebuilt without this one; a person's words are left alone. Answers with
- * the memory as it now stands.
- */
 memoriesRouter.delete("/memories/:id/media/:mediaId", requireContributor, async (req, res) => {
   const familyId = req.ctx.family.id;
   const memory = await findMemory(familyId, req.params.id);
@@ -272,7 +250,6 @@ memoriesRouter.delete("/memories/:id/media/:mediaId", requireContributor, async 
       await tx.media.delete({ where: { id: media.id } });
       await rewriteTranscript();
     });
-    // It may have been the hero, or the photo that dated the memory.
     await kickRefresh(jobQueue(), familyId, memory.id, tx);
     return true;
   });
@@ -284,13 +261,6 @@ memoriesRouter.delete("/memories/:id/media/:mediaId", requireContributor, async 
 
 const mediaOrder = z.object({ mediaIds: z.array(z.string().min(1)).min(1).max(500) });
 
-/**
- * Put a memory's photos, videos and recordings in a new order. `mediaIds` is
- * every one of the memory's media ids, once each, in the order wanted; the
- * first photo or video becomes the memory's hero. Anything else (a missing
- * id, an extra one, a repeat) is `400 order_mismatch` — the client's list
- * is stale, so it should reload rather than guess.
- */
 memoriesRouter.put("/memories/:id/media/order", requireContributor, async (req, res) => {
   const familyId = req.ctx.family.id;
   const parsed = mediaOrder.safeParse(req.body);
@@ -312,9 +282,7 @@ memoriesRouter.put("/memories/:id/media/order", requireContributor, async (req, 
     for (const [sortOrder, id] of wanted.entries()) {
       await tx.media.update({ where: { id }, data: { sortOrder } });
     }
-    // The machine transcript follows the clips' order.
     await rewriteTranscript();
-    // A new first photo is a new hero: Mosaic's palette follows it.
     await kickRefresh(jobQueue(), familyId, memory.id, tx);
     return true;
   });
@@ -330,13 +298,7 @@ memoriesRouter.put("/memories/:id/media/order", requireContributor, async (req, 
 
 const downloadsBody = z.object({ timeZone: z.string().max(64).optional() }).optional();
 
-/**
- * Every file of a memory, ready to save (A17; lib/downloads.ts): `{ files:
- * [{ mediaId, type, filename, status, url?, expiresAt? }], unavailable }` in
- * the memory's order. Any member may download what they can read, a VIEWER
- * too. A POST because the first call for a video asks Mux to prepare its
- * master; calling again is how the client polls, and never asks twice.
- */
+// A POST: the first call for a video asks Mux to prepare its master; the client polls by calling again.
 memoriesRouter.post("/memories/:id/downloads", async (req, res) => {
   const parsed = downloadsBody.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
@@ -348,15 +310,10 @@ memoriesRouter.post("/memories/:id/downloads", async (req, res) => {
   res.json(result);
 });
 
-/** A memory of the caller's family, or null. */
 function findMemory(familyId: string, id: string) {
   return prisma.memory.findFirst({ where: { id, familyId }, select: { id: true } });
 }
 
-/**
- * Favourites belong to the signed-in user, not the family — so a VIEWER, who
- * can't change the archive, can still keep their own.
- */
 memoriesRouter.put("/memories/:id/favorite", async (req, res) => {
   const memory = await findMemory(req.ctx.family.id, req.params.id);
   if (!memory) return res.status(404).json({ error: "Memory not found" });
@@ -377,7 +334,6 @@ memoriesRouter.delete("/memories/:id/favorite", async (req, res) => {
 
 const newLink = z.object({ linkedId: z.string().min(1) });
 
-/** Link a related memory by hand. Undirected; linking twice is a no-op. */
 memoriesRouter.post("/memories/:id/links", requireContributor, async (req, res) => {
   const family = req.ctx.family;
   const parsed = newLink.safeParse(req.body);
@@ -410,16 +366,6 @@ memoriesRouter.delete("/memories/:id/links/:linkedId", requireContributor, async
   res.json({ memory: await memoryDetail(family.id, req.ctx.user.id, updated) });
 });
 
-/**
- * Transcribe one clip again — the retry behind a FAILED transcript. Asks Mux
- * to generate captions again from the asset's audio track; `mux.sync` fetches
- * the new text when it's ready. The memory's own transcript is only replaced
- * if no person has written it (media-host/assets.ts#offerToMemory).
- *
- * 202 with the memory when queued (or already in progress). 409 when there's
- * nothing to retry: not a Mux clip, not playable, no sound, or already
- * transcribed.
- */
 memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", requireContributor, async (req, res) => {
   const familyId = req.ctx.family.id;
   const memory = await findMemory(familyId, req.params.id);
@@ -443,7 +389,6 @@ memoriesRouter.post("/memories/:id/media/:mediaId/transcribe", requireContributo
   };
 
   if (asset.captionStatus === "PENDING") {
-    // Already on its way; make sure something is looking.
     await kickSync(jobQueue(), asset.id);
     return respond();
   }

@@ -3,26 +3,6 @@ import type { JobPayloads, JobQueue } from "../jobs/JobQueue.js";
 import { lockAssets } from "../media-host/assets.js";
 import { UPLOAD_URL_TTL_SECONDS } from "../storage/StorageProvider.js";
 
-/**
- * Hard delete, and what it leaves to clean up (A7: no trash, no restore).
- *
- * When a family deletes a memory, removes a photo or clip from one, or
- * deletes a person, the rows go at once, in the request, and the files go
- * afterwards in a `media.purge` job: S3 (or local disk) originals and their
- * renditions through `deleteIfUnused` (lib/pictures.ts), which keeps any
- * that something else still holds, and the Mux asset through
- * `MediaHost.deleteAsset` (or `cancelUpload` if there is no asset yet). The request never waits on S3 or Mux, and a slow or failing
- * provider is retried by the queue rather than lost.
- *
- * The rows are gone by the time the job runs, so the payload carries every
- * key and id it needs. A MuxAsset row is dropped (and its asset purged) only
- * once no Media links to it any more.
- *
- * The same job deletes a replaced or cleared profile photo's or cover's
- * files (lib/pictures.ts). Deleting a whole family (A16, below) is the same
- * job with `wholeFamily` set.
- */
-
 export type PurgePayload = JobPayloads["media.purge"];
 
 const purgeMediaSelect = {
@@ -30,21 +10,8 @@ const purgeMediaSelect = {
   muxAssetId: true,
 } as const;
 
-/**
- * Delete rows and enqueue the purge of their files, in the caller's
- * transaction (so the job exists if and only if the delete commits).
- *
- * - `media`: the Media rows the delete will take with it (directly, or by
- *   cascade from their memory). Read before `remove` runs.
- * - `extraKeys`: other originals that become unreferenced — a deleted
- *   person's profile photo. `deleteIfUnused` takes an original's
- *   renditions with it.
- * - `remove`: the delete itself.
- *
- * Lock order matches every other writer (MuxAsset rows, then Memory/Media),
- * so a webhook settling one of these clips can't deadlock with the delete.
- * Returns the payload enqueued, or null when there was nothing to purge.
- */
+// Lock order matches every other writer (MuxAsset rows, then Memory/Media)
+// so a webhook settling one of these clips can't deadlock with the delete.
 export async function deleteAndPurge(
   tx: Prisma.TransactionClient,
   queue: JobQueue,
@@ -64,8 +31,6 @@ export async function deleteAndPurge(
 
   const muxAssets: PurgePayload["muxAssets"] = [];
   if (muxIds.length) {
-    // Another memory may link the same upload; only an asset nothing shows
-    // any more is purged.
     const stillLinked = new Set(
       (
         await tx.media.findMany({
@@ -95,35 +60,11 @@ export async function deleteAndPurge(
   return payload;
 }
 
-/**
- * How long after a family delete the second, sweeping purge runs: past the
- * life of any upload URL handed out before the delete (plus slack for a PUT
- * that started just before its URL expired), so bytes that land late under
- * the family's prefix go too.
- */
+// Outlives any upload URL issued before the delete, plus slack for a PUT already in flight.
 export const LATE_UPLOAD_SWEEP_MS = (UPLOAD_URL_TTL_SECONDS + 15 * 60) * 1000;
 
-/**
- * Delete a whole family — every row hanging off it, by cascade — and enqueue
- * the purge of everything it stored, in the caller's transaction.
- *
- * `deleteAndPurge` finds files through the rows it deletes, which misses what
- * no row points at (an upload that never finalized, a Mux upload never
- * attached to a memory). So this purges the family's whole storage prefix
- * instead (`wholeFamily`) and every MuxAsset row it has, linked or not. A
- * second purge runs after `LATE_UPLOAD_SWEEP_MS` for bytes PUT through an
- * upload URL issued before the delete.
- *
- * Locks, in this order: the family's MuxAsset rows (the order every other
- * writer takes them in), then the Family row `FOR UPDATE`. Once the Family
- * row is held, nothing can insert a row that references it (an insert takes
- * a key-share lock on its parent), so no MuxAsset, Memory or Media can
- * appear behind the purge's back; a concurrent insert waits, then fails its
- * foreign key and the request answers as if the family were never theirs.
- * MuxAssets created between the two locks are read again under the second.
- *
- * Returns false when the family was already gone.
- */
+// Lock order: the family's MuxAsset rows (as every other writer), then the
+// Family row FOR UPDATE, which blocks inserts referencing it until the cascade.
 export async function deleteFamilyAndPurge(
   tx: Prisma.TransactionClient,
   queue: JobQueue,
@@ -146,8 +87,6 @@ export async function deleteFamilyAndPurge(
     assets.filter((a) => !known.has(a.id)).map((a) => a.id),
   );
 
-  // Every row of the family's goes by cascade (schema.prisma: each relation
-  // to Family is onDelete: Cascade).
   await tx.family.delete({ where: { id: familyId } });
 
   const muxAssets = assets.map((a) => ({ uploadId: a.uploadId, assetId: a.assetId }));
