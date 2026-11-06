@@ -1,21 +1,11 @@
-import { router } from "expo-router";
 import { ScrollView, Text, View } from "react-native";
-import { Column, PageHeader, Sparkle } from "../../src/components/journey";
-import { FamilyPill } from "../../src/components/family-switcher";
+import { Column, TabHeader, Sparkle } from "../../src/components/journey";
 
 export default function TimelineScreen() {
   return (
     <ScrollView className="flex-1 bg-paper" showsVerticalScrollIndicator={false}>
       <Column>
-        <PageHeader
-          eyebrow="Little by little"
-          accessory={<FamilyPill />}
-          title="Timeline"
-          sparkle
-          subtitle="Every memory, in the order it happened."
-          onSettings={() => router.push("/family")}
-          onSearch={() => router.push("/search")}
-        />
+        <TabHeader title="Timeline" subtitle="Every memory, in the order it happened." />
         <View className="items-center gap-2 p-6 rounded-lg bg-surface-alt">
           <Sparkle size={30} variant="filled" />
           <Text className="type-title mt-1">Coming soon</Text>

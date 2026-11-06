@@ -20,6 +20,7 @@ import { glyphColorFor, iconSpec } from "../icons";
 import { Image, Ionicons, type IoniconName } from "../styled";
 import { layout, useColor } from "../theme";
 import { Twinkle } from "./brand";
+import { FamilyPill } from "./family-switcher";
 
 export function Sparkle({
   size = 22,
@@ -166,6 +167,20 @@ export function PageHeader({
       {subtitle ? <Text className="font-sans text-[16.5px] leading-[23px] text-ink-soft mt-1">{subtitle}</Text> : null}
       {children}
     </View>
+  );
+}
+
+export function TabHeader({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <PageHeader
+      eyebrow="Little by little"
+      accessory={<FamilyPill />}
+      title={title}
+      sparkle
+      subtitle={subtitle}
+      onSettings={() => router.push("/family")}
+      onSearch={() => router.push("/search")}
+    />
   );
 }
 

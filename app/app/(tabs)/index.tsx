@@ -5,8 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, type HomePayload } from "../../src/api";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { Twinkle } from "../../src/components/brand";
-import { Column, PageHeader, Sparkle } from "../../src/components/journey";
-import { FamilyPill } from "../../src/components/family-switcher";
+import { Column, TabHeader, Sparkle } from "../../src/components/journey";
 import { AddChildSheet } from "../../src/components/library-sheets";
 import { AddPersonSheet } from "../../src/components/person-sheets";
 import {
@@ -37,15 +36,7 @@ export default function HomeScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Column>
-        <PageHeader
-          eyebrow="Little by little"
-          accessory={<FamilyPill />}
-          title="Home"
-          sparkle
-          subtitle={data ? `${data.greeting.salutation}. ${data.greeting.message}` : undefined}
-          onSettings={() => router.push("/family")}
-          onSearch={() => router.push("/search")}
-        />
+        <TabHeader title="Home" subtitle={data ? `${data.greeting.salutation}. ${data.greeting.message}` : undefined} />
         {error && !data ? <ErrorState error={error} onRetry={() => void home.refetch()} retrying={home.isFetching} /> : null}
         {home.isPending && !error ? <Loading /> : null}
         {data ? <HomeBody data={data} /> : null}

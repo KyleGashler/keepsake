@@ -5,8 +5,7 @@ import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { apiSend, type LibraryPayload, type LibraryPillar, type PillarKey } from "../../../src/api";
 import { useCanContribute } from "../../../src/auth/session-context";
-import { Column, PageHeader, PhotoCard } from "../../../src/components/journey";
-import { FamilyPill } from "../../../src/components/family-switcher";
+import { Column, TabHeader, PhotoCard } from "../../../src/components/journey";
 import { ActionSheet, SheetError } from "../../../src/components/sheet";
 import { Button, EmptyState, ErrorState, Loading } from "../../../src/components/ui";
 import { pickAndUploadImage } from "../../../src/pick-media";
@@ -76,15 +75,7 @@ export default function LibraryScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Column>
-        <PageHeader
-          eyebrow="Little by little"
-          accessory={<FamilyPill />}
-          title="Library"
-          sparkle
-          subtitle="A comprehensive storykeeping archive."
-          onSettings={() => router.push("/family")}
-          onSearch={() => router.push("/search")}
-        />
+        <TabHeader title="Library" subtitle="A comprehensive storykeeping archive." />
         {error && !data ? (
           <ErrorState error={error} onRetry={() => void library.refetch()} retrying={library.isFetching} />
         ) : null}

@@ -4,8 +4,7 @@ import { Pressable, ScrollView, View, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, type MosaicTile } from "../../src/api";
 import { useCanContribute } from "../../src/auth/session-context";
-import { Column, PageHeader } from "../../src/components/journey";
-import { FamilyPill } from "../../src/components/family-switcher";
+import { Column, TabHeader } from "../../src/components/journey";
 import { Button, EmptyState, ErrorState, Loading } from "../../src/components/ui";
 import { useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { Image, Ionicons } from "../../src/styled";
@@ -47,15 +46,7 @@ export default function MosaicScreen() {
       showsVerticalScrollIndicator={false}
     >
       <Column>
-        <PageHeader
-          eyebrow="Little by little"
-          accessory={<FamilyPill />}
-          title="Mosaic"
-          sparkle
-          subtitle="Not by date, not by folder — by how it all feels together."
-          onSettings={() => router.push("/family")}
-          onSearch={() => router.push("/search")}
-        />
+        <TabHeader title="Mosaic" subtitle="Not by date, not by folder — by how it all feels together." />
         {error && !data ? (
           <ErrorState error={error} onRetry={() => void mosaic.refetch()} retrying={mosaic.isFetching} />
         ) : null}
