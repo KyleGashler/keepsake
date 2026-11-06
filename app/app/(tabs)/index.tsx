@@ -1,8 +1,10 @@
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { mediaUrl, type HomePayload } from "../../src/api";
+import { useFamilyId } from "../../src/auth/family-store";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { Twinkle } from "../../src/components/brand";
 import { Column, TabHeader, Sparkle } from "../../src/components/journey";
@@ -65,13 +67,15 @@ function HomeBody({ data }: { data: HomePayload }) {
   const addPerson = () => setAdding("person");
   const cream = useColor("cream");
   const addInRail = canContribute && data.people.length < SMALL_FAMILY;
+  const steps = useGettingStarted(data.gettingStarted, isOwner);
+  const showGettingStarted = canContribute && steps.visible;
 
   return (
     <>
-      {canContribute ? (
+      {showGettingStarted ? (
         <GettingStarted
           progress={data.gettingStarted}
-          isOwner={isOwner}
+          steps={steps}
           onAddPerson={addPerson}
           onAddChild={() => setAdding("child")}
           onInvite={openInvite}
@@ -80,7 +84,7 @@ function HomeBody({ data }: { data: HomePayload }) {
 
       <SectionHeader
         label="Your People"
-        first={!canContribute}
+        first={!showGettingStarted}
         action={
           canContribute && !addInRail ? (
             <SmallButton label="Add" icon="add" accessibilityLabel="Add someone" onPress={addPerson} />
@@ -196,60 +200,114 @@ function HomeBody({ data }: { data: HomePayload }) {
   );
 }
 
+type StepKey = keyof HomePayload["gettingStarted"];
+
+const STEP_KEYS: StepKey[] = ["firstMemory", "addedSomeone", "addedChild", "invitedSomeone"];
+
+function useGettingStarted(progress: HomePayload["gettingStarted"], isOwner: boolean) {
+  const storageKey = `littlebylittle.gettingStarted.dismissed.${useFamilyId()}`;
+  const [dismissed, setDismissed] = useState<StepKey[] | null>(null);
+
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      let saved: unknown = [];
+      try {
+        saved = JSON.parse((await AsyncStorage.getItem(storageKey)) ?? "[]");
+      } catch {
+        // Unreadable; show every step again.
+      }
+      const keys = STEP_KEYS.filter((k) => Array.isArray(saved) && saved.includes(k));
+      if (live) setDismissed(keys);
+    })();
+    return () => {
+      live = false;
+    };
+  }, [storageKey]);
+
+  const keys = STEP_KEYS.filter((k) => isOwner || k !== "invitedSomeone");
+  const rows = dismissed ? keys.filter((k) => !dismissed.includes(k)) : [];
+  const cleared = keys.length - rows.filter((k) => !progress[k]).length;
+
+  function dismiss(key: StepKey) {
+    const next = [...(dismissed ?? []), key];
+    setDismissed(next);
+    AsyncStorage.setItem(storageKey, JSON.stringify(next)).catch(() => undefined);
+  }
+
+  return { rows, cleared, total: keys.length, visible: cleared < keys.length, dismiss };
+}
+
+const STEP_LABELS: Record<StepKey, string> = {
+  firstMemory: "Preserve your first memory",
+  addedSomeone: "Add someone to Your People",
+  addedChild: "Add a child",
+  invitedSomeone: "Invite family to join",
+};
+
 function GettingStarted({
   progress,
-  isOwner,
+  steps,
   onAddPerson,
   onAddChild,
   onInvite,
 }: {
   progress: HomePayload["gettingStarted"];
-  isOwner: boolean;
+  steps: ReturnType<typeof useGettingStarted>;
   onAddPerson: () => void;
   onAddChild: () => void;
   onInvite: () => void;
 }) {
-  const steps = [
-    { done: progress.firstMemory, label: "Preserve your first memory", onPress: () => router.push("/capture") },
-    { done: progress.addedSomeone, label: "Add someone to Your People", onPress: onAddPerson },
-    { done: progress.addedChild, label: "Add a child", onPress: onAddChild },
-    ...(isOwner ? [{ done: progress.invitedSomeone, label: "Invite family to join", onPress: onInvite }] : []),
-  ];
-  const doneCount = steps.filter((s) => s.done).length;
-  if (doneCount === steps.length) return null;
+  const open: Record<StepKey, () => void> = {
+    firstMemory: () => router.push("/capture"),
+    addedSomeone: onAddPerson,
+    addedChild: onAddChild,
+    invitedSomeone: onInvite,
+  };
 
   return (
     <>
       <SectionHeader
         label="Getting Started"
         first
-        action={<Text className="type-caption">{`${doneCount} of ${steps.length}`}</Text>}
+        action={<Text className="type-caption">{`${steps.cleared} of ${steps.total}`}</Text>}
       />
       <View className="rounded-lg bg-surface border border-line px-4">
-        {steps.map((step, i) => (
-          <Pressable
-            key={step.label}
-            onPress={step.onPress}
-            disabled={step.done}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: step.done, checked: step.done }}
-            className={`flex-row items-center gap-3 py-3 active:opacity-70 ${i > 0 ? "border-t border-line" : ""}`}
-          >
-            <Ionicons
-              name={step.done ? "checkmark-circle" : "ellipse-outline"}
-              size={22}
-              colorClassName={step.done ? "accent-primary" : "accent-muted"}
-            />
-            <Text
-              className={`flex-1 text-[15px] ${
-                step.done ? "font-sans text-muted line-through" : "font-sans-bold text-ink"
-              }`}
-            >
-              {step.label}
-            </Text>
-            {step.done ? null : <Ionicons name="chevron-forward" size={16} colorClassName="accent-muted" />}
-          </Pressable>
-        ))}
+        {steps.rows.map((key, i) => {
+          const done = progress[key];
+          const label = STEP_LABELS[key];
+          return (
+            <View key={key} className={`flex-row items-center gap-3 ${i > 0 ? "border-t border-line" : ""}`}>
+              <Pressable
+                onPress={open[key]}
+                disabled={done}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: done, checked: done }}
+                className="flex-1 flex-row items-center gap-3 py-3 active:opacity-70"
+              >
+                <Ionicons
+                  name={done ? "checkmark-circle" : "ellipse-outline"}
+                  size={22}
+                  colorClassName={done ? "accent-primary" : "accent-muted"}
+                />
+                <Text
+                  className={`flex-1 text-[15px] ${done ? "font-sans text-muted line-through" : "font-sans-bold text-ink"}`}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => steps.dismiss(key)}
+                hitSlop={10}
+                accessibilityRole="button"
+                accessibilityLabel={`Dismiss “${label}”`}
+                className="active:opacity-70"
+              >
+                <Ionicons name="close" size={18} colorClassName="accent-muted" />
+              </Pressable>
+            </View>
+          );
+        })}
       </View>
     </>
   );

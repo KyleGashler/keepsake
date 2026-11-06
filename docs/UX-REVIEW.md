@@ -6,12 +6,10 @@ A walk through every main screen of the local build (demo family, phone width). 
 
 - [ ] **Four taps to reach a memory** (Library → Child Profiles → Banks → Milestones). Add a strip of recent memories at the top of each child's page.
 - [ ] **Timeline is a main tab that only says "Coming soon".** Hide it until it's built.
-- [x] **The header changes between tabs.** Capture has a small heading with search and people icons; the others have a large heading, family chip and settings gear. Use one header everywhere. Done: all five tabs use `TabHeader`.
 - [ ] **The gear opens the Family Hub.** The hub is about the family, not settings. Pick one icon and one way in.
 
 ## Home
 
-- [ ] **Getting Started sits at the top with finished steps crossed out.** Show only remaining steps; move the checklist below "Your Story So Far" once there are a few memories.
 - [ ] **"Your Story So Far" clips at the content edge** (fourth card cut mid-word). Let the carousel bleed to the screen edge so it reads as scrollable.
 - [ ] **Text-only memories show as blank gradient tiles** on Home and in Mosaic. Use the quote card that Related Memories already uses.
 
