@@ -60,7 +60,7 @@ async function searchMemories(familyId: string, q: string) {
         'english',
         coalesce(m."story", m."transcript", ''),
         parsed.query,
-        'MaxWords=20, MinWords=8'
+        'MaxWords=20, MinWords=8, StartSel="", StopSel=""'
       ) AS snippet
     FROM "Memory" m, parsed
     WHERE m."familyId" = ${familyId}

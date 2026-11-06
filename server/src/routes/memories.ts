@@ -136,7 +136,7 @@ memoriesRouter.post("/memories", requireContributor, async (req, res) => {
     return tx.memory.findUniqueOrThrow({ where: { id: created.id }, include });
   });
 
-  const author = memory.author?.name ?? "Someone";
+  const author = memory.author?.name ?? req.ctx.user.displayName;
   await prisma.activityEvent.create({
     data: {
       familyId: family.id,

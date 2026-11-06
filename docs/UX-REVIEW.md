@@ -1,0 +1,57 @@
+# UX review — 2026-11-05
+
+A walk through every main screen of the local build (demo family, phone width). Work through it top to bottom; tick items off as they land.
+
+## Bugs
+
+- [x] **Search shows raw HTML.** Snippets render as `<b>cake</b> shaped like…`. Postgres `ts_headline` wraps matches in `<b>` by default ([search.ts](../server/src/routes/search.ts)). Fixed: empty `StartSel`/`StopSel`, so the snippet is plain text.
+- [x] **Opening a page by URL can fail first time.** Loading `/timeline` directly showed "Can't reach the archive"; "Try again" then worked. Not a bug: the dev API was restarting (tsx watch) while a commit touched server files. Cold loads of `/timeline`, `/mosaic` and `/library` work.
+- [x] **"Someone added …" in Family Updates.** A memory with no author falls back to "Someone" ([memories.ts](../server/src/routes/memories.ts)). Fixed: falls back to the signed-in user's name. The app always sends an author; only API calls without one hit this.
+
+## Getting around
+
+- [ ] **Four taps to reach a memory** (Library → Child Profiles → Banks → Milestones). Add a strip of recent memories at the top of each child's page.
+- [ ] **No counts on collection rows.** Show how many memories each collection holds ("3").
+- [ ] **Timeline is a main tab that only says "Coming soon".** Hide it until it's built.
+- [ ] **51 collections for 5 memories.** Each child gets 7 default collections, so the archive feels empty. Show only collections with memories, plus one "+ More collections" option.
+- [ ] **The header changes between tabs.** Capture has a small heading with search and people icons; the others have a large heading, family chip and settings gear. Use one header everywhere.
+- [ ] **The gear opens the Family Hub.** The hub is about the family, not settings. Pick one icon and one way in.
+
+## Home
+
+- [ ] **Getting Started sits at the top with finished steps crossed out.** Show only remaining steps; move the checklist below "Your Story So Far" once there are a few memories.
+- [ ] **"Your Story So Far" clips at the content edge** (fourth card cut mid-word). Let the carousel bleed to the screen edge so it reads as scrollable.
+- [ ] **Text-only memories show as blank gradient tiles** on Home and in Mosaic. Use the quote card that Related Memories already uses.
+
+## Library
+
+- [ ] **Pillar cards are wider than the page content** (about 8px past the header each side).
+- [ ] **Each pillar card has both a pencil and an arrow button.** Make the whole card the tap target; move editing into a long-press or "…" menu.
+- [ ] **Pillar cards show no count.** Add one ("12 memories").
+- [ ] **Search bars and year filters on tiny lists** (7 collections; 1 memory). Show them only past roughly 10 items.
+- [ ] **Collection memory lists are text only.** Add a thumbnail when the memory has a photo.
+
+## Memory detail
+
+- [ ] **The story is bold serif, same as the title.** Heavy for long text. Use regular-weight body type; keep bold for the title.
+- [ ] **"Who was there" is an unlabeled brown circle.** Show an initial or name.
+- [ ] **Dates disagree:** "JUN 21, 2025" at the top, "Summer 2025" in Memory Details. Show one.
+- [ ] **Every related memory is tagged "Suggested".** Remove the tag.
+- [ ] **The white card runs on into empty space.** End it after the last section.
+
+## Capture
+
+- [ ] **"Tell a story" opens a form that leads with media buttons.** Put the story field first for that entry point; keep media first for "Capture a moment".
+- [ ] **The Title placeholder looks like real text** ("The morning we found out"). Lighten placeholders or prefix "e.g.".
+- [ ] **Date shows as `2026-11-05`.** Use a friendly format or picker ("Today · Nov 5").
+- [ ] **"Saved by" offers a single option.** Hide it unless more than one member can add memories.
+- [ ] **"Where it belongs" mixes two levels of chips** (pillars, then their collections) with no visual distinction. Default it from where the user started (e.g. Banks → Milestones via "Add to this collection") and collapse it otherwise.
+
+## Family Hub
+
+- [ ] **"Downloading — Per memory: open one, then ··· → Download"** is instructions, not a setting. Drop it until bulk export exists.
+- [ ] **"Media: 1" beside "Memories: 5" is unclear.** Make it specific ("1 photo") or drop it.
+
+## Keep
+
+The voice and copy, the compact collection list with coloured icons, the error screens, and the quote cards for text-only memories.
