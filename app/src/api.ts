@@ -527,6 +527,10 @@ export type MosaicTile = {
   span: "single" | "wide" | "tall";
 };
 
+export type TimelineMemory = MemoryCard & { childIds: string[] };
+
+export type TimelinePayload = { children: Person[]; memories: TimelineMemory[] };
+
 export type FamilyMember = {
   userId: string;
   role: MembershipRole;

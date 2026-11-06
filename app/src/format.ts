@@ -12,6 +12,10 @@ export function longDate(iso: string) {
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
 }
 
+export function monthName(date: Date) {
+  return MONTHS[date.getMonth()];
+}
+
 export function shortDate(iso: string) {
   const d = new Date(iso);
   return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}, ${d.getFullYear()}`;

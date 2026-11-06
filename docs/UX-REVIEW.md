@@ -5,7 +5,7 @@ A walk through every main screen of the local build (demo family, phone width). 
 ## Getting around
 
 - [ ] **Four taps to reach a memory** (Library → Child Profiles → Banks → Milestones). Add a strip of recent memories at the top of each child's page.
-- [ ] **Timeline is a main tab that only says "Coming soon".** Hide it until it's built.
+- [x] **Timeline is a main tab that only says "Coming soon".** Hide it until it's built. Done: built instead — a thread by year, newest first, with month dividers, children's ages on each memory and each birth as a landmark.
 - [ ] **The gear opens the Family Hub.** The hub is about the family, not settings. Pick one icon and one way in.
 
 ## Home

@@ -27,6 +27,7 @@ import { memoriesRouter } from "./routes/memories.js";
 import { mosaicRouter } from "./routes/mosaic.js";
 import { peopleRouter } from "./routes/people.js";
 import { searchRouter } from "./routes/search.js";
+import { timelineRouter } from "./routes/timeline.js";
 import { muxWebhookRouter } from "./routes/webhooks.js";
 import { UPLOAD_URL_TTL_SECONDS, localProvider, storage } from "./storage/index.js";
 
@@ -136,6 +137,7 @@ app.use("/api", libraryRouter);
 app.use("/api", birthdaysRouter);
 app.use("/api", memoriesRouter);
 app.use("/api", mosaicRouter);
+app.use("/api", timelineRouter);
 app.use("/api", searchRouter);
 app.use("/api", familyRouter);
 app.use("/api/media", mediaApiRouter);

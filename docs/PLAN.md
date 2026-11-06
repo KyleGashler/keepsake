@@ -1356,6 +1356,16 @@ auto-fill from age); memories filed straight in Birthdays are grouped by date.
   them as "6th Birthday · Friend Party".
 - Not deployed; prod needs `prisma migrate deploy`.
 
+## Timeline (2026-11-05)
+
+Kyle's calls: a vertical thread by year, newest first, no person filter.
+`GET /api/timeline` (`routes/timeline.ts`) returns every memory card with
+`childIds` (children in it or whose collection it's filed in) and the family's
+children. The tab (`app/(tabs)/timeline.tsx`) groups by local year and month
+in a `SectionList` with sticky year headers, shows each child's age on the
+memory ("Banks, age 5"), and drops each child's birth onto the thread.
+Unpaginated, like Mosaic.
+
 ## Dependency graph
 
 ```
