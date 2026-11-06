@@ -4,6 +4,7 @@ import { useId, type ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -18,7 +19,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from "react-native-svg";
 import { mediaUrl } from "../api";
 import { glyphColorFor, iconSpec } from "../icons";
 import { Image, Ionicons, type IoniconName } from "../styled";
-import { layout, useColor } from "../theme";
+import { layout, MAX_WIDTH, useColor } from "../theme";
 import { Twinkle } from "./brand";
 import { FamilyPill } from "./family-switcher";
 
@@ -420,6 +421,31 @@ export function ArrangeButton({
     >
       <Ionicons name={icon} size={18} colorClassName={danger ? "accent-danger" : "accent-ink"} />
     </Pressable>
+  );
+}
+
+export function BleedRow({
+  children,
+  className = "",
+  contentClassName = "",
+}: {
+  children: ReactNode;
+  className?: string;
+  contentClassName?: string;
+}) {
+  const { width } = useWindowDimensions();
+  const bleed = layout.gutter + Math.max(0, (width - MAX_WIDTH) / 2);
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      className={className}
+      style={{ marginHorizontal: -bleed }}
+      contentContainerClassName={contentClassName}
+      contentContainerStyle={{ paddingHorizontal: bleed }}
+    >
+      {children}
+    </ScrollView>
   );
 }
 

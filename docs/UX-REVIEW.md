@@ -10,7 +10,7 @@ A walk through every main screen of the local build (demo family, phone width). 
 
 ## Home
 
-- [ ] **"Your Story So Far" clips at the content edge** (fourth card cut mid-word). Let the carousel bleed to the screen edge so it reads as scrollable.
+- [x] **"Your Story So Far" clips at the content edge** (fourth card cut mid-word). Let the carousel bleed to the screen edge so it reads as scrollable. Done: `BleedRow` runs to the window edge at any width; also used by Your People and the pillar child picker.
 - [ ] **Text-only memories show as blank gradient tiles** on Home and in Mosaic. Use the quote card that Related Memories already uses.
 
 ## Library

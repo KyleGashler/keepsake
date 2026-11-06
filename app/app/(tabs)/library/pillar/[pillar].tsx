@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ChildrenPayload, Collection, LibraryPayload, PillarKey } from "../../../../src/api";
-import { Column, IconDisc, ListRow, PageHeader } from "../../../../src/components/journey";
+import { BleedRow, Column, IconDisc, ListRow, PageHeader } from "../../../../src/components/journey";
 import { Avatar, EmptyState, ErrorState, InlineError, Loading } from "../../../../src/components/ui";
 import { count } from "../../../../src/format";
 import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
@@ -53,12 +53,7 @@ export default function PillarScreen() {
         <PageHeader backLabel="Library" title={meta.name} subtitle={meta.tagline} />
 
         {selectsChild && kids.length > 1 ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="-mx-gutter mb-4 grow-0"
-            contentContainerClassName="gap-2 px-gutter"
-          >
+          <BleedRow className="mb-4 grow-0" contentClassName="gap-2">
             {kids.map((child) => {
               const selected = child.id === personId;
               return (
@@ -75,7 +70,7 @@ export default function PillarScreen() {
                 </Pressable>
               );
             })}
-          </ScrollView>
+          </BleedRow>
         ) : null}
 
         {children.error && !children.data ? (

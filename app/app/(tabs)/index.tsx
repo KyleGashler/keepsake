@@ -7,7 +7,7 @@ import { mediaUrl, type HomePayload } from "../../src/api";
 import { useFamilyId } from "../../src/auth/family-store";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { Twinkle } from "../../src/components/brand";
-import { Column, TabHeader, Sparkle } from "../../src/components/journey";
+import { BleedRow, Column, TabHeader, Sparkle } from "../../src/components/journey";
 import { AddChildSheet } from "../../src/components/library-sheets";
 import { AddPersonSheet } from "../../src/components/person-sheets";
 import {
@@ -91,12 +91,7 @@ function HomeBody({ data }: { data: HomePayload }) {
           ) : null
         }
       />
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        className="-mx-gutter"
-        contentContainerClassName="px-gutter gap-4"
-      >
+      <BleedRow contentClassName="gap-4">
         {data.people.map((person) => (
           <PersonChip
             key={person.id}
@@ -110,7 +105,7 @@ function HomeBody({ data }: { data: HomePayload }) {
         {isOwner && data.people.length < SMALL_FAMILY && !data.gettingStarted.invitedSomeone ? (
           <PlaceholderChip icon="mail-outline" label="Invite" onPress={openInvite} />
         ) : null}
-      </ScrollView>
+      </BleedRow>
 
       {prompt ? (
         <>
@@ -148,16 +143,11 @@ function HomeBody({ data }: { data: HomePayload }) {
 
       <SectionHeader label="Your Story So Far" />
       {data.storySoFar.length ? (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="-mx-gutter"
-          contentContainerClassName="px-gutter gap-3"
-        >
+        <BleedRow contentClassName="gap-3">
           {data.storySoFar.map((memory) => (
             <MemoryTile key={memory.id} memory={memory} />
           ))}
-        </ScrollView>
+        </BleedRow>
       ) : (
         <FirstMemory canContribute={canContribute} />
       )}
