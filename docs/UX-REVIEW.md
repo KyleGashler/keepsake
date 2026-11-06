@@ -22,11 +22,11 @@ A walk through every main screen of the local build (demo family, phone width). 
 
 ## Memory detail
 
-- [ ] **The story is bold serif, same as the title.** Heavy for long text. Use regular-weight body type; keep bold for the title.
-- [ ] **"Who was there" is an unlabeled brown circle.** Show an initial or name.
-- [ ] **Dates disagree:** "JUN 21, 2025" at the top, "Summer 2025" in Memory Details. Show one.
-- [ ] **Every related memory is tagged "Suggested".** Remove the tag.
-- [ ] **The white card runs on into empty space.** End it after the last section.
+- [x] **The story is bold serif, same as the title.** Heavy for long text. Use regular-weight body type; keep bold for the title.
+- [x] **"Who was there" is an unlabeled brown circle.** Show an initial or name. Done: names follow the avatars.
+- [x] **Dates disagree:** "JUN 21, 2025" at the top, "Summer 2025" in Memory Details. Show one. Done: "Happened in" row removed.
+- [x] **Every related memory is tagged "Suggested".** Remove the tag. Done; "Linked" stays for memories linked by hand.
+- [x] **The white card runs on into empty space.** End it after the last section.
 
 ## Capture
 

@@ -2,7 +2,7 @@ import { router } from "expo-router";
 import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { mediaUrl, type MemoryCard, type Person } from "../../api";
-import { shortDate } from "../../format";
+import { nameList, shortDate } from "../../format";
 import { routes } from "../../routes";
 import { Image, Ionicons, type IoniconName } from "../../styled";
 import { paragraphs, pseudoWaveform } from "./helpers";
@@ -37,18 +37,12 @@ export function WordsToggle({ value, onChange }: { value: WordsView; onChange: (
   );
 }
 
-const SERIF_LEAD_MAX = 220;
-
 export function StoryText({ story, textOnly }: { story: string; textOnly: boolean }) {
   const [lead, ...rest] = paragraphs(story);
   if (!lead) return null;
-  let leadClass = "font-sans text-[17px] leading-[25px] text-ink-soft";
-  if (textOnly) {
-    leadClass =
-      lead.text.length <= SERIF_LEAD_MAX
-        ? "font-display text-[21px] leading-[30px] text-ink"
-        : "font-sans text-[19px] leading-[31px] text-ink";
-  }
+  const leadClass = textOnly
+    ? "font-sans text-[19px] leading-[31px] text-ink"
+    : "font-sans text-[17px] leading-[25px] text-ink-soft";
   return (
     <View className={textOnly ? "gap-4" : "gap-3.5"}>
       <Text className={leadClass}>{lead.text}</Text>
@@ -103,6 +97,9 @@ export function AvatarStack({ people }: { people: Person[] }) {
           <Text className="font-sans-semibold text-[12.5px] text-ink-soft">+{extra}</Text>
         </Pressable>
       ) : null}
+      <Text className="ml-2.5 shrink font-sans text-[14px] text-ink-soft" numberOfLines={1}>
+        {nameList(people.map((p) => p.name))}
+      </Text>
     </View>
   );
 }
@@ -173,7 +170,7 @@ function RelatedCard({ memory, linked }: { memory: MemoryCard; linked: boolean }
     <Pressable
       onPress={() => router.push(routes.memory(memory.id))}
       accessibilityRole="button"
-      accessibilityLabel={`${memory.title}, ${shortDate(memory.occurredAt)}, ${linked ? "linked" : "suggested"}`}
+      accessibilityLabel={`${memory.title}, ${shortDate(memory.occurredAt)}${linked ? ", linked" : ""}`}
       className="w-[148px] overflow-hidden rounded-sm border border-line bg-surface active:opacity-80"
     >
       <View className="h-[84px] bg-surface-alt">
@@ -184,16 +181,12 @@ function RelatedCard({ memory, linked }: { memory: MemoryCard; linked: boolean }
           {memory.title}
         </Text>
         <Text className="font-sans text-[12.5px] text-muted">{shortDate(memory.occurredAt)}</Text>
-        <View className="mt-1.5 flex-row items-center gap-1">
-          <Ionicons
-            name={linked ? "link-outline" : "sparkles-outline"}
-            size={12}
-            colorClassName={linked ? "accent-primary" : "accent-muted"}
-          />
-          <Text className={`font-sans-semibold text-[11.5px] ${linked ? "text-primary" : "text-muted"}`}>
-            {linked ? "Linked" : "Suggested"}
-          </Text>
-        </View>
+        {linked ? (
+          <View className="mt-1.5 flex-row items-center gap-1">
+            <Ionicons name="link-outline" size={12} colorClassName="accent-primary" />
+            <Text className="font-sans-semibold text-[11.5px] text-primary">Linked</Text>
+          </View>
+        ) : null}
       </View>
     </Pressable>
   );

@@ -185,12 +185,9 @@ export function refusalMessage(err: unknown, fallback: string) {
   return friendlyError(err, fallback);
 }
 
-const SEASONS = ["Winter", "Spring", "Summer", "Fall"] as const;
-
-// Northern-hemisphere meteorological seasons; December counts toward its own year's winter.
-export function seasonOf(iso: string) {
-  const d = new Date(iso);
-  return `${SEASONS[Math.floor(((d.getMonth() + 1) % 12) / 3)]} ${d.getFullYear()}`;
+export function nameList(names: string[]) {
+  if (names.length <= 2) return names.join(" and ");
+  return `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 export function isoDay(iso: string) {

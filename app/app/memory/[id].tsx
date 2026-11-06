@@ -40,7 +40,7 @@ import { MediaViewer } from "../../src/components/memory/viewer";
 import { WaveformPlayer } from "../../src/components/memory/waveform";
 import { Button, ErrorState, Loading, NotFoundState } from "../../src/components/ui";
 import { useCanContribute } from "../../src/auth/session-context";
-import { collectionName, errorMessage, seasonOf, shortDate } from "../../src/format";
+import { collectionName, errorMessage, shortDate } from "../../src/format";
 import { memoryKey, memorySaved, queryClient, useApiQuery, useRefreshOnFocus } from "../../src/query";
 import { collectionHref, goBackOr, openInLibrary } from "../../src/routes";
 import { Image, Ionicons } from "../../src/styled";
@@ -207,7 +207,6 @@ export default function MemoryScreen() {
       {hero ? null : <View style={{ paddingTop: insets.top }}>{actions}</View>}
       <ScrollView
         className="flex-1 bg-paper"
-        contentContainerClassName="grow"
         showsVerticalScrollIndicator={false}
         scrollEventThrottle={32}
         onScroll={
@@ -216,7 +215,7 @@ export default function MemoryScreen() {
             : undefined
         }
       >
-        <View className="w-full max-w-page grow self-center">
+        <View className="w-full max-w-page self-center" style={{ paddingBottom: insets.bottom + layout.bottom }}>
           {hero ? (
             <View className="w-full overflow-hidden bg-ink" style={{ height: heroHeight + CARD_OVERLAP }}>
               <HeroMedia
@@ -237,10 +236,7 @@ export default function MemoryScreen() {
             </View>
           ) : null}
 
-          <View
-            className={`grow rounded-t-[24px] bg-surface px-6 pt-[18px] ${hero ? "-mt-6" : "mt-2 shadow-card"}`}
-            style={{ paddingBottom: insets.bottom + layout.bottom }}
-          >
+          <View className={`rounded-[24px] bg-surface px-6 pt-[18px] pb-6 ${hero ? "-mt-6" : "mt-2 shadow-card"}`}>
             {view && hasStory && hasWords ? (
               <View className="mb-4">
                 <WordsToggle
@@ -521,9 +517,6 @@ function MemoryDetails({ memory }: { memory: Memory }) {
   return (
     <Section title="Memory Details">
       <View className="gap-2">
-        <DetailRow icon="calendar-outline" label="Happened in">
-          <DetailValue>{seasonOf(memory.occurredAt)}</DetailValue>
-        </DetailRow>
         {memory.location ? (
           <DetailRow icon="location-outline" label="Where">
             <DetailValue>{memory.location}</DetailValue>
