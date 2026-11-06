@@ -41,7 +41,6 @@ import { SUPPORT_EMAIL } from "../src/support";
 const SETTINGS = [
   { icon: "lock-closed-outline" as const, label: "Privacy & ownership", detail: "Your family owns every memory" },
   { icon: "card-outline" as const, label: "Subscription", detail: "Not billed in this build" },
-  { icon: "download-outline" as const, label: "Downloading", detail: "Per memory: open one, then ⋯ → Download" },
   { icon: "help-circle-outline" as const, label: "Support", detail: SUPPORT_EMAIL },
 ];
 
@@ -160,7 +159,6 @@ export default function FamilyHubScreen() {
 
         <View className="flex-row gap-2">
           <Stat value={data.stats.memoryCount} label="Memories" />
-          <Stat value={data.stats.mediaCount} label="Media" />
           <Stat value={data.stats.collectionCount} label="Collections" />
           <Stat value={data.stats.personCount} label="People" />
         </View>

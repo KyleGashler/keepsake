@@ -38,8 +38,8 @@ A walk through every main screen of the local build (demo family, phone width). 
 
 ## Family Hub
 
-- [ ] **"Downloading — Per memory: open one, then ··· → Download"** is instructions, not a setting. Drop it until bulk export exists.
-- [ ] **"Media: 1" beside "Memories: 5" is unclear.** Make it specific ("1 photo") or drop it.
+- [x] **"Downloading — Per memory: open one, then ··· → Download"** is instructions, not a setting. Drop it until bulk export exists.
+- [x] **"Media: 1" beside "Memories: 5" is unclear.** Make it specific ("1 photo") or drop it. Dropped.
 
 ## Keep
 
