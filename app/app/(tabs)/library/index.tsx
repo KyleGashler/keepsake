@@ -9,7 +9,7 @@ import { Column, TabHeader, PhotoCard } from "../../../src/components/journey";
 import { ActionSheet, SheetError } from "../../../src/components/sheet";
 import { Button, EmptyState, ErrorState, Loading } from "../../../src/components/ui";
 import { pickAndUploadImage } from "../../../src/pick-media";
-import { friendlyError } from "../../../src/format";
+import { count, friendlyError } from "../../../src/format";
 import { invalidate, useApiQuery, useRefreshOnFocus } from "../../../src/query";
 import { routes } from "../../../src/routes";
 import { layout } from "../../../src/theme";
@@ -93,12 +93,13 @@ export default function LibraryScreen() {
             <SheetError message={problem} />
           </View>
         ) : null}
-        <View className="-mx-2.5 gap-4">
+        <View className="gap-4">
           {pillars.map((pillar) => (
             <PhotoCard
               key={pillar.key}
               title={pillar.name}
               subtitle={pillar.tagline}
+              eyebrow={pillar.memoryCount ? count(pillar.memoryCount, "memory", "memories") : null}
               imageUrl={pillar.coverUrl}
               onPress={() => open(pillar)}
               onEdit={canContribute ? () => editCover(pillar) : undefined}

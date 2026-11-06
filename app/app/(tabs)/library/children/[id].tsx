@@ -14,7 +14,7 @@ import { EmptyState, ErrorState, Loading, NotFoundState } from "../../../../src/
 import { possessive } from "../../../../src/format";
 import { backTo, collectionHref, routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
-import { layout } from "../../../../src/theme";
+import { layout, SEARCHABLE_LIST } from "../../../../src/theme";
 
 export default function ChildCollectionsScreen() {
   const { id: childId } = useLocalSearchParams<{ id: string }>();
@@ -81,15 +81,17 @@ export default function ChildCollectionsScreen() {
             <Text className="mt-1 font-sans text-[15.5px] leading-[22px] text-ink-soft">
               Different parts of {possessive(child.name)} story, beautifully saved.
             </Text>
-            <SearchField
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search collections..."
-              className="mt-4 mb-2"
-              style={{ height: 44 }}
-            />
+            {all.length > SEARCHABLE_LIST ? (
+              <SearchField
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search collections..."
+                className="mt-4"
+                style={{ height: 44 }}
+              />
+            ) : null}
 
-            <View>
+            <View className="mt-3">
               {collections.map((collection, i) => (
                 <ListRow
                   key={collection.id}

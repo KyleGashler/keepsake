@@ -214,6 +214,7 @@ function HeaderButton({
 export function PhotoCard({
   title,
   subtitle,
+  eyebrow,
   imageUrl,
   onPress,
   onEdit,
@@ -226,6 +227,7 @@ export function PhotoCard({
 }: {
   title: string;
   subtitle?: string | null;
+  eyebrow?: string | null;
   imageUrl?: string | null;
   onPress: () => void;
   onEdit?: () => void;
@@ -269,7 +271,8 @@ export function PhotoCard({
           <Rect x="0" y="0" width="100%" height="100%" fill={`url(#${gradientId}-y)`} />
         </Svg>
 
-        <View className="pl-4 pr-[72px] pb-4">
+        <View className="px-4 pb-4">
+          {eyebrow ? <Text className="type-eyebrow mb-1">{eyebrow}</Text> : null}
           <Text className="font-display text-[33px] leading-[38px] tracking-[-0.5px] text-ink" numberOfLines={2}>
             {title}
           </Text>
@@ -278,10 +281,6 @@ export function PhotoCard({
               {subtitle}
             </Text>
           ) : null}
-        </View>
-
-        <View className="absolute pointer-events-none right-3 bottom-4 w-10 h-10 rounded-full bg-surface items-center justify-center shadow-card">
-          <Ionicons name="chevron-forward" size={20} colorClassName="accent-ink" />
         </View>
       </Pressable>
 

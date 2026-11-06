@@ -431,6 +431,7 @@ export type LibraryPillar = {
   tagline: string;
   coverUrl: string;
   customCover: boolean;
+  memoryCount: number;
 };
 
 export type LibraryPayload = { pillars: LibraryPillar[] };

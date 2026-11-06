@@ -273,7 +273,7 @@ export function CardArt({
   }
   return (
     <Image
-      source={{ uri: mediaUrl(memory.heroUrl) }}
+      source={{ uri: mediaUrl(compact ? (memory.thumbUrl ?? memory.heroUrl) : memory.heroUrl) }}
       className="absolute inset-0"
       contentFit="cover"
       transition={200}

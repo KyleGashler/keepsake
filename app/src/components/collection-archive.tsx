@@ -17,7 +17,7 @@ import { COLLECTION_VIEWS, gone, invalidate, useApiQuery, useRefreshOnFocus } fr
 import { archivePath, entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
 import { backTo, goBackOr, routes } from "../routes";
 import { Ionicons, type IoniconName } from "../styled";
-import { layout } from "../theme";
+import { layout, SEARCHABLE_LIST } from "../theme";
 import { BackRow, ChildPortrait } from "./child-header";
 import { FileMemoriesSheet } from "./file-memories-sheet";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
@@ -193,18 +193,24 @@ export function CollectionArchive({
           <EmptyCollection child={child} name={title} onCapture={capture} />
         ) : (
           <>
-            <SearchField
-              value={text}
-              onChangeText={setText}
-              placeholder="Search memories…"
-              className="mt-6"
-            />
-            <YearChips
-              years={years}
-              selected={filters.year}
-              onSelect={(year) => onFiltersChange({ ...filters, q: text, year })}
-              loading={loading}
-            />
+            {memoryCount > SEARCHABLE_LIST ? (
+              <>
+                <SearchField
+                  value={text}
+                  onChangeText={setText}
+                  placeholder="Search memories…"
+                  className="mt-6"
+                />
+                {years.length > 1 ? (
+                  <YearChips
+                    years={years}
+                    selected={filters.year}
+                    onSelect={(year) => onFiltersChange({ ...filters, q: text, year })}
+                    loading={loading}
+                  />
+                ) : null}
+              </>
+            ) : null}
 
             <View className={`mt-2 ${loading ? "opacity-50" : ""}`}>
               {groups.length === 0 ? (

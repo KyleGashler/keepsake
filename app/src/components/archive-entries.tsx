@@ -1,13 +1,8 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  mediaUrl,
-  type ChildSummary,
-  type Collection,
-  type MediaType,
-  type MemoryCard,
-} from "../api";
+import type { ChildSummary, Collection, MediaType, MemoryCard } from "../api";
 import { ageOn, longDate, monthDay } from "../format";
-import { Image, Ionicons, type IoniconName } from "../styled";
+import { Ionicons, type IoniconName } from "../styled";
+import { CardArt } from "./memory/parts";
 
 export type EntryProps = {
   memory: MemoryCard;
@@ -36,12 +31,9 @@ export function MemoryEntry({ memory, collection, onPress, isLast }: EntryProps)
       {memory.isTextOnly ? (
         <View className="my-0.5 w-[3px] self-stretch rounded-[2px] opacity-85" style={{ backgroundColor: collection.color }} />
       ) : (
-        <Image
-          source={{ uri: mediaUrl(memory.thumbUrl ?? memory.heroUrl) }}
-          className="h-21 w-21 rounded-md bg-surface-alt"
-          contentFit="cover"
-          transition={200}
-        />
+        <View className="h-21 w-21 overflow-hidden rounded-md bg-surface-alt">
+          <CardArt memory={memory} compact />
+        </View>
       )}
       <View className="min-w-0 flex-1">
         <Text className="mb-[3px] font-sans-bold text-[11.5px] tracking-[1.3px] text-muted uppercase" numberOfLines={1}>

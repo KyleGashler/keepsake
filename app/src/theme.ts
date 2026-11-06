@@ -12,6 +12,8 @@ export const layout = {
 // Must match `--container-page` in global.css.
 export const MAX_WIDTH = 720;
 
+export const SEARCHABLE_LIST = 10;
+
 export type ColorName =
   | "white"
   | "black"

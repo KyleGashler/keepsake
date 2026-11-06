@@ -14,11 +14,11 @@ A walk through every main screen of the local build (demo family, phone width). 
 
 ## Library
 
-- [ ] **Pillar cards are wider than the page content** (about 8px past the header each side).
-- [ ] **Each pillar card has both a pencil and an arrow button.** Make the whole card the tap target; move editing into a long-press or "…" menu.
-- [ ] **Pillar cards show no count.** Add one ("12 memories").
-- [ ] **Search bars and year filters on tiny lists** (7 collections; 1 memory). Show them only past roughly 10 items.
-- [ ] **Collection memory lists are text only.** Add a thumbnail when the memory has a photo.
+- [x] **Pillar cards are wider than the page content** (about 8px past the header each side). Done, on Child Profiles too.
+- [x] **Each pillar card has both a pencil and an arrow button.** Make the whole card the tap target; move editing into a long-press or "…" menu. Done: arrow removed, pencil kept (a long-press can't open the web photo picker).
+- [x] **Pillar cards show no count.** Add one ("12 memories"). Done: shown above the title when non-zero.
+- [x] **Search bars and year filters on tiny lists** (7 collections; 1 memory). Show them only past roughly 10 items. Done: `SEARCHABLE_LIST` in theme.ts; year chips also need 2+ years.
+- [x] **Collection memory lists are text only.** Add a thumbnail when the memory has a photo. Misread: photo memories already had one. Voice and video thumbnails now use `CardArt`.
 
 ## Memory detail
 

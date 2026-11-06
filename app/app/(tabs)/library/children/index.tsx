@@ -66,7 +66,7 @@ export default function ChildProfilesScreen() {
         ) : null}
 
         {children.length > 0 ? (
-          <View className="-mx-2.5 gap-4">
+          <View className="gap-4">
             {children.map((child) => (
               <PhotoCard
                 key={child.id}

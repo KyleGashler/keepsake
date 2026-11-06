@@ -46,11 +46,11 @@ const PILLAR_KEYS = ["ARRIVAL_STORIES", "CHILD_PROFILES", "FAMILY_LIFE"] as cons
 async function pillarDto(
   p: (typeof PILLARS)[number],
   cover: { storageKey: string; derivedKey: string | null } | undefined,
-  collectionCount: number,
+  memoryCount: number,
 ) {
   return {
     ...p,
-    collectionCount,
+    memoryCount,
     coverUrl: (cover && (await pictureUrl(cover, "DISPLAY"))) ?? imageUrl(p.coverSeed, 1000, 700),
     customCover: Boolean(cover),
   };
@@ -58,19 +58,19 @@ async function pillarDto(
 
 async function pillarsFor(familyId: string) {
   const [counts, covers] = await Promise.all([
-    prisma.collection.groupBy({
-      by: ["pillar"],
-      where: { familyId, parentId: null },
-      _count: { _all: true },
-    }),
+    Promise.all(
+      PILLARS.map((p) =>
+        prisma.memory.count({ where: { familyId, collections: { some: { collection: { pillar: p.key } } } } }),
+      ),
+    ),
     prisma.pillarCover.findMany({ where: { familyId } }),
   ]);
   return Promise.all(
-    PILLARS.map((p) =>
+    PILLARS.map((p, i) =>
       pillarDto(
         p,
         covers.find((c) => c.pillar === p.key),
-        counts.find((c) => c.pillar === p.key)?._count._all ?? 0,
+        counts[i],
       ),
     ),
   );
