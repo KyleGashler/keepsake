@@ -11,7 +11,8 @@ import { pictureUrl } from "./pictures.js";
  *   fresh; null means none, and the client falls back to `avatarUrl`.
  * - `photoThumbUrl`: the same photo at portrait size (THUMB). Each is the
  *   original until `image.derive` has made its renditions.
- * - `collectionCount`: their Child Profiles collections.
+ * - `collectionCount`: their Child Profiles collections (not the birthdays
+ *   and categories inside Birthdays).
  * - `memoryCount`: distinct memories filed in any collection of
  *   theirs (any pillar). A memory shared with a sibling counts for both.
  */
@@ -19,7 +20,7 @@ export async function childSummary(familyId: string, p: Person) {
   const [photo, collectionCount, memoryCount] = await Promise.all([
     profilePhotoUrls(p),
     prisma.collection.count({
-      where: { familyId, personId: p.id, pillar: "CHILD_PROFILES" },
+      where: { familyId, personId: p.id, pillar: "CHILD_PROFILES", parentId: null },
     }),
     prisma.memory.count({
       where: {
@@ -41,6 +42,11 @@ export async function profilePhotoUrls(p: Pick<Person, "photoKey" | "photoDerive
 }
 
 export type ChildSummary = Awaited<ReturnType<typeof childSummary>>;
+
+/** `childSummary` for a child; null for anyone else, or no one. */
+export function childSummaryOf(familyId: string, person: Person | null) {
+  return person?.role === "CHILD" ? childSummary(familyId, person) : null;
+}
 
 export function childSummaries(familyId: string, people: Person[]) {
   return Promise.all(people.map((p) => childSummary(familyId, p)));

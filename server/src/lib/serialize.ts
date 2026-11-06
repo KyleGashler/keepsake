@@ -222,13 +222,16 @@ export function aggregateTranscriptStatus(media: Pick<Media, "transcriptStatus">
   return null;
 }
 
-/** What `collectionDto` wants loaded: the owner, and how many memories are filed in it. */
+/** What `collectionDto` wants loaded: the owner, the collection it's inside, and how many memories are filed in it. */
 export const collectionInclude = {
   _count: { select: { memories: true } },
   person: true,
+  parent: { select: { name: true } },
 } as const;
 
-export function collectionDto(c: Collection & { _count?: { memories: number }; person?: Person | null }) {
+export function collectionDto(
+  c: Collection & { _count?: { memories: number }; person?: Person | null; parent?: { name: string } | null },
+) {
   return {
     id: c.id,
     pillar: c.pillar,
@@ -241,6 +244,11 @@ export function collectionDto(c: Collection & { _count?: { memories: number }; p
     color: c.color,
     personId: c.personId,
     personName: c.person?.name ?? null,
+    /** Set for a birthday (inside Birthdays) and a birthday's category (lib/birthdays.ts). */
+    parentId: c.parentId,
+    parentName: c.parent?.name ?? null,
+    /** Which birthday a birthday row is; null for everything else. */
+    birthday: c.birthday,
     isDefault: c.isDefault,
     sortOrder: c.sortOrder,
     coverUrl: imageUrl(c.coverSeed, 800, 600),
@@ -252,10 +260,15 @@ type MemoryWithRelations = Memory & {
   media?: MediaRow[];
   author?: Person | null;
   participants?: { person: Person }[];
-  collections?: { collection: Collection }[];
+  collections?: { collection: Collection & { parent?: { name: string } | null } }[];
 };
 
-const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
+export const MEDIA_TYPE_ORDER: MediaType[] = ["PHOTO", "VIDEO", "AUDIO"];
+
+/** A story's opening, on one line, for a card or row. */
+export function storyExcerpt(story: string | null) {
+  return story ? story.replace(/\s+/g, " ").slice(0, 140) : null;
+}
 
 export async function memoryCardDto(m: MemoryWithRelations) {
   const media = m.media ?? [];
@@ -271,7 +284,7 @@ export async function memoryCardDto(m: MemoryWithRelations) {
     heroUrl,
     /** The same picture for a small slot (≤ ~130 pt): a photo's THUMB. */
     thumbUrl: hero ? ((await stillUrl(hero.media, "THUMB")) ?? heroUrl) : imageUrl(m.heroSeed, 400, 300),
-    excerpt: m.story ? m.story.replace(/\s+/g, " ").slice(0, 140) : null,
+    excerpt: storyExcerpt(m.story),
     mediaCount: media.length,
     hasAudio: media.some((x) => x.type === "AUDIO"),
     /** Which kinds of media it holds, in PHOTO, VIDEO, AUDIO order. */
@@ -316,6 +329,8 @@ export async function memoryDto(m: MemoryWithRelations) {
         name: mc.collection.name,
         pillar: mc.collection.pillar,
         personId: mc.collection.personId,
+        parentName: mc.collection.parent?.name ?? null,
+        birthday: mc.collection.birthday,
         kind: mc.collection.kind,
         icon: mc.collection.icon,
         color: mc.collection.color,

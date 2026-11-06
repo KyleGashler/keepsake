@@ -73,18 +73,22 @@ export function ChildCardBackdrop({ child }: { child: Pick<Person, "name" | "acc
   );
 }
 
-/** "‹ Child Profiles" on the left, an optional gear on the right. */
+/** "‹ Child Profiles" on the left, an optional gear or ⋯ on the right. */
 export function BackRow({
   label,
   parent,
   onSettings,
   settingsLabel = "Settings",
+  onMore,
+  moreLabel = "Options",
 }: {
   label: string;
   /** The screen back returns to, even on a cold deep link (routes.ts `backTo`). */
   parent: Href;
   onSettings?: () => void;
   settingsLabel?: string;
+  onMore?: () => void;
+  moreLabel?: string;
 }) {
   return (
     <View className="flex-row items-center justify-between min-h-11 mb-3">
@@ -107,6 +111,17 @@ export function BackRow({
           className="w-11 h-11 items-center justify-center -mr-2 active:opacity-70"
         >
           <Ionicons name="settings-outline" size={27} colorClassName="accent-ink" />
+        </Pressable>
+      ) : null}
+      {onMore ? (
+        <Pressable
+          onPress={onMore}
+          hitSlop={10}
+          accessibilityRole="button"
+          accessibilityLabel={moreLabel}
+          className="w-11 h-11 items-center justify-center -mr-2 active:opacity-70"
+        >
+          <Ionicons name="ellipsis-horizontal" size={24} colorClassName="accent-ink" />
         </Pressable>
       ) : null}
     </View>

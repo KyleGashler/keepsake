@@ -1,12 +1,13 @@
-import type { Pillar, Prisma } from "@prisma/client";
+import type { Pillar } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { COLLECTION_ICONS, DEFAULT_COLLECTION_COLOR, DEFAULT_COLLECTION_ICON } from "../lib/child-collections.js";
+import { archiveFilters, collectionArchive } from "../lib/archive.js";
 import { childSummaries, childSummary } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
 import { pictureUrl, setPicture } from "../lib/pictures.js";
-import { collectionDto, collectionInclude, imageUrl, mediaInclude, memoryCardDtos, personDto } from "../lib/serialize.js";
+import { collectionDto, collectionInclude, imageUrl, personDto } from "../lib/serialize.js";
 import { imageKeyError } from "../lib/upload-keys.js";
 
 export const libraryRouter = Router();
@@ -64,7 +65,7 @@ async function pillarsFor(familyId: string) {
   const [counts, covers] = await Promise.all([
     prisma.collection.groupBy({
       by: ["pillar"],
-      where: { familyId },
+      where: { familyId, parentId: null },
       _count: { _all: true },
     }),
     prisma.pillarCover.findMany({ where: { familyId } }),
@@ -148,7 +149,7 @@ libraryRouter.get("/children/:id", async (req, res) => {
   const [summary, collections] = await Promise.all([
     childSummary(family.id, child),
     prisma.collection.findMany({
-      where: { familyId: family.id, personId: child.id, pillar: "CHILD_PROFILES" },
+      where: { familyId: family.id, personId: child.id, pillar: "CHILD_PROFILES", parentId: null },
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
       include: collectionInclude,
     }),
@@ -168,8 +169,10 @@ libraryRouter.get("/collections", async (req, res) => {
   const { pillar, personId } = parsed.data;
 
   const collections = await prisma.collection.findMany({
+    // A birthday holds categories, never memories, so no picker offers one.
     where: {
       familyId: family.id,
+      birthday: null,
       ...(pillar ? { pillar } : {}),
       ...(personId ? { personId } : {}),
     },
@@ -180,41 +183,11 @@ libraryRouter.get("/collections", async (req, res) => {
   res.json({ collections: collections.map(collectionDto) });
 });
 
-/** The calendar year `date` falls in on a wall clock in `timeZone` (an IANA name). */
-function yearIn(date: Date, timeZone: string) {
-  return Number(new Intl.DateTimeFormat("en-US", { timeZone, year: "numeric" }).format(date));
-}
-
-function isTimeZone(tz: string) {
-  try {
-    return Boolean(new Intl.DateTimeFormat("en-US", { timeZone: tz }));
-  } catch {
-    return false;
-  }
-}
-
-const archiveQuery = z.object({
-  q: z.string().trim().max(120).optional(),
-  year: z.coerce.number().int().min(1800).max(3000).optional(),
-  /** The viewer's IANA time zone; years are their calendar years. UTC without one. */
-  tz: z.string().max(64).refine(isTimeZone, "Unknown time zone").optional(),
-});
-
-/**
- * One collection's archive: newest first, optionally narrowed by a text match
- * and a calendar year. `years` counts what `q` matches but ignores `year`, so
- * the chips don't vanish when one is picked.
- *
- * Years are calendar years in the viewer's `tz`, because the app shows a
- * memory's date in local time: a memory from New Year's Eve evening in New
- * York is in the viewer's 2025 (chip, heading and date alike), even though
- * it's already 2026 in UTC.
- */
+/** One collection's archive (lib/archive.ts). */
 libraryRouter.get("/collections/:id", async (req, res) => {
   const family = req.ctx.family;
-  const parsed = archiveQuery.safeParse(req.query);
+  const parsed = archiveFilters.safeParse(req.query);
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
-  const { q, year, tz = "UTC" } = parsed.data;
 
   const collection = await prisma.collection.findFirst({
     where: { id: req.params.id, familyId: family.id },
@@ -222,43 +195,7 @@ libraryRouter.get("/collections/:id", async (req, res) => {
   });
   if (!collection) return res.status(404).json({ error: "Collection not found" });
 
-  const contains = q ? { contains: q, mode: "insensitive" as const } : null;
-  const where: Prisma.MemoryWhereInput = {
-    familyId: family.id,
-    collections: { some: { collectionId: collection.id } },
-    ...(contains
-      ? { OR: [{ title: contains }, { story: contains }, { transcript: contains }, { location: contains }] }
-      : {}),
-  };
-
-  // One collection's dates are few; bucketing them here keeps the time zone
-  // arithmetic in Intl rather than in SQL.
-  const [dates, child] = await Promise.all([
-    prisma.memory.findMany({ where, select: { id: true, occurredAt: true } }),
-    collection.person?.role === "CHILD" ? childSummary(family.id, collection.person) : null,
-  ]);
-  const byYear = new Map<number, number>();
-  const idsInYear: string[] = [];
-  for (const { id, occurredAt } of dates) {
-    const y = yearIn(occurredAt, tz);
-    byYear.set(y, (byYear.get(y) ?? 0) + 1);
-    if (y === year) idsInYear.push(id);
-  }
-  const memories = await prisma.memory.findMany({
-    where: year === undefined ? where : { ...where, id: { in: idsInYear } },
-    orderBy: [{ occurredAt: "desc" }, { createdAt: "desc" }],
-    include: { media: mediaInclude, participants: { include: { person: true } } },
-  });
-  // A fresh array, so sorting in place is fine (and ES2022 has no toSorted).
-  // oxlint-disable-next-line unicorn/no-array-sort
-  const years = [...byYear].map(([y, count]) => ({ year: y, count })).sort((a, b) => b.year - a.year);
-
-  res.json({
-    collection: collectionDto(collection),
-    child,
-    years,
-    memories: await memoryCardDtos(memories),
-  });
+  res.json(await collectionArchive(family.id, collection, parsed.data));
 });
 
 const newCollection = z.object({

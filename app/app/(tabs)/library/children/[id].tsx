@@ -12,7 +12,7 @@ import { useApiQuery, useRefreshOnFocus } from "../../../../src/query";
 import { ActionSheet } from "../../../../src/components/sheet";
 import { EmptyState, ErrorState, Loading, NotFoundState } from "../../../../src/components/ui";
 import { possessive } from "../../../../src/format";
-import { backTo, routes } from "../../../../src/routes";
+import { backTo, collectionHref, routes } from "../../../../src/routes";
 import { Ionicons } from "../../../../src/styled";
 import { layout } from "../../../../src/theme";
 
@@ -105,7 +105,7 @@ export default function ChildCollectionsScreen() {
                   description={collection.description}
                   leading={<IconDisc icon={collection.icon} color={collection.color} size={52} />}
                   divider={i < collections.length - 1}
-                  onPress={() => router.push(routes.collection(collection.id))}
+                  onPress={() => router.push(collectionHref(collection))}
                 />
               ))}
               {!needle && all.length === 0 ? (

@@ -16,7 +16,7 @@ import {
 import { confirmAction } from "../../confirm";
 import { pickLibraryMedia } from "../../pick-media";
 import { routes } from "../../routes";
-import { duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
+import { collectionName, duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
 import {
   FILING_VIEWS,
   MEMORY_VIEWS,
@@ -27,8 +27,8 @@ import {
   useApiQuery,
   type Resource,
 } from "../../query";
-import { Ionicons, type IoniconName } from "../../styled";
-import { IconDisc, SearchField } from "../journey";
+import { Ionicons } from "../../styled";
+import { ArrangeButton, IconDisc, SearchField } from "../journey";
 import { fieldBox, fieldMultiline, fieldText } from "./field-styles";
 import { Thumb } from "./gallery";
 import { CardArt } from "./parts";
@@ -390,34 +390,6 @@ function subtitle(item: MediaItem, index: number) {
   return duration(item.durationS) || null;
 }
 
-function ArrangeButton({
-  icon,
-  label,
-  onPress,
-  disabled,
-  danger = false,
-}: {
-  icon: IoniconName;
-  label: string;
-  onPress: () => void;
-  disabled: boolean;
-  danger?: boolean;
-}) {
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={4}
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      accessibilityState={{ disabled }}
-      className={`h-[34px] w-[34px] items-center justify-center rounded-full border border-line active:opacity-60 ${disabled ? "opacity-30" : ""}`}
-    >
-      <Ionicons name={icon} size={18} colorClassName={danger ? "accent-danger" : "accent-ink"} />
-    </Pressable>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // Collections
 // ---------------------------------------------------------------------------
@@ -478,7 +450,7 @@ function CollectionPicker({ memory, onClose }: { memory: Memory; onClose: () => 
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
     const list = (data?.collections ?? []).filter(
-      (c) => !q || c.name.toLowerCase().includes(q) || (c.personName ?? "").toLowerCase().includes(q),
+      (c) => !q || collectionName(c).toLowerCase().includes(q) || (c.personName ?? "").toLowerCase().includes(q),
     );
     return groupCollections(list, original);
   }, [data, query, original]);
@@ -534,13 +506,13 @@ function CollectionPicker({ memory, onClose }: { memory: Memory; onClose: () => 
                   onPress={() => toggle(c.id)}
                   accessibilityRole="checkbox"
                   accessibilityState={{ checked: on }}
-                  accessibilityLabel={c.personName ? `${c.name}, ${c.personName}` : c.name}
+                  accessibilityLabel={c.personName ? `${collectionName(c)}, ${c.personName}` : collectionName(c)}
                   className={`${PICK_ROW} active:opacity-60`}
                   style={HAIRLINE_BELOW}
                 >
                   <IconDisc icon={c.icon} color={c.color} size={34} />
                   <Text className={PICK_NAME} numberOfLines={1}>
-                    {c.name}
+                    {collectionName(c)}
                   </Text>
                   <Ionicons
                     name={on ? "checkmark-circle" : "ellipse-outline"}

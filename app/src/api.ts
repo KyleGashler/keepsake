@@ -513,6 +513,9 @@ export type Memory = MemoryCard & {
 export type MemoryCollection = {
   id: string;
   name: string;
+  /** "6th Birthday" for one of its categories; null for a top-level collection. */
+  parentName: string | null;
+  birthday: number | null;
   pillar: PillarKey;
   /** The child whose collection it is; null for a family-wide one (Family Life). */
   personId: string | null;
@@ -540,6 +543,11 @@ export type Collection = {
   icon: string;
   /** Disc colour, hex. */
   color: string;
+  /** A birthday (inside Birthdays) or a birthday's category; see `collectionHref`. */
+  parentId: string | null;
+  parentName: string | null;
+  /** Which birthday a birthday row is (1 for the 1st); null for everything else. */
+  birthday: number | null;
 };
 
 /** The seven default child collections; the server's template module is the source. */
@@ -618,6 +626,35 @@ export type CollectionArchivePayload = {
   child: ChildSummary | null;
   years: { year: number; count: number }[];
   memories: MemoryCard[];
+};
+
+/** `GET /api/collections/:id/birthdays` — the added birthdays, oldest first. */
+export type BirthdaysPayload = {
+  collection: Collection;
+  child: ChildSummary | null;
+  birthdays: { collection: Collection; memoryCount: number; coverUrl: string | null }[];
+  /** Memories filed straight in Birthdays that belong to no added birthday. */
+  unsortedCount: number;
+};
+
+/** A row on a birthday's screen: its newest picture and story line, and which media it holds. */
+export type CategoryTile = {
+  memoryCount: number;
+  thumbUrl: string | null;
+  preview: string | null;
+  mediaTypes: MediaType[];
+};
+
+/** `GET /api/collections/:id/categories?q=` — `q` drops categories with no matching memory. */
+// `GET /api/collections/:id/loose?birthday=6|unsorted` answers a CollectionArchivePayload.
+export type BirthdayPayload = {
+  birthday: Collection & { birthday: number };
+  /** The Birthdays collection it's in. */
+  birthdays: Collection;
+  child: ChildSummary | null;
+  categories: (CategoryTile & { collection: Collection })[];
+  /** Memories filed straight in Birthdays that belong to this birthday; null when none. */
+  otherMoments: CategoryTile | null;
 };
 
 /** `PATCH /api/people/:id` — `photoKey` is a finalized upload key; null removes the photo. */

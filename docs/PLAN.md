@@ -1323,6 +1323,39 @@ B1 and the auth half of A8 landed together. What was decided:
 
 ---
 
+## Birthdays (2026-11-05)
+
+From the "Collections — Birthdays" brief: the child's Birthdays collection
+opens a two-column grid of birthdays, and each birthday opens a list of
+categories (Friend Party, Family Birthday Dinner, Lunch with Grandma to
+start). Kyle's calls: birthdays appear only when a parent adds one (no
+auto-fill from age); memories filed straight in Birthdays are grouped by date.
+
+- **Shape.** `Collection.parentId` nests collections: a birthday is a
+  collection inside Birthdays (`birthday` = 1 for the 1st, unique per
+  parent), a category is a collection inside a birthday. Memories are filed
+  in categories through `MemoryCollection`, so a category's screen is the
+  ordinary collection archive and Capture preselects it. Top-level lists and
+  counts (`parentId: null`) don't see nested rows. Migration `20261105120000_birthdays`.
+- **Loose memories.** One filed straight in Birthdays belongs to the added
+  birthday nearest its date (so a party the weekend before counts), shown on
+  that birthday as "Other moments"; with no such birthday it's "unsorted",
+  shown as "Other birthday memories" on the grid.
+- **One module.** `server/src/lib/birthdays.ts` owns all of it; routes in
+  `routes/birthdays.ts`: `GET|POST /api/collections/:id/birthdays`,
+  `GET /api/collections/:id/categories?q=`, `POST …/categories`,
+  `PUT …/categories/order`, and `GET …/loose?birthday=6|unsorted` (an
+  archive of the loose memories, via `lib/archive.ts`, which the plain
+  `GET /api/collections/:id` uses too). Rename and delete are the ordinary
+  collection routes. `GET /api/collections` leaves birthday rows out.
+- **Client.** `library/birthdays/[id]` (grid), `library/birthday/[id]`
+  (categories; ⋯ → add, edit order/rename/remove, remove the birthday),
+  `library/birthday-moments/[id]` (loose memories, on the shared `ArchiveScreen`).
+  `collectionHref` picks the screen for a collection. Capture's picker hides
+  categories unless it started from one; "Add to Another Collection" lists
+  them as "6th Birthday · Friend Party".
+- Not deployed; prod needs `prisma migrate deploy`.
+
 ## Dependency graph
 
 ```

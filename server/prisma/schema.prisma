@@ -192,17 +192,26 @@ model Collection {
   /// Opaque glyph key the client maps to an icon, and the disc's hex colour.
   icon        String  @default("star")
   color       String  @default("#123F45")
+  /// A collection inside another, sharing its pillar and person: a birthday
+  /// inside Birthdays, and a category inside a birthday (lib/birthdays.ts).
+  parentId    String?
+  /// Which birthday (1 for the 1st) a birthday row stands for.
+  birthday    Int?
 
   family    Family             @relation(fields: [familyId], references: [id], onDelete: Cascade)
   person    Person?            @relation(fields: [personId], references: [id], onDelete: Cascade)
+  parent    Collection?        @relation("CollectionNesting", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Collection[]       @relation("CollectionNesting")
   memories  MemoryCollection[]
   createdAt DateTime           @default(now())
 
   /// One default of each kind per child, so ensureChildCollections can't
   /// double up under a race. Family collections (null person/kind) are exempt.
   @@unique([personId, kind])
+  @@unique([parentId, birthday])
   @@index([familyId, pillar])
   @@index([personId])
+  @@index([parentId])
 }
 
 /// The foundational object: a single meaningful moment preserved by a family.

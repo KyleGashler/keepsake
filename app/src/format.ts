@@ -53,13 +53,22 @@ export function clock(seconds: number) {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+/** Whole months from a birth date to `at`; negative before it. */
+function monthsOld(birthIso: string, at: Date) {
+  const birth = new Date(birthIso);
+  const months = (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth());
+  return at.getDate() < birth.getDate() ? months - 1 : months;
+}
+
+/** Whole years old today; 0 without a birth date. */
+export function yearsOld(birthIso: string | null | undefined) {
+  return birthIso ? Math.floor(monthsOld(birthIso, new Date()) / 12) : 0;
+}
+
 /** "5 years old" / "2 years, 4 months" — used on person cards. */
 export function ageFrom(birthIso?: string | null) {
   if (!birthIso) return null;
-  const birth = new Date(birthIso);
-  const now = new Date();
-  let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-  if (now.getDate() < birth.getDate()) months -= 1;
+  const months = monthsOld(birthIso, new Date());
   if (months < 24) return `${months} months`;
   const years = Math.floor(months / 12);
   return `${years} years`;
@@ -68,13 +77,31 @@ export function ageFrom(birthIso?: string | null) {
 /** "Age 5", "Age 8 months", "Newborn" — how a child's card and header read. */
 export function childAge(birthIso?: string | null) {
   if (!birthIso) return null;
-  const birth = new Date(birthIso);
-  const now = new Date();
-  let months = (now.getFullYear() - birth.getFullYear()) * 12 + (now.getMonth() - birth.getMonth());
-  if (now.getDate() < birth.getDate()) months -= 1;
+  const months = monthsOld(birthIso, new Date());
   if (months < 1) return "Newborn";
   if (months < 24) return `Age ${months} ${months === 1 ? "month" : "months"}`;
   return `Age ${Math.floor(months / 12)}`;
+}
+
+/** "1st", "22nd", "111th". */
+export function ordinal(n: number) {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  return `${n}${teen ? "th" : (["th", "st", "nd", "rd"][n % 10] ?? "th")}`;
+}
+
+/** "6th Birthday · Friend Party" for a birthday's category; the name for everything else. */
+export function collectionName(c: { name: string; parentName: string | null }) {
+  return c.parentName ? `${c.parentName} · ${c.name}` : c.name;
+}
+
+/** What deleting a collection leaves alone, for its confirmation. */
+export function deleteCollectionMessage(memoryCount: number) {
+  if (memoryCount === 0) return "It's empty, so nothing else changes.";
+  const memories =
+    memoryCount === 1
+      ? "The memory in it stays in the archive, and in any other collection it's filed in."
+      : `The ${memoryCount} memories in it stay in the archive, and in any other collection they're filed in.`;
+  return `${memories} Only this collection goes.`;
 }
 
 /** "Banks's" — copy names a child rather than guessing a pronoun. */
@@ -104,10 +131,7 @@ export function monthDay(iso: string) {
  */
 export function ageOn(birthIso: string | null | undefined, atIso: string) {
   if (!birthIso) return null;
-  const birth = new Date(birthIso);
-  const at = new Date(atIso);
-  let months = (at.getFullYear() - birth.getFullYear()) * 12 + (at.getMonth() - birth.getMonth());
-  if (at.getDate() < birth.getDate()) months -= 1;
+  const months = monthsOld(birthIso, new Date(atIso));
   if (months < 0) return null;
   if (months < 1) return "newborn";
   if (months < 24) return `${months} ${months === 1 ? "month" : "months"}`;

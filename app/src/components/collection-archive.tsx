@@ -10,20 +10,20 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { apiSend, type ChildSummary, type CollectionArchivePayload, type MemoryCard, type PillarKey } from "../api";
+import { apiSend, isNotFound, type ChildSummary, type CollectionArchivePayload, type MemoryCard, type PillarKey } from "../api";
 import { useCanContribute } from "../auth/session-context";
-import { childAge, count, possessive, refusalMessage } from "../format";
-import { COLLECTION_VIEWS, gone, invalidate } from "../query";
-import { entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
-import { backTo, routes } from "../routes";
+import { childAge, count, deleteCollectionMessage, possessive, refusalMessage } from "../format";
+import { COLLECTION_VIEWS, gone, invalidate, useApiQuery, useRefreshOnFocus } from "../query";
+import { archivePath, entryRendererFor, NO_FILTERS, type ArchiveFilters } from "../archive";
+import { backTo, goBackOr, routes } from "../routes";
 import { Ionicons, type IoniconName } from "../styled";
 import { layout } from "../theme";
-import { ChildPortrait } from "./child-header";
+import { BackRow, ChildPortrait } from "./child-header";
 import { FileMemoriesSheet } from "./file-memories-sheet";
 import { Column, IconDisc, SearchField, Sparkle } from "./journey";
 import { EditCollectionSheet } from "./library-sheets";
 import { ActionSheet, type SheetAction } from "./sheet";
-import { InlineError } from "./ui";
+import { ErrorState, InlineError, Loading, NotFoundState } from "./ui";
 
 const PILLAR_NAMES: Record<PillarKey, string> = {
   ARRIVAL_STORIES: "Arrival Stories",
@@ -34,6 +34,64 @@ const PILLAR_NAMES: Record<PillarKey, string> = {
 const SEARCH_DEBOUNCE_MS = 300;
 
 const open = (memory: MemoryCard) => router.push(routes.memory(memory.id));
+
+/**
+ * An archive as a whole screen: `path` (an archive endpoint, plus `extra`
+ * params) fetched with the screen's filters. The filters live here, in the
+ * screen, so a memory opened from a filtered list comes back to the same
+ * filters (and scroll): memory detail is pushed over the tabs and this
+ * screen stays mounted.
+ */
+export function ArchiveScreen({ path, extra, view }: { path: string; extra?: Record<string, string>; view?: ArchiveView }) {
+  const [filters, setFilters] = useState<ArchiveFilters>(NO_FILTERS);
+  // New filters keep the last list up (dimmed) until their answer is in.
+  const query = useApiQuery<CollectionArchivePayload>(archivePath(path, filters, extra), { keepPrevious: true });
+  const { data, error } = query;
+  const insets = useSafeAreaInsets();
+
+  // Back from a memory (edited, moved, deleted) or from Capture: those writes
+  // mark this stale and it refreshes in place; this catches everyone else's.
+  useRefreshOnFocus(query);
+
+  // Checked before `data`: a collection removed while a memory was open
+  // 404s on the refresh back here, and the stale list shouldn't stay up.
+  if (isNotFound(error)) {
+    return (
+      <View className="flex-1 justify-center bg-paper" style={{ paddingTop: insets.top }}>
+        <NotFoundState
+          title="This collection isn't here anymore"
+          backLabel="Go back"
+          onBack={() => goBackOr(routes.library)}
+        />
+      </View>
+    );
+  }
+
+  if (!data) {
+    return (
+      <View className="flex-1 justify-center bg-paper">
+        {error ? (
+          <ErrorState error={error} onRetry={() => void query.refetch()} retrying={query.isFetching} />
+        ) : (
+          <Loading />
+        )}
+      </View>
+    );
+  }
+
+  return (
+    <CollectionArchive
+      data={data}
+      filters={filters}
+      onFiltersChange={setFilters}
+      loading={query.isPlaceholderData}
+      // Hidden while a retry is in flight, so the line doesn't sit there unchanged.
+      error={query.isFetching ? null : error}
+      onRetry={() => void query.refetch()}
+      view={view}
+    />
+  );
+}
 
 /**
  * One collection's archive (screen 4 of the Library journey): who it belongs
@@ -55,8 +113,11 @@ export function CollectionArchive({
   loading = false,
   error = null,
   onRetry,
+  view,
 }: {
   data: CollectionArchivePayload;
+  /** A narrowed look at the collection (Birthdays' loose memories): its own heading and way back, no ⋯. */
+  view?: ArchiveView;
   filters: ArchiveFilters;
   onFiltersChange: (filters: ArchiveFilters) => void;
   /** A fetch for new filters is in flight; what's shown is the last answer. */
@@ -101,9 +162,16 @@ export function CollectionArchive({
 
   // A child's own collection backs out to their Collections; Arrival Stories
   // and Family Life collections back out to their pillar.
+  // A birthday's category backs out to its birthday.
   const ownedByChild = collection.pillar === "CHILD_PROFILES" && child !== null;
-  const backLabel = ownedByChild ? child.name : PILLAR_NAMES[collection.pillar];
-  const backParent: Href = ownedByChild ? routes.child(child.id) : routes.pillar(collection.pillar);
+  const backLabel =
+    view?.backLabel ?? collection.parentName ?? (ownedByChild ? child.name : PILLAR_NAMES[collection.pillar]);
+  const ownParent: Href = ownedByChild ? routes.child(child.id) : routes.pillar(collection.pillar);
+  const backParent: Href =
+    view?.backParent ?? (collection.parentId ? routes.birthday(collection.parentId) : ownParent);
+  const title = view?.title ?? collection.name;
+  const description = view ? view.description : collection.description;
+  const memoryCount = view ? years.reduce((sum, y) => sum + y.count, 0) : collection.memoryCount;
 
   const [sheet, setSheet] = useState<"menu" | "edit" | "file" | "delete" | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -131,25 +199,30 @@ export function CollectionArchive({
     >
       <Column>
         <View style={{ paddingTop: insets.top + layout.top }}>
-          <BackRow label={backLabel} parent={backParent} onMore={canContribute ? () => setSheet("menu") : undefined} />
+          <BackRow
+            label={backLabel}
+            parent={backParent}
+            onMore={canContribute && !view ? () => setSheet("menu") : undefined}
+            moreLabel="Collection options"
+          />
 
           <View className="mb-4 self-start">
             <IconDisc icon={collection.icon} color={collection.color} size={76} />
             <Sparkle size={22} className="absolute -right-[18px] -top-1.5" />
           </View>
           <Text className="font-display text-[42px] leading-[48px] tracking-[-0.5px] text-ink" accessibilityRole="header">
-            {collection.name}
+            {title}
           </Text>
-          {collection.description ? (
-            <Text className="mt-1 font-sans text-[16.5px] leading-[23px] text-ink-soft">{collection.description}</Text>
+          {description ? (
+            <Text className="mt-1 font-sans text-[16.5px] leading-[23px] text-ink-soft">{description}</Text>
           ) : null}
-          <Identity child={child} pillar={collection.pillar} memoryCount={collection.memoryCount} />
+          <Identity child={child} pillar={collection.pillar} memoryCount={memoryCount} />
           {notice ? <Text className="mt-3 font-sans text-[14px] text-terracotta">{notice}</Text> : null}
           {error ? <InlineError error={error} onRetry={onRetry} /> : null}
         </View>
 
         {isEmpty ? (
-          <EmptyCollection child={child} name={collection.name} onCapture={capture} />
+          <EmptyCollection child={child} name={title} onCapture={capture} />
         ) : (
           <>
             <SearchField
@@ -190,7 +263,7 @@ export function CollectionArchive({
             {groups.length > 0 && capture ? (
               <AddCard
                 title="Add to this collection"
-                subtitle={`Save a new memory to ${collection.name}.`}
+                subtitle={`Save a new memory to ${title}.`}
                 onPress={capture}
               />
             ) : null}
@@ -226,15 +299,7 @@ export function CollectionArchive({
   );
 }
 
-/** What deleting a collection leaves alone, for its confirmation. */
-function deleteCollectionMessage(memoryCount: number) {
-  if (memoryCount === 0) return "It's empty, so nothing else changes.";
-  const memories =
-    memoryCount === 1
-      ? "The memory in it stays in the archive, and in any other collection it's filed in."
-      : `The ${memoryCount} memories in it stay in the archive, and in any other collection they're filed in.`;
-  return `${memories} Only this collection goes.`;
-}
+export type ArchiveView = { title: string; description: string; backLabel: string; backParent: Href };
 
 /**
  * Newest year first; the server already sends memories newest first. Years
@@ -256,34 +321,6 @@ function groupByYear(memories: MemoryCard[]) {
 // ---------------------------------------------------------------------------
 // Header pieces
 // ---------------------------------------------------------------------------
-
-function BackRow({ label, parent, onMore }: { label: string; parent: Href; onMore?: () => void }) {
-  return (
-    <View className="mb-3 min-h-11 flex-row items-center justify-between">
-      <Pressable
-        onPress={() => backTo(parent)}
-        hitSlop={12}
-        accessibilityRole="button"
-        accessibilityLabel={`Back to ${label}`}
-        className="-ml-1 flex-row items-center gap-1 active:opacity-70"
-      >
-        <Ionicons name="chevron-back" size={22} colorClassName="accent-ink" />
-        <Text className="font-sans text-[17px] text-ink">{label}</Text>
-      </Pressable>
-      {onMore ? (
-        <Pressable
-          onPress={onMore}
-          hitSlop={10}
-          accessibilityRole="button"
-          accessibilityLabel="Collection options"
-          className="-mr-2 h-11 w-11 items-center justify-center active:opacity-70"
-        >
-          <Ionicons name="ellipsis-horizontal" size={24} colorClassName="accent-ink" />
-        </Pressable>
-      ) : null}
-    </View>
-  );
-}
 
 /** Whose collection this is — the child's photo, name and age — and how much is in it. */
 function Identity({

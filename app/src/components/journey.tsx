@@ -458,6 +458,39 @@ export function ListRow({
 }
 
 // ---------------------------------------------------------------------------
+// ArrangeButton
+// ---------------------------------------------------------------------------
+
+/** A small round icon button for moving or removing an item in a list being arranged. */
+export function ArrangeButton({
+  icon,
+  label,
+  onPress,
+  disabled,
+  danger = false,
+}: {
+  icon: IoniconName;
+  label: string;
+  onPress: () => void;
+  disabled: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      hitSlop={4}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
+      className={`h-[34px] w-[34px] items-center justify-center rounded-full border border-line active:opacity-60 ${disabled ? "opacity-30" : ""}`}
+    >
+      <Ionicons name={icon} size={18} colorClassName={danger ? "accent-danger" : "accent-ink"} />
+    </Pressable>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Layout helper
 // ---------------------------------------------------------------------------
 

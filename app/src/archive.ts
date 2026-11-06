@@ -22,19 +22,20 @@ function deviceTimeZone(): string | undefined {
 }
 
 /**
- * `GET /api/collections/:id?q=&year=&tz=` for a set of filters. Entries show
+ * An archive `path` (`/api/collections/:id`, or Birthdays' `…/loose`) with
+ * `?q=&year=&tz=` for a set of filters, plus any `extra` params. Entries show
  * their date in local time (as memory detail does), so the server buckets
  * years in this device's zone too: a year chip, the heading an entry sits
  * under and the date on the entry always agree.
  */
-export function archivePath(collectionId: string, { q, year }: ArchiveFilters) {
-  const params = new URLSearchParams();
+export function archivePath(path: string, { q, year }: ArchiveFilters, extra: Record<string, string> = {}) {
+  const params = new URLSearchParams(extra);
   if (q.trim()) params.set("q", q.trim());
   if (year !== null) params.set("year", String(year));
   const tz = deviceTimeZone();
   if (tz) params.set("tz", tz);
   const query = params.toString();
-  return `/api/collections/${collectionId}${query ? `?${query}` : ""}`;
+  return `${path}${query ? `?${query}` : ""}`;
 }
 
 /** Draws one memory in an archive. */

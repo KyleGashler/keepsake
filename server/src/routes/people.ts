@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
 import { ensureChildCollections } from "../lib/child-collections.js";
-import { childSummary, profilePhotoUrls } from "../lib/children.js";
+import { childSummaryOf, profilePhotoUrls } from "../lib/children.js";
 import { prisma } from "../lib/prisma.js";
 import { setPicture } from "../lib/pictures.js";
 import { deleteAndPurge } from "../lib/purge.js";
@@ -42,7 +42,7 @@ peopleRouter.get("/people/:id", async (req, res) => {
     }),
     prisma.memory.count({ where: appearsIn }),
     prisma.collection.findMany({
-      where: { familyId: family.id, personId: person.id },
+      where: { familyId: family.id, personId: person.id, parentId: null },
       orderBy: [{ pillar: "asc" }, { sortOrder: "asc" }],
     }),
   ]);
@@ -104,7 +104,7 @@ peopleRouter.post("/people", requireContributor, async (req, res) => {
 
   res.status(201).json({
     person: personDto(person),
-    child: person.role === "CHILD" ? await childSummary(family.id, person) : null,
+    child: await childSummaryOf(family.id, person),
   });
 });
 
@@ -160,7 +160,7 @@ peopleRouter.patch("/people/:id", requireContributor, async (req, res) => {
 
   res.json({
     person: { ...personDto(person), ...(await profilePhotoUrls(person)) },
-    child: person.role === "CHILD" ? await childSummary(family.id, person) : null,
+    child: await childSummaryOf(family.id, person),
   });
 });
 

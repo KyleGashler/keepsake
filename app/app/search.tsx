@@ -4,7 +4,8 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import type { Collection, MemoryCard, Person } from "../src/api";
 import { AppHeader, Avatar, EmptyState, ErrorState, InlineError, MemoryRow, Screen } from "../src/components/ui";
 import { useApiQuery } from "../src/query";
-import { openInLibrary, routes } from "../src/routes";
+import { collectionHref, openInLibrary } from "../src/routes";
+import { collectionName } from "../src/format";
 import { Ionicons } from "../src/styled";
 import { useSettled } from "../src/use-settled";
 
@@ -115,12 +116,12 @@ export default function SearchScreen() {
                   {results.collections.map((collection) => (
                     <Pressable
                       key={collection.id}
-                      onPress={() => openInLibrary(routes.collection(collection.id))}
+                      onPress={() => openInLibrary(collectionHref(collection))}
                       className="rounded-full border border-line bg-surface px-4 py-2"
                     >
                       <Text className="text-[13.5px] text-ink">
                         {collection.personName ? `${collection.personName} · ` : ""}
-                        {collection.name}
+                        {collectionName(collection)}
                       </Text>
                     </Pressable>
                   ))}

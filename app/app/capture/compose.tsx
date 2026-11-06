@@ -25,7 +25,7 @@ import { VideoClip } from "../../src/components/video";
 import { AppHeader, Button, ErrorState, Loading, Screen, ViewOnlyState } from "../../src/components/ui";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
-import { duration, errorMessage } from "../../src/format";
+import { collectionName, duration, errorMessage } from "../../src/format";
 import { MEMORY_VIEWS, invalidate, useApiQuery } from "../../src/query";
 import { Image, Ionicons } from "../../src/styled";
 
@@ -137,8 +137,12 @@ function ComposeScreen() {
     null;
 
   const collections = useMemo(
-    () => (collectionsData?.collections ?? []).filter((c) => c.pillar === pillar),
-    [collectionsData, pillar],
+    // A birthday's categories are offered only when Capture started from one.
+    () =>
+      (collectionsData?.collections ?? []).filter(
+        (c) => c.pillar === pillar && (c.parentId === null || c.id === params.collectionId),
+      ),
+    [collectionsData, pillar, params.collectionId],
   );
   const chosen = useMemo(
     () => (collectionsData?.collections ?? []).filter((c) => collectionIds.includes(c.id)),
@@ -366,7 +370,9 @@ function ComposeScreen() {
                 <Chip
                   key={collection.id}
                   label={
-                    collection.personName ? `${collection.personName} · ${collection.name}` : collection.name
+                    collection.personName
+                      ? `${collection.personName} · ${collectionName(collection)}`
+                      : collectionName(collection)
                   }
                   selected={collectionIds.includes(collection.id)}
                   onPress={() => setCollectionIds((ids) => toggle(ids, collection.id))}
@@ -375,7 +381,7 @@ function ComposeScreen() {
             </View>
             {chosen.length ? (
               <Text className="mt-2 type-caption">
-                Filed in {chosen.map((c) => c.name).join(", ")}
+                Filed in {chosen.map(collectionName).join(", ")}
               </Text>
             ) : null}
           </Field>

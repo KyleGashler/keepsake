@@ -26,7 +26,7 @@ const include = {
   media: mediaInclude,
   author: true,
   participants: { include: { person: true } },
-  collections: { include: { collection: true } },
+  collections: { include: { collection: { include: { parent: { select: { name: true } } } } } },
 } as const;
 
 const listQuery = z.object({

@@ -1,5 +1,5 @@
 import { router, type Href } from "expo-router";
-import type { PillarKey } from "./api";
+import type { Collection, PillarKey } from "./api";
 
 /**
  * Every Library screen lives in a stack nested in the Library tab
@@ -11,12 +11,26 @@ export const routes = {
   children: "/library/children",
   child: (childId: string) => `/library/children/${childId}`,
   collection: (collectionId: string) => `/library/collections/${collectionId}`,
+  /** A child's Birthdays grid. */
+  birthdays: (collectionId: string) => `/library/birthdays/${collectionId}`,
+  /** One birthday's categories. */
+  birthday: (collectionId: string) => `/library/birthday/${collectionId}`,
+  /** Memories filed straight in Birthdays: nearest the birthday they're opened from, or none added. */
+  looseBirthdays: (birthdaysId: string, from?: { id: string; birthday: number }) =>
+    `/library/birthday-moments/${birthdaysId}${from ? `?birthday=${from.birthday}&from=${from.id}` : ""}`,
   /** Arrival Stories and Family Life; Child Profiles is `children`. */
   pillar: (pillar: PillarKey) => `/library/pillar/${pillar}`,
   memory: (memoryId: string) => `/memory/${memoryId}`,
   recordInto: (memoryId: string) => `/capture/record?memoryId=${encodeURIComponent(memoryId)}`,
   person: (personId: string) => `/person/${personId}`,
 } as const;
+
+/** Where a collection opens: Birthdays and a birthday have their own screens, the rest an archive. */
+export function collectionHref(c: Pick<Collection, "id" | "kind" | "birthday">) {
+  if (c.kind === "birthdays") return routes.birthdays(c.id);
+  if (c.birthday !== null) return routes.birthday(c.id);
+  return routes.collection(c.id);
+}
 
 /**
  * Open a Library screen from outside the Library tab (search, a memory, a

@@ -40,9 +40,9 @@ import { MediaViewer } from "../../src/components/memory/viewer";
 import { WaveformPlayer } from "../../src/components/memory/waveform";
 import { Button, ErrorState, Loading, NotFoundState } from "../../src/components/ui";
 import { useCanContribute } from "../../src/auth/session-context";
-import { errorMessage, seasonOf, shortDate } from "../../src/format";
+import { collectionName, errorMessage, seasonOf, shortDate } from "../../src/format";
 import { memoryKey, memorySaved, queryClient, useApiQuery, useRefreshOnFocus } from "../../src/query";
-import { goBackOr, openInLibrary, routes } from "../../src/routes";
+import { collectionHref, goBackOr, openInLibrary } from "../../src/routes";
 import { Image, Ionicons } from "../../src/styled";
 import { layout, MAX_WIDTH } from "../../src/theme";
 
@@ -572,7 +572,7 @@ function MemoryDetails({ memory }: { memory: Memory }) {
   const { data: people } = useApiQuery<{ people: Person[] }>(ambiguous ? "/api/people" : null);
   const label = (c: MemoryCollection) => {
     const owner = ambiguous ? people?.people.find((p) => p.id === c.personId)?.name : undefined;
-    return owner ? `${c.name} · ${owner}` : c.name;
+    return owner ? `${collectionName(c)} · ${owner}` : collectionName(c);
   };
   return (
     <Section title="Memory Details">
@@ -588,7 +588,7 @@ function MemoryDetails({ memory }: { memory: Memory }) {
         {collections.length ? (
           <DetailRow icon="pricetag-outline" label={collections.length > 1 ? "Collections" : "Collection"}>
             {collections.map((c) => (
-              <DetailValue key={c.id} onPress={() => openInLibrary(routes.collection(c.id))}>
+              <DetailValue key={c.id} onPress={() => openInLibrary(collectionHref(c))}>
                 {label(c)}
               </DetailValue>
             ))}
