@@ -1,5 +1,4 @@
 import type { Pillar, Prisma } from "@prisma/client";
-import { PURGE_MAX_ATTEMPTS } from "../jobs/JobQueue.js";
 import { jobQueue } from "../jobs/queue.js";
 import { READ_URL_TTL_SECONDS, storage } from "../storage/index.js";
 import {
@@ -117,7 +116,7 @@ export async function setPicture(familyId: string, holder: HolderRef, key: strin
       await writeHolder(tx, familyId, holder, key);
       if (oldKey !== null) {
         const what = "personId" in holder ? "profile photo" : "pillar cover";
-        await queueDelete(tx, familyId, [oldKey], `${key === null ? "removed" : "replaced"} ${what}`);
+        await queueDeleteIfUnused(tx, familyId, [oldKey], `${key === null ? "removed" : "replaced"} ${what}`);
       }
       if (key !== null) await queueRenditions(tx, familyId, key);
       return { ok: true };
@@ -160,7 +159,7 @@ export async function renditionsMade(familyId: string, key: string, written: str
     prisma.pillarCover.updateMany({ where: { familyId, storageKey: key }, data: { derivedKey: key } }),
   ]);
   const marked = people.count + covers.count;
-  if (marked === 0) await queueDelete(prisma, familyId, written, "renditions of a picture nothing holds");
+  if (marked === 0) await queueDeleteIfUnused(prisma, familyId, written, "renditions of a picture nothing holds");
   return marked;
 }
 
@@ -195,7 +194,7 @@ export async function deleteIfUnused(familyId: string, keys: string[]): Promise<
           return;
         }
         const files = isOriginalKey(key) ? [key, ...PHOTO_DERIVATIVE_KINDS.map((kind) => derivativeKey(key, kind))] : [key];
-        for (const file of files) await storage().purgeForFamilyDelete(file);
+        await Promise.all(files.map((file) => storage().purgeForFamilyDelete(file)));
         outcome.deleted.push(...files);
       },
       // The storage delete runs under the lock; on S3 it removes every version.
@@ -288,13 +287,12 @@ async function writeHolder(tx: Prisma.TransactionClient, familyId: string, holde
     });
     return;
   }
-  const where = { familyId_pillar: { familyId, pillar: holder.pillar } };
   if (key === null) {
     await tx.pillarCover.deleteMany({ where: { familyId, pillar: holder.pillar } });
     return;
   }
   await tx.pillarCover.upsert({
-    where,
+    where: { familyId_pillar: { familyId, pillar: holder.pillar } },
     create: { familyId, pillar: holder.pillar, storageKey: key },
     update: { storageKey: key, derivedKey: null },
   });
@@ -304,10 +302,7 @@ function queueRenditions(tx: Prisma.TransactionClient, familyId: string, key: st
   return jobQueue().enqueue("image.derive", { familyId, storageKey: key }, { db: tx });
 }
 
-function queueDelete(db: Prisma.TransactionClient, familyId: string, storageKeys: string[], reason: string) {
-  return jobQueue().enqueue(
-    "media.purge",
-    { familyId, storageKeys, muxAssets: [], reason },
-    { db, maxAttempts: PURGE_MAX_ATTEMPTS },
-  );
+/** Queue `deleteIfUnused` for `storageKeys` (a `media.purge`), in `db`'s transaction when it is one. */
+export function queueDeleteIfUnused(db: Prisma.TransactionClient, familyId: string, storageKeys: string[], reason: string) {
+  return jobQueue().enqueue("media.purge", { familyId, storageKeys, muxAssets: [], reason }, { db });
 }

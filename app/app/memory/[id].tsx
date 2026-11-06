@@ -309,6 +309,7 @@ export default function MemoryScreen() {
                 onLongPress={can.edit}
                 className="mt-2"
               >
+                {memory.storySource === "AI_DRAFT" ? <AiDraftNote hasWords={hasWords} /> : null}
                 <StoryText story={memory.story} textOnly={memory.isTextOnly} />
               </Pressable>
             ) : null}
@@ -371,7 +372,7 @@ export default function MemoryScreen() {
 
             {memory.related.length ? (
               <Section title="Related Memories">
-                <RelatedRow memories={memory.related} />
+                <RelatedRow memories={memory.related} linkedIds={memory.linkedIds} />
               </Section>
             ) : null}
           </View>
@@ -695,6 +696,17 @@ function TranscriptEditor({
         <Button label={saving ? "Saving…" : "Save"} onPress={onSave} disabled={saving} />
         <Button label="Cancel" variant="secondary" onPress={onCancel} />
       </View>
+    </View>
+  );
+}
+
+function AiDraftNote({ hasWords }: { hasWords: boolean }) {
+  return (
+    <View className="mb-2.5 flex-row items-center gap-1.5 self-start rounded-full bg-accent-soft px-2.5 py-1">
+      <Ionicons name="sparkles-outline" size={13} colorClassName="accent-accent-deep" />
+      <Text className="font-sans-semibold text-[12.5px] text-accent-deep">
+        {hasWords ? "Drafted by AI from the Original Words" : "Drafted by AI"}
+      </Text>
     </View>
   );
 }

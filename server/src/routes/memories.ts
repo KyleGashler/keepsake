@@ -1,26 +1,21 @@
-import type { MuxAsset } from "@prisma/client";
 import { Router } from "express";
 import { z } from "zod";
 import { requireContributor } from "../auth/middleware.js";
 import { jobQueue } from "../jobs/index.js";
-import { enqueueDerive } from "../jobs/media-derive.js";
 import { kickRefresh } from "../jobs/memory-refresh.js";
 import { prisma } from "../lib/prisma.js";
 import { hueForSeed } from "../lib/placeholder.js";
 import { linkPair, memoryDetail } from "../lib/memory-detail.js";
 import { mediaInclude, memoryCardDtos } from "../lib/serialize.js";
 import { memoryDownloads } from "../lib/downloads.js";
+import { attachMedia, mediaInput } from "../lib/memory-media.js";
 import { deleteAndPurge } from "../lib/purge.js";
-import { keyBelongsTo } from "../lib/upload-keys.js";
 import {
   captionRetryPatch,
-  isMuxKey,
   kickSync,
   lockAssets,
   requestCaptionsAgain,
-  settleLinkedMedia,
   updateMuxAsset,
-  uploadIdFromKey,
   holdMachineTranscript,
 } from "../media-host/assets.js";
 import { MediaHostError, mediaHost } from "../media-host/index.js";
@@ -78,39 +73,6 @@ memoriesRouter.get("/memories/:id", async (req, res) => {
   res.json({ memory: await memoryDetail(req.ctx.family.id, req.ctx.user.id, memory) });
 });
 
-/**
- * A memory's media, as the client reports it.
- *
- * `storageKey` is the A5 path: the client has already run init → PUT →
- * finalize, and passes back exactly what finalize returned — a storage key for
- * a photo, a `mux:<uploadId>` key for video and audio. `url` is the older
- * path, kept for the generated placeholders the seed writes. One or the
- * other, never neither.
- */
-const mediaInput = z
-  .object({
-    type: z.enum(["PHOTO", "VIDEO", "AUDIO"]),
-    url: z.string().min(1).optional(),
-    storageKey: z.string().min(1).max(512).optional(),
-    mimeType: z.string().max(120).optional(),
-    bytes: z.number().int().positive().optional(),
-    sha256: z.string().regex(/^[a-f0-9]{64}$/).nullish(),
-    // Storage's own digest of the object (`<algorithm>:<base64>`), exactly as
-    // finalize returned it. One of this and sha256 is set for an upload.
-    checksum: z
-      .string()
-      .max(200)
-      .regex(/^(crc64nvme|sha256|crc32c|crc32|sha1):[A-Za-z0-9+/]+={0,2}$/)
-      .nullish(),
-    caption: z.string().max(280).optional(),
-    width: z.number().int().positive().default(1200),
-    height: z.number().int().positive().default(900),
-    durationS: z.number().int().positive().optional(),
-  })
-  .refine((m) => Boolean(m.url || m.storageKey), {
-    message: "media needs either a storageKey (from /api/media/finalize) or a url",
-  });
-
 const newMemory = z.object({
   title: z.string().min(1).max(160),
   story: z.string().max(20_000).optional(),
@@ -150,52 +112,8 @@ memoriesRouter.post("/memories", requireContributor, async (req, res) => {
     return res.status(400).json({ error: "unknown_reference" });
   }
 
-  // A storage key carries its owning family in its prefix; refuse to attach
-  // another family's object to this family's memory.
-  const foreign = input.media.find(
-    (m) => m.storageKey && !isMuxKey(m.storageKey) && !keyBelongsTo(m.storageKey, family.id),
-  );
-  if (foreign) return res.status(403).json({ error: "Storage key does not belong to this family" });
-
-  // Video and audio live on Mux: their key must be a `mux:` upload of this
-  // family's that finalize has confirmed, of the type it was declared as.
-  const avWithoutMux = input.media.find((m) => m.type !== "PHOTO" && m.storageKey && !isMuxKey(m.storageKey));
-  if (avWithoutMux) {
-    return res
-      .status(400)
-      .json({ error: "Video and audio must be uploaded through /api/media/init", code: "av_requires_mux" });
-  }
-  const uploadIds = [
-    ...new Set(
-      input.media.flatMap((m) => (m.storageKey && isMuxKey(m.storageKey) ? [uploadIdFromKey(m.storageKey)] : [])),
-    ),
-  ];
-  const assets = uploadIds.length
-    ? await prisma.muxAsset.findMany({ where: { uploadId: { in: uploadIds }, familyId: family.id } })
-    : [];
-  const byUpload = new Map(assets.map((a) => [a.uploadId, a]));
-  const assetFor = (m: { storageKey?: string }): MuxAsset | null =>
-    m.storageKey && isMuxKey(m.storageKey) ? (byUpload.get(uploadIdFromKey(m.storageKey)) ?? null) : null;
-  for (const m of input.media) {
-    if (!m.storageKey || !isMuxKey(m.storageKey)) continue;
-    const asset = assetFor(m);
-    if (!asset) return res.status(403).json({ error: "Storage key does not belong to this family" });
-    if (asset.type !== m.type) {
-      return res.status(400).json({ error: `That upload is ${asset.type}, not ${m.type}`, code: "type_mismatch" });
-    }
-    if (asset.status === "UPLOADING") {
-      return res.status(409).json({ error: "Finalize the upload before attaching it", code: "upload_not_finalized" });
-    }
-  }
-
   const heroSeed = `memory-${Date.now()}-${Math.round(Math.random() * 1e6)}`;
   const memory = await prisma.$transaction(async (tx) => {
-    // Hold the clips' MuxAsset rows while their Media rows are created, so a
-    // webhook or sync run can't settle an asset in between and miss them.
-    const locked = await lockAssets(
-      tx,
-      assets.map((a) => a.id),
-    );
     const created = await tx.memory.create({
       data: {
         familyId: family.id,
@@ -210,61 +128,13 @@ memoriesRouter.post("/memories", requireContributor, async (req, res) => {
         heroSeed,
         paletteHue: hueForSeed(heroSeed),
         brightness: 40 + (heroSeed.length % 40),
-        media: {
-          create: input.media.map((m, i) => {
-            const asset = assetFor(m);
-            if (asset) {
-              // A clip on Mux: no storage key or URL of ours. Starts PROCESSING;
-              // settleLinkedMedia below copies whatever the asset already knows.
-              return {
-                type: m.type,
-                url: "",
-                muxAssetId: asset.id,
-                mimeType: asset.mimeType,
-                bytes: asset.bytes,
-                status: "PROCESSING" as const,
-                caption: m.caption ?? null,
-                width: m.width,
-                height: m.height,
-                durationS: m.durationS ?? null,
-                transcriptStatus: "PENDING" as const,
-                sortOrder: i,
-              };
-            }
-            return {
-              type: m.type,
-              // Uploads have no stored URL: it's signed per response from the
-              // storage key, because a presigned URL expires and this column
-              // doesn't. See lib/serialize.ts#mediaReadUrl.
-              url: m.storageKey ? "" : (m.url ?? ""),
-              storageKey: m.storageKey ?? null,
-              mimeType: m.mimeType ?? null,
-              bytes: m.bytes ?? null,
-              sha256: m.sha256 ?? null,
-              checksum: m.checksum ?? null,
-              status: "READY" as const,
-              caption: m.caption ?? null,
-              width: m.width,
-              height: m.height,
-              durationS: m.durationS ?? null,
-              sortOrder: i,
-            };
-          }),
-        },
         participants: { create: input.participantIds.map((personId) => ({ personId })) },
         collections: { create: input.collectionIds.map((collectionId) => ({ collectionId })) },
       },
       select: { id: true },
     });
-    // If a clip finished (captions and all) before this memory existed, this
-    // is where its status, duration and transcript arrive (`locked` was read
-    // under the lock, so it's current).
-    for (const asset of locked) await settleLinkedMedia(tx, asset);
-    const saved = await tx.memory.findUniqueOrThrow({ where: { id: created.id }, include });
-    // Renditions, EXIF date and palette for each uploaded photo (A6). In the
-    // transaction, so a job exists exactly when its Media row does.
-    await enqueueDerive(jobQueue(), tx, family.id, saved.media);
-    return saved;
+    await attachMedia(tx, family.id, created.id, input.media);
+    return tx.memory.findUniqueOrThrow({ where: { id: created.id }, include });
   });
 
   const author = memory.author?.name ?? "Someone";
@@ -301,7 +171,10 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
   const { occurredAt, collectionIds, ...rest } = parsed.data;
 
-  const existing = await findMemory(family.id, req.params.id);
+  const existing = await prisma.memory.findFirst({
+    where: { id: req.params.id, familyId: family.id },
+    select: { id: true, story: true },
+  });
   if (!existing) return res.status(404).json({ error: "Memory not found" });
 
   const wanted = collectionIds ? [...new Set(collectionIds)] : null;
@@ -320,8 +193,13 @@ memoriesRouter.patch("/memories/:id", requireContributor, async (req, res) => {
     }
     return tx.memory.update({
       where: { id: existing.id },
-      // A date someone sets is theirs: no job moves it after this.
-      data: { ...rest, ...(occurredAt ? { occurredAt: new Date(occurredAt), occurredAtSource: "HUMAN" as const } : {}) },
+      // A date someone sets is theirs: no job moves it after this. A story
+      // someone writes or edits is theirs too, and stops reading as an AI draft.
+      data: {
+        ...rest,
+        ...(occurredAt ? { occurredAt: new Date(occurredAt), occurredAtSource: "HUMAN" as const } : {}),
+        ...(rest.story !== undefined && rest.story !== existing.story ? { storySource: "HUMAN" as const } : {}),
+      },
       include,
     });
   });
@@ -348,6 +226,27 @@ memoriesRouter.delete("/memories/:id", requireContributor, async (req, res) => {
   if (!deleted) return res.status(404).json({ error: "Memory not found" });
   req.log.info({ familyId, memoryId: req.params.id, by: req.ctx.user.id }, "memory deleted");
   res.status(204).end();
+});
+
+const addMedia = z.object({
+  media: z
+    .array(mediaInput)
+    .min(1)
+    .max(50)
+    .refine((all) => all.every((m) => m.storageKey), { message: "each item needs a storageKey from /api/media/finalize" }),
+});
+
+memoriesRouter.post("/memories/:id/media", requireContributor, async (req, res) => {
+  const familyId = req.ctx.family.id;
+  const parsed = addMedia.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() });
+  const memory = await findMemory(familyId, req.params.id);
+  if (!memory) return res.status(404).json({ error: "Memory not found" });
+
+  await prisma.$transaction((tx) => attachMedia(tx, familyId, memory.id, parsed.data.media));
+
+  const updated = await prisma.memory.findFirstOrThrow({ where: { id: memory.id, familyId }, include });
+  res.status(201).json({ memory: await memoryDetail(familyId, req.ctx.user.id, updated) });
 });
 
 /**

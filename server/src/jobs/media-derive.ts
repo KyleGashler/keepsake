@@ -1,11 +1,12 @@
 import type { Prisma } from "@prisma/client";
 import type { Logger } from "pino";
 import { prisma } from "../lib/prisma.js";
+import { queueDeleteIfUnused } from "../lib/pictures.js";
 import { MAX_DERIVE_BYTES, UndecodableImageError, renderPhoto, type RenderedPhoto } from "../lib/photo-derivatives.js";
 import { keyBelongsTo } from "../lib/upload-keys.js";
 import { PHOTO_DERIVATIVE_KINDS, derivativeKey, storage } from "../storage/index.js";
 import { isOriginalKey } from "../storage/StorageProvider.js";
-import { PURGE_MAX_ATTEMPTS, PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js";
+import { PermanentJobError, type JobHandler, type JobQueue } from "./JobQueue.js";
 import { MediaHostError } from "../media-host/index.js";
 import { kickRefresh, readAll, refreshMemory } from "./memory-refresh.js";
 
@@ -71,11 +72,7 @@ export function mediaDeriveHandler(queue: JobQueue): JobHandler<"media.derive"> 
       if (!kept) {
         // Deleted while rendering. The delete's purge may already have run,
         // so these files would outlive it; purge them the same way.
-        await queue.enqueue(
-          "media.purge",
-          { familyId, storageKeys: written, muxAssets: [], reason: "derivatives of a deleted photo" },
-          { maxAttempts: PURGE_MAX_ATTEMPTS },
-        );
+        await queueDeleteIfUnused(prisma, familyId, written, "derivatives of a deleted photo");
         return;
       }
 

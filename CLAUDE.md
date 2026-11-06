@@ -1,3 +1,11 @@
+# Writing code
+
+- **Simple.** Choose the smallest design that does the job. Put a rule in one module behind a small interface, and add a seam only when two real callers need it.
+- **Code tells the story.** Names, types and structure carry the intent, so a reader follows it from the code alone. When something needs explaining, rename or restructure until it doesn't.
+- **Comments only where critical.** Keep a comment for a fact the code cannot show: a lock order that prevents deadlock, a platform or browser quirk, an external API's units or limits. One or two lines, saying why.
+
+New code meets this bar even where neighbouring older code is heavily commented.
+
 <!-- BEGIN AWS Agent Toolkit rules -->
 # AWS Guidance for the new AWS experience
 

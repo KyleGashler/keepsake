@@ -14,6 +14,7 @@ export const routes = {
   /** Arrival Stories and Family Life; Child Profiles is `children`. */
   pillar: (pillar: PillarKey) => `/library/pillar/${pillar}`,
   memory: (memoryId: string) => `/memory/${memoryId}`,
+  recordInto: (memoryId: string) => `/capture/record?memoryId=${encodeURIComponent(memoryId)}`,
   person: (personId: string) => `/person/${personId}`,
 } as const;
 

@@ -12,8 +12,12 @@ import { ActivityIndicator, Alert, Linking, Platform, Pressable, Text, View } fr
 import { levelFromMetering, normalizeAudioType, VOICE_RECORDING } from "../../src/audio";
 import { AudioClip } from "../../src/components/audio";
 import { StardustCluster } from "../../src/components/brand";
-import { AppHeader, Button } from "../../src/components/ui";
-import { draft } from "../../src/draft";
+import { AppHeader, Button, ViewOnlyState } from "../../src/components/ui";
+import { useCanContribute } from "../../src/auth/session-context";
+import { addToMemory, isNotFound } from "../../src/api";
+import { draft, type DraftAsset } from "../../src/draft";
+import { MEMORY_VIEWS, memorySaved } from "../../src/query";
+import { goBackOr, routes } from "../../src/routes";
 import { clock, errorMessage } from "../../src/format";
 import { Ionicons, type IoniconName } from "../../src/styled";
 
@@ -26,13 +30,21 @@ const CENTRE = "flex-1 items-center justify-center px-4 py-12";
 const BARS = 36;
 const POLL_MS = 90;
 
-/**
- * The recorder: one big button, the time, and a level that moves when someone
- * speaks, so it's obvious it's listening. Nothing is uploaded here — "Use
- * recording" hands the clip to compose like any other captured media.
- */
-export default function RecordScreen() {
-  const params = useLocalSearchParams<{ prompt?: string; collectionId?: string }>();
+export default function RecordRoute() {
+  if (!useCanContribute()) {
+    return (
+      <>
+        <AppHeader back subtitle="Capture" title="Record a conversation" globalActions={false} />
+        <ViewOnlyState onBack={() => router.replace("/")} />
+      </>
+    );
+  }
+  return <RecordScreen />;
+}
+
+function RecordScreen() {
+  const params = useLocalSearchParams<{ prompt?: string; collectionId?: string; memoryId?: string }>();
+  const [addingTo, setAddingTo] = useState(params.memoryId ?? null);
   const insets = useSafeAreaInsets();
 
   // Declared before the recorder hook on purpose: React runs unmount cleanups
@@ -65,6 +77,7 @@ export default function RecordScreen() {
   const [clip, setClip] = useState<{ uri: string; durationS: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [handingOff, setHandingOff] = useState(false);
+  const [progress, setProgress] = useState<string | null>(null);
   // The recorder's own clock resets to zero on stop, so keep the last reading.
   const [recordedMs, setRecordedMs] = useState(0);
 
@@ -173,6 +186,7 @@ export default function RecordScreen() {
     if (!clip) return;
     setHandingOff(true);
     setError(null);
+    if (addingTo) setProgress("Uploading…");
     try {
       let rawMime: string | null = null;
       let bytes: number | undefined;
@@ -190,7 +204,14 @@ export default function RecordScreen() {
         }
       }
       const { mime, ext } = normalizeAudioType(rawMime, clip.uri);
-      draft.set([{ uri: clip.uri, name: `recording-${Date.now()}${ext}`, mime, bytes, durationS: clip.durationS }]);
+      const asset: DraftAsset = { uri: clip.uri, name: recordingName(ext), mime, bytes, durationS: clip.durationS };
+      if (addingTo) {
+        const res = await addToMemory(addingTo, [asset], setProgress);
+        void memorySaved(res.memory, MEMORY_VIEWS);
+        if (mountedRef.current) goBackOr(routes.memory(addingTo));
+        return;
+      }
+      draft.set([asset]);
       router.replace({
         pathname: "/capture/compose",
         params: {
@@ -200,16 +221,28 @@ export default function RecordScreen() {
         },
       });
     } catch (err) {
-      setError(errorMessage(err));
+      if (addingTo && isNotFound(err)) {
+        setAddingTo(null);
+        setError("That memory isn't here anymore. You can still keep this recording as a new memory.");
+      } else {
+        setError(errorMessage(err));
+      }
       setHandingOff(false);
+      setProgress(null);
     }
   }
 
   const live = phase === "recording" || phase === "paused";
+  const keepLabel = addingTo ? "Add to memory" : "Use recording";
 
   return (
     <>
-      <AppHeader back subtitle="Capture" title="Record a conversation" globalActions={false} />
+      <AppHeader
+        back
+        subtitle={addingTo ? "Add to this memory" : "Capture"}
+        title={addingTo ? "Record a voice" : "Record a conversation"}
+        globalActions={false}
+      />
       <View
         className="w-full max-w-page flex-1 self-center bg-paper px-gutter"
         style={{ paddingBottom: insets.bottom + 16 }}
@@ -245,13 +278,20 @@ export default function RecordScreen() {
             {phase === "review" ? (
               <View className="items-center gap-3 self-stretch">
                 <Button
-                  label={handingOff ? "Opening…" : "Use recording"}
+                  label={progress ?? (handingOff ? "Opening…" : keepLabel)}
+                  accessibilityLabel={keepLabel}
                   icon="checkmark"
                   onPress={keepRecording}
                   disabled={handingOff}
                   style={{ alignSelf: "stretch" }}
                 />
-                <Button label="Discard" variant="secondary" icon="trash-outline" onPress={discard} />
+                <Button
+                  label="Discard"
+                  variant="secondary"
+                  icon="trash-outline"
+                  onPress={discard}
+                  disabled={handingOff}
+                />
               </View>
             ) : (
               <View className="flex-row items-center justify-center gap-4">
@@ -281,6 +321,10 @@ export default function RecordScreen() {
       </View>
     </>
   );
+}
+
+function recordingName(ext: string) {
+  return `recording-${Date.now()}${ext}`;
 }
 
 /** The line under the cluster, for whichever phase the recorder is in. */

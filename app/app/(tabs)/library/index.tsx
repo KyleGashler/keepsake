@@ -9,7 +9,7 @@ import { Column, PageHeader, PhotoCard } from "../../../src/components/journey";
 import { FamilyPill } from "../../../src/components/family-switcher";
 import { ActionSheet, SheetError } from "../../../src/components/sheet";
 import { Button, EmptyState, ErrorState, Loading } from "../../../src/components/ui";
-import { pickAndUploadImage } from "../../../src/pick-image";
+import { pickAndUploadImage } from "../../../src/pick-media";
 import { friendlyError } from "../../../src/format";
 import { invalidate, useApiQuery, useRefreshOnFocus } from "../../../src/query";
 import { routes } from "../../../src/routes";

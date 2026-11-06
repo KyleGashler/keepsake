@@ -316,6 +316,7 @@ export function Button({
   disabled,
   style,
   className = "",
+  accessibilityLabel,
 }: {
   label: string;
   onPress?: () => void;
@@ -324,12 +325,16 @@ export function Button({
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
   className?: string;
+  accessibilityLabel?: string;
 }) {
   const primary = variant === "primary";
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ disabled: Boolean(disabled) }}
       className={`flex-row items-center justify-center gap-2 py-[13px] px-6 rounded-full active:opacity-72 ${
         primary ? "bg-primary" : "bg-surface border border-line"
       } ${disabled ? "opacity-45" : ""} ${className}`}

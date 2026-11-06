@@ -5,7 +5,7 @@ import { apiSend, type ChildSummary, type Collection, type CollectionPatch, type
 import { COLLECTION_VIEWS, invalidate, PEOPLE_VIEWS } from "../query";
 import { birthdayInput, birthdayLabel, childAge, friendlyError, parseBirthday } from "../format";
 import { COLLECTION_SWATCHES, glyphColorFor, ICON_KEYS, isIconKey, type IconKey } from "../icons";
-import { pickAndUploadImage } from "../pick-image";
+import { pickAndUploadImage } from "../pick-media";
 import { Ionicons } from "../styled";
 import { useColor } from "../theme";
 import { ChildPortrait } from "./child-header";

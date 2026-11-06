@@ -304,6 +304,7 @@ export async function memoryDto(m: MemoryWithRelations) {
   return {
     ...(await memoryCardDto(m)),
     story: m.story,
+    storySource: m.storySource,
     transcript: m.transcript,
     transcriptStatus: aggregateTranscriptStatus(m.media ?? []),
     createdAt: m.createdAt.toISOString(),

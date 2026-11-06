@@ -3,6 +3,7 @@ import Constants from "expo-constants";
 import { File as FsFile, UploadType } from "expo-file-system";
 import { auth } from "./auth";
 import { getFamilyId } from "./auth/family-store";
+import type { DraftAsset } from "./draft";
 
 /**
  * Every call to the API carries the signed-in person's token and the family
@@ -307,6 +308,43 @@ export async function uploadFile(
   return finalizeUpload(key);
 }
 
+export async function uploadAssets(assets: DraftAsset[], onProgress?: (text: string) => void) {
+  const media = [];
+  for (const [i, asset] of assets.entries()) {
+    const label = assets.length > 1 ? `${i + 1} of ${assets.length}` : "";
+    onProgress?.(label ? `Uploading ${label}…` : "Uploading…");
+    const uploaded = await uploadFile(asset.uri, asset.name, asset.mime, (fraction) =>
+      onProgress?.(`Uploading ${label} ${Math.round(fraction * 100)}%`.replace(/\s+/g, " ").trim()),
+    );
+    const audio = uploaded.type === "AUDIO";
+    const timed = audio || uploaded.type === "VIDEO";
+    media.push({
+      type: uploaded.type,
+      storageKey: uploaded.key,
+      mimeType: uploaded.mimeType,
+      bytes: uploaded.bytes,
+      ...(uploaded.checksum ? { checksum: uploaded.checksum } : {}),
+      ...(uploaded.sha256 ? { sha256: uploaded.sha256 } : {}),
+      ...(timed && asset.durationS && asset.durationS > 0 ? { durationS: Math.round(asset.durationS) } : {}),
+      ...(audio
+        ? {}
+        : {
+            width: uploaded.width ?? asset.width ?? 1200,
+            height: uploaded.height ?? asset.height ?? 900,
+          }),
+    });
+  }
+  return media;
+}
+
+export async function addToMemory(memoryId: string, assets: DraftAsset[], onProgress?: (text: string) => void) {
+  onProgress?.("Uploading…");
+  await apiGet(`/api/memories/${memoryId}`);
+  const media = await uploadAssets(assets, onProgress);
+  onProgress?.("Adding…");
+  return apiSend<{ memory: Memory }>(`/api/memories/${memoryId}/media`, "POST", { media });
+}
+
 async function finalizeUpload(key: string) {
   const { media } = await apiSend<{ media: FinalizedMedia }>("/api/media/finalize", "POST", { key });
   return media;
@@ -452,6 +490,7 @@ export type DownloadsPayload = {
 
 export type Memory = MemoryCard & {
   story: string | null;
+  storySource: "HUMAN" | "AI_DRAFT";
   transcript: string | null;
   /**
    * Rolled up from the clips: PENDING if any is, else FAILED if any did, else

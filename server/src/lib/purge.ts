@@ -1,5 +1,5 @@
 import type { Prisma } from "@prisma/client";
-import { PURGE_MAX_ATTEMPTS, type JobPayloads, type JobQueue } from "../jobs/JobQueue.js";
+import type { JobPayloads, JobQueue } from "../jobs/JobQueue.js";
 import { lockAssets } from "../media-host/assets.js";
 import { UPLOAD_URL_TTL_SECONDS } from "../storage/StorageProvider.js";
 
@@ -28,7 +28,6 @@ export type PurgePayload = JobPayloads["media.purge"];
 const purgeMediaSelect = {
   storageKey: true,
   muxAssetId: true,
-  derivatives: { select: { storageKey: true } },
 } as const;
 
 /**
@@ -86,13 +85,13 @@ export async function deleteAndPurge(
   }
 
   const storageKeys = unique([
-    ...media.flatMap((m) => [m.storageKey, ...m.derivatives.map((d) => d.storageKey)]),
+    ...media.map((m) => m.storageKey),
     ...(input.extraKeys ?? []),
   ]);
   if (storageKeys.length === 0 && muxAssets.length === 0) return null;
 
   const payload: PurgePayload = { familyId: input.familyId, storageKeys, muxAssets, reason: input.reason };
-  await queue.enqueue("media.purge", payload, { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS });
+  await queue.enqueue("media.purge", payload, { db: tx });
   return payload;
 }
 
@@ -153,11 +152,11 @@ export async function deleteFamilyAndPurge(
 
   const muxAssets = assets.map((a) => ({ uploadId: a.uploadId, assetId: a.assetId }));
   const payload: PurgePayload = { familyId, storageKeys: [], muxAssets, reason: input.reason, wholeFamily: true };
-  await queue.enqueue("media.purge", payload, { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS });
+  await queue.enqueue("media.purge", payload, { db: tx });
   await queue.enqueue(
     "media.purge",
     { familyId, storageKeys: [], muxAssets: [], reason: `${input.reason} (late uploads)`, wholeFamily: true },
-    { db: tx, maxAttempts: PURGE_MAX_ATTEMPTS, runAt: new Date(Date.now() + LATE_UPLOAD_SWEEP_MS) },
+    { db: tx, runAt: new Date(Date.now() + LATE_UPLOAD_SWEEP_MS) },
   );
   return true;
 }

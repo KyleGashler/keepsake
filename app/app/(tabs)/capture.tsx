@@ -1,11 +1,11 @@
-import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { ShootingStar } from "../../src/components/brand";
 import { AppHeader, Button, Screen, ViewOnlyState } from "../../src/components/ui";
 import { useCanContribute } from "../../src/auth/session-context";
-import { draft, type DraftAsset } from "../../src/draft";
+import { draft } from "../../src/draft";
+import { pickLibraryMedia, takePhoto } from "../../src/pick-media";
 import { Ionicons } from "../../src/styled";
 
 /**
@@ -40,33 +40,6 @@ const OPTIONS = [
   },
 ];
 
-/**
- * A picked video's length in whole seconds, or undefined when unknown — the
- * server then transcribes it whatever its length. expo-image-picker documents
- * `duration` in milliseconds, which is what iOS and Android report; its web
- * implementation passes the `<video>` element's `duration` through unchanged,
- * which is seconds (and Infinity for some WebM files).
- */
-function pickedDurationS(asset: ImagePicker.ImagePickerAsset): number | undefined {
-  if (asset.type !== "video" && !asset.mimeType?.startsWith("video/")) return undefined;
-  const raw = asset.duration;
-  if (typeof raw !== "number" || !Number.isFinite(raw) || raw <= 0) return undefined;
-  const seconds = Platform.OS === "web" ? raw : raw / 1000;
-  return Math.max(1, Math.round(seconds));
-}
-
-function toAssets(assets: ImagePicker.ImagePickerAsset[]): DraftAsset[] {
-  return assets.map((asset, i) => ({
-    uri: asset.uri,
-    name: asset.fileName ?? `capture-${Date.now()}-${i}.jpg`,
-    mime: asset.mimeType ?? "image/jpeg",
-    width: asset.width,
-    height: asset.height,
-    bytes: asset.fileSize,
-    durationS: pickedDurationS(asset),
-  }));
-}
-
 /** A VIEWER has no Capture tab, but a link can still land here. */
 export default function CaptureRoute() {
   if (!useCanContribute()) {
@@ -96,22 +69,9 @@ function CaptureScreen() {
 
     setBusy(key);
     try {
-      const result =
-        key === "photo"
-          ? await (async () => {
-              const perm = await ImagePicker.requestCameraPermissionsAsync();
-              if (!perm.granted) return null;
-              // Video has its own recorder, with a length cap the upload can honour.
-              return ImagePicker.launchCameraAsync({ mediaTypes: ["images"], quality: 0.9 });
-            })()
-          : await ImagePicker.launchImageLibraryAsync({
-              mediaTypes: ["images", "videos"],
-              allowsMultipleSelection: true,
-              quality: 0.9,
-            });
-
-      if (result && !result.canceled && result.assets?.length) {
-        draft.set(toAssets(result.assets));
+      const assets = key === "photo" ? await takePhoto() : await pickLibraryMedia();
+      if (assets.length) {
+        draft.set(assets);
         setMomentOpen(false);
         router.push("/capture/compose");
       }

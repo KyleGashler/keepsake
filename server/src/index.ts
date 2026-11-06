@@ -13,6 +13,7 @@ import { requireFamily, requireUser } from "./auth/middleware.js";
 import { corsOrigins } from "./lib/cors-origins.js";
 import { isForeignKeyViolation } from "./lib/errors.js";
 import { logger } from "./lib/logger.js";
+import { MediaInputError } from "./lib/memory-media.js";
 import { prisma } from "./lib/prisma.js";
 import { mediaHost } from "./media-host/index.js";
 import { accountRouter } from "./routes/account.js";
@@ -212,6 +213,10 @@ app.use(async (err: Error, req: express.Request, res: express.Response, _next: e
   // `req.ctx` is declared, not guaranteed: it's unset before requireUser runs.
   const ctx: Partial<express.Request["ctx"]> | undefined = req.ctx;
   const familyId = ctx?.family?.id;
+  if (err instanceof MediaInputError) {
+    if (!res.headersSent) res.status(err.status).json(err.body);
+    return;
+  }
   if (isForeignKeyViolation(err) && familyId && !(await familyExists(familyId))) {
     (req.log ?? logger).info({ familyId, requestId }, "request raced its family's deletion");
     if (!res.headersSent) res.status(403).json({ error: "forbidden" });

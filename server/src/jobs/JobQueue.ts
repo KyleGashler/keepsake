@@ -65,12 +65,13 @@ export interface JobPayloads {
 export type JobType = keyof JobPayloads;
 
 /**
- * Tries before a `media.purge` is left FAILED. The queue backs off 15 s
- * doubling to a 15-minute cap, so this is roughly four hours of trying. A
+ * Tries before a job is left FAILED, for types that need more than the
+ * column's 5. A `media.purge` must not be lost: the queue backs off 15 s
+ * doubling to a 15-minute cap, so 20 is roughly four hours of trying. A
  * FAILED job keeps its payload on the Job row: re-queue it (status QUEUED,
  * attempts 0) once whatever was refusing is fixed.
  */
-export const PURGE_MAX_ATTEMPTS = 20;
+export const MAX_ATTEMPTS: Partial<Record<JobType, number>> = { "media.purge": 20 };
 
 const purgedClip = z.object({ uploadId: z.string(), assetId: z.string().nullable() });
 
@@ -95,7 +96,7 @@ export const jobPayloadSchemas: { [T in JobType]: z.ZodType<JobPayloads[T]> } = 
 export interface EnqueueOptions {
   /** Not before this time. Defaults to now. */
   runAt?: Date;
-  /** Attempts before the job is marked FAILED. Defaults to the column's 5. */
+  /** Attempts before the job is marked FAILED. Defaults to the type's `MAX_ATTEMPTS`, else the column's 5. */
   maxAttempts?: number;
   /**
    * Enqueue inside the caller's transaction, so a job exists if and only if

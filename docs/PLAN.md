@@ -446,7 +446,8 @@ single "Original" table could replace its insides without touching callers.
   (`lib/purge.ts`), `stillReferenced` (`jobs/media-purge.ts`), `lockCover`
   and the PATCH's own `FOR UPDATE` (routes), and `enqueueImageDerive`.
   `profilePhotoUrls` is now two `pictureUrl` calls. `PURGE_MAX_ATTEMPTS`
-  moved to `jobs/JobQueue.ts` to avoid an import cycle. DTOs are unchanged.
+  became a per-type default (`MAX_ATTEMPTS` in `jobs/JobQueue.ts`), so no
+  `media.purge` caller passes it. DTOs are unchanged.
 - **Tests.** This is the repo's first test runner: `vitest`, run with `npm
   test` in `server/` (not on commit). `server/test/pictures.test.ts` goes
   through the module's interface against a per-run database on the dev

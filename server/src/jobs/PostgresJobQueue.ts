@@ -1,6 +1,7 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 import type { Logger } from "pino";
 import {
+  MAX_ATTEMPTS,
   PermanentJobError,
   jobPayloadSchemas,
   type EnqueueOptions,
@@ -86,12 +87,13 @@ export class PostgresJobQueue implements JobQueue {
   }
 
   async enqueue<T extends JobType>(type: T, payload: JobPayloads[T], options: EnqueueOptions = {}) {
+    const maxAttempts = options.maxAttempts ?? MAX_ATTEMPTS[type];
     const job = await (options.db ?? this.db).job.create({
       data: {
         type,
         payload,
         ...(options.runAt ? { runAt: options.runAt } : {}),
-        ...(options.maxAttempts ? { maxAttempts: options.maxAttempts } : {}),
+        ...(maxAttempts ? { maxAttempts } : {}),
       },
       select: { id: true },
     });

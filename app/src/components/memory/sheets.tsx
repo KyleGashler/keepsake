@@ -1,8 +1,11 @@
 import { useMutation } from "@tanstack/react-query";
+import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import {
   apiSend,
+  addToMemory,
+  isNotFound,
   type Collection,
   type MediaItem,
   type Memory,
@@ -11,6 +14,8 @@ import {
   type PillarKey,
 } from "../../api";
 import { confirmAction } from "../../confirm";
+import { pickLibraryMedia } from "../../pick-media";
+import { routes } from "../../routes";
 import { duration, errorMessage, isoDay, longDate, refusalMessage, shortDate, withDay } from "../../format";
 import {
   FILING_VIEWS,
@@ -27,7 +32,7 @@ import { IconDisc, SearchField } from "../journey";
 import { fieldBox, fieldMultiline, fieldText } from "./field-styles";
 import { Thumb } from "./gallery";
 import { CardArt } from "./parts";
-import { InlineError } from "../ui";
+import { Button, InlineError } from "../ui";
 import { FieldLabel, Sheet, SheetHeader, SheetRow } from "./sheet";
 import { DateField } from "./date-field";
 import { DownloadList } from "./download-sheet";
@@ -105,9 +110,11 @@ function OptionsMenu({
   return (
     <View>
       <SheetRow icon="pencil-outline" label="Edit Memory" onPress={() => onPick("edit")} />
-      {hasMedia ? (
-        <SheetRow icon="images-outline" label="Arrange Photos & Recordings" onPress={() => onPick("media")} />
-      ) : null}
+      <SheetRow
+        icon="images-outline"
+        label={hasMedia ? "Photos & Recordings" : "Add Photos & Recordings"}
+        onPress={() => onPick("media")}
+      />
       <SheetRow icon="albums-outline" label="Add to Another Collection" onPress={() => onPick("collections")} />
       <SheetRow icon="link-outline" label="Link to Another Memory" onPress={() => onPick("link")} />
       {/* Sharing has to respect permissions before anything leaves the archive. */}
@@ -244,36 +251,49 @@ function EditForm({ memory, onClose }: { memory: Memory; onClose: () => void }) 
 
 const MEDIA_NOUN: Record<MediaItem["type"], string> = { PHOTO: "photo", VIDEO: "video", AUDIO: "recording" };
 
-/**
- * Every photo, video and recording on the memory, in order: move one up or
- * down (the first photo or video is the hero everywhere the memory shows),
- * or remove it for good. Arrows rather than dragging, so it works the same
- * with a finger, a mouse and a screen reader. Each change saves at once.
- */
 function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const items = memory.media;
   // The first photo is the memory's face everywhere, and the counts move.
   const write = useMemoryWrite((request: () => Promise<{ memory: Memory }>) => request(), MEMORY_VIEWS);
   const [busy, setBusy] = useState<string | null>(null);
+  const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const anyBusy = busy !== null || progress !== null;
 
-  async function run(id: string, request: () => Promise<{ memory: Memory }>) {
-    setBusy(id);
+  async function run(request: () => Promise<{ memory: Memory }>) {
     setError(null);
     try {
       await write.mutateAsync(request);
     } catch (err) {
+      if (isNotFound(err)) {
+        onClose();
+        void queryClient.invalidateQueries({ queryKey: memoryKey(memory.id), exact: true });
+        return;
+      }
       setError(refusalMessage(err, "That didn't save. Try again."));
-    } finally {
-      setBusy(null);
     }
+  }
+
+  async function onItem(id: string, request: () => Promise<{ memory: Memory }>) {
+    setBusy(id);
+    await run(request);
+    setBusy(null);
   }
 
   function move(index: number, by: -1 | 1) {
     const ids = items.map((m) => m.id);
     const [moved] = ids.splice(index, 1);
     ids.splice(index + by, 0, moved);
-    void run(moved, () => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/media/order`, "PUT", { mediaIds: ids }));
+    void onItem(moved, () => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/media/order`, "PUT", { mediaIds: ids }));
+  }
+
+  async function add() {
+    // Before anything async: a browser opens its file chooser only from the tap itself.
+    const picked = await pickLibraryMedia();
+    if (!picked.length) return;
+    setProgress("Uploading…");
+    await run(() => addToMemory(memory.id, picked, setProgress));
+    setProgress(null);
   }
 
   async function remove(item: MediaItem) {
@@ -284,13 +304,36 @@ function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => voi
       confirmLabel: "Remove",
     });
     if (!ok) return;
-    await run(item.id, () => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/media/${item.id}`, "DELETE"));
+    await onItem(item.id, () => apiSend<{ memory: Memory }>(`/api/memories/${memory.id}/media/${item.id}`, "DELETE"));
   }
 
   return (
     <>
-      <SheetHeader title="Arrange" action={{ label: "Done", onPress: onClose }} />
+      <SheetHeader title="Photos & Recordings" action={{ label: "Done", onPress: onClose }} />
       <Text className={HINT}>The first photo or video leads the memory everywhere it appears.</Text>
+      <View className="mt-3 flex-row gap-2">
+        <Button
+          variant="secondary"
+          icon="images-outline"
+          label={progress ?? "Photos & Videos"}
+          accessibilityLabel="Add photos and videos"
+          disabled={anyBusy}
+          onPress={() => void add()}
+          className="flex-1 px-3"
+        />
+        <Button
+          variant="secondary"
+          icon="mic-outline"
+          label="Record a Voice"
+          accessibilityLabel="Record a voice for this memory"
+          disabled={anyBusy}
+          onPress={() => {
+            onClose();
+            router.push(routes.recordInto(memory.id));
+          }}
+          className="flex-1 px-3"
+        />
+      </View>
       {error ? <Text className={ERROR}>{error}</Text> : null}
       <ScrollView showsVerticalScrollIndicator={false} contentContainerClassName="mt-2 pb-4">
         {items.map((item, i) => {
@@ -300,7 +343,7 @@ function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => voi
           return (
             <View
               key={item.id}
-              className={`${PICK_ROW} ${busy !== null && !working ? "opacity-60" : ""}`}
+              className={`${PICK_ROW} ${anyBusy && !working ? "opacity-60" : ""}`}
               style={HAIRLINE_BELOW}
             >
               <View className={PICK_THUMB}>
@@ -322,20 +365,20 @@ function MediaArranger({ memory, onClose }: { memory: Memory; onClose: () => voi
                 <ActivityIndicator colorClassName="accent-primary" />
               ) : (
                 <View className="flex-row gap-1.5">
-                  <ArrangeButton icon="chevron-up" label={`Move ${label} up`} disabled={busy !== null || i === 0} onPress={() => move(i, -1)} />
+                  <ArrangeButton icon="chevron-up" label={`Move ${label} up`} disabled={anyBusy || i === 0} onPress={() => move(i, -1)} />
                   <ArrangeButton
                     icon="chevron-down"
                     label={`Move ${label} down`}
-                    disabled={busy !== null || i === items.length - 1}
+                    disabled={anyBusy || i === items.length - 1}
                     onPress={() => move(i, 1)}
                   />
-                  <ArrangeButton icon="trash-outline" label={`Remove ${label}`} danger disabled={busy !== null} onPress={() => void remove(item)} />
+                  <ArrangeButton icon="trash-outline" label={`Remove ${label}`} danger disabled={anyBusy} onPress={() => void remove(item)} />
                 </View>
               )}
             </View>
           );
         })}
-        {items.length === 0 ? <Text className={EMPTY}>No photos or recordings left on this memory.</Text> : null}
+        {items.length === 0 ? <Text className={EMPTY}>No photos or recordings on this memory yet.</Text> : null}
       </ScrollView>
     </>
   );
@@ -518,7 +561,6 @@ function CollectionPicker({ memory, onClose }: { memory: Memory; onClose: () => 
 // ---------------------------------------------------------------------------
 // Links
 // ---------------------------------------------------------------------------
-
 
 function LinkPicker({ memory, onClose }: { memory: Memory; onClose: () => void }) {
   const [query, setQuery] = useState("");

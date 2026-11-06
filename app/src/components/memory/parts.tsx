@@ -180,8 +180,8 @@ export function DetailValue({ children, onPress }: { children: string; onPress?:
 // Related
 // ---------------------------------------------------------------------------
 
-/** "Related Memories": a sideways row of small cards. */
-export function RelatedRow({ memories }: { memories: MemoryCard[] }) {
+export function RelatedRow({ memories, linkedIds }: { memories: MemoryCard[]; linkedIds: string[] }) {
+  const linked = new Set(linkedIds);
   return (
     <ScrollView
       horizontal
@@ -190,18 +190,18 @@ export function RelatedRow({ memories }: { memories: MemoryCard[] }) {
       className="-mx-6"
     >
       {memories.map((m) => (
-        <RelatedCard key={m.id} memory={m} />
+        <RelatedCard key={m.id} memory={m} linked={linked.has(m.id)} />
       ))}
     </ScrollView>
   );
 }
 
-function RelatedCard({ memory }: { memory: MemoryCard }) {
+function RelatedCard({ memory, linked }: { memory: MemoryCard; linked: boolean }) {
   return (
     <Pressable
       onPress={() => router.push(routes.memory(memory.id))}
       accessibilityRole="button"
-      accessibilityLabel={`${memory.title}, ${shortDate(memory.occurredAt)}`}
+      accessibilityLabel={`${memory.title}, ${shortDate(memory.occurredAt)}, ${linked ? "linked" : "suggested"}`}
       className="w-[148px] overflow-hidden rounded-sm border border-line bg-surface active:opacity-80"
     >
       <View className="h-[84px] bg-surface-alt">
@@ -212,6 +212,16 @@ function RelatedCard({ memory }: { memory: MemoryCard }) {
           {memory.title}
         </Text>
         <Text className="font-sans text-[12.5px] text-muted">{shortDate(memory.occurredAt)}</Text>
+        <View className="mt-1.5 flex-row items-center gap-1">
+          <Ionicons
+            name={linked ? "link-outline" : "sparkles-outline"}
+            size={12}
+            colorClassName={linked ? "accent-primary" : "accent-muted"}
+          />
+          <Text className={`font-sans-semibold text-[11.5px] ${linked ? "text-primary" : "text-muted"}`}>
+            {linked ? "Linked" : "Suggested"}
+          </Text>
+        </View>
       </View>
     </Pressable>
   );

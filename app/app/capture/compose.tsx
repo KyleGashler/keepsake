@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import {
   apiSend,
-  uploadFile,
+  uploadAssets,
   type Collection,
   type Memory,
   type PillarKey,
@@ -150,37 +150,7 @@ function ComposeScreen() {
     setSaving(true);
     setError(null);
     try {
-      const media = [];
-      for (const [i, asset] of assets.entries()) {
-        const label = assets.length > 1 ? `${i + 1} of ${assets.length}` : "";
-        setProgress(label ? `Uploading ${label}…` : "Uploading…");
-        const uploaded = await uploadFile(asset.uri, asset.name, asset.mime, (fraction) =>
-          setProgress(`Uploading ${label} ${Math.round(fraction * 100)}%`.replace(/\s+/g, " ").trim()),
-        );
-        // Everything but the caption comes from the server's own reading of the
-        // bytes; the picker's dimensions only fill in what it couldn't measure.
-        // Audio has no dimensions to send; a clip's length comes from the
-        // recorder (or Mux fills it in once the clip is processed).
-        const audio = uploaded.type === "AUDIO";
-        const timed = audio || uploaded.type === "VIDEO";
-        media.push({
-          type: uploaded.type,
-          storageKey: uploaded.key,
-          mimeType: uploaded.mimeType,
-          bytes: uploaded.bytes,
-          // Whichever digest finalize recorded: storage's checksum, or its own
-          // sha256. A Mux clip has neither (Mux validates the file itself).
-          ...(uploaded.checksum ? { checksum: uploaded.checksum } : {}),
-          ...(uploaded.sha256 ? { sha256: uploaded.sha256 } : {}),
-          ...(timed && asset.durationS && asset.durationS > 0 ? { durationS: Math.round(asset.durationS) } : {}),
-          ...(audio
-            ? {}
-            : {
-                width: uploaded.width ?? asset.width ?? 1200,
-                height: uploaded.height ?? asset.height ?? 900,
-              }),
-        });
-      }
+      const media = await uploadAssets(assets, setProgress);
       setProgress(assets.length ? "Preserving…" : null);
 
       const res = await createMemory.mutateAsync({

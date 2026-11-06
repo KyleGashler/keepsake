@@ -9,7 +9,7 @@ import { mediaPurgeHandler } from "../src/jobs/media-purge.js";
 import { logger } from "../src/lib/logger.js";
 import { deleteIfUnused, pictureUrl, renditionsMade, setPicture, type PictureHolder } from "../src/lib/pictures.js";
 import { prisma } from "../src/lib/prisma.js";
-import { derivativeKey, localProvider, storage } from "../src/storage/index.js";
+import { derivativeKey, localProvider, originalKey, storage } from "../src/storage/index.js";
 
 /**
  * The Picture module (lib/pictures.ts), through its interface, against a
@@ -47,7 +47,7 @@ afterAll(async () => {
 
 /** A finalized upload: an Original of `ext`, really stored (unless `store` is false). */
 async function upload(ext = ".jpg", store = true) {
-  const key = `${family}/${crypto.randomUUID()}/original${ext}`;
+  const key = originalKey(family, crypto.randomUUID(), ext);
   if (store) {
     const jpeg = await sharp({ create: { width: 64, height: 48, channels: 3, background: { r: 200, g: 60, b: 40 } } })
       .jpeg()
