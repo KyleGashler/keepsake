@@ -5,6 +5,8 @@ const MONTHS = [
   "July", "August", "September", "October", "November", "December",
 ];
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+
 export function longDate(iso: string) {
   const d = new Date(iso);
   return `${MONTHS[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
@@ -13,6 +15,25 @@ export function longDate(iso: string) {
 export function shortDate(iso: string) {
   const d = new Date(iso);
   return `${MONTHS[d.getMonth()].slice(0, 3)} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+export function localDay(date: Date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+export function fromLocalDay(day: string) {
+  const [y, m, d] = day.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+export function dayLabel(day: string) {
+  const date = fromLocalDay(day);
+  const today = fromLocalDay(localDay(new Date()));
+  const daysAgo = Math.round((today.getTime() - date.getTime()) / 86_400_000);
+  const short = `${MONTHS[date.getMonth()].slice(0, 3)} ${date.getDate()}`;
+  if (daysAgo === 0) return `Today · ${short}`;
+  if (daysAgo === 1) return `Yesterday · ${short}`;
+  return date.getFullYear() === today.getFullYear() ? short : `${short}, ${date.getFullYear()}`;
 }
 
 export function relativeTime(iso: string) {
@@ -119,8 +140,6 @@ export function ageOn(birthIso: string | null | undefined, atIso: string) {
   if (months < 24) return `${months} ${months === 1 ? "month" : "months"}`;
   return `age ${Math.floor(months / 12)}`;
 }
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
 
 // Birthdays are stored as UTC midnight, so read and write them in UTC: local time puts them a day early
 // west of Greenwich.

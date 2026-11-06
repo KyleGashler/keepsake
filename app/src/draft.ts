@@ -15,6 +15,9 @@ export const draft = {
   set(assets: DraftAsset[]) {
     pending = assets;
   },
+  hasMedia() {
+    return pending.length > 0;
+  },
   take() {
     const assets = pending;
     pending = [];

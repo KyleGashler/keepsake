@@ -1,6 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { router, useFocusEffect, useLocalSearchParams } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -21,11 +21,12 @@ import {
   type UploadLimits,
 } from "../../src/api";
 import { AudioClip } from "../../src/components/audio";
+import { DateField } from "../../src/components/date-field";
 import { VideoClip } from "../../src/components/video";
 import { AppHeader, Button, ErrorState, Loading, Screen, ViewOnlyState } from "../../src/components/ui";
 import { useCanContribute, useSession } from "../../src/auth/session-context";
 import { draft, type DraftAsset } from "../../src/draft";
-import { collectionName, duration, errorMessage } from "../../src/format";
+import { collectionName, duration, errorMessage, localDay } from "../../src/format";
 import { pickLibraryMedia, takePhoto } from "../../src/pick-media";
 import { composeParams, type ComposeParams } from "../../src/routes";
 import { MEMORY_VIEWS, invalidate, useApiQuery } from "../../src/query";
@@ -40,16 +41,6 @@ const PILLAR_LABELS: Record<PillarKey, string> = {
   CHILD_PROFILES: "Children",
   FAMILY_LIFE: "Family Life",
 };
-
-// Local date, not UTC: an evening capture belongs to today, not tomorrow.
-function today() {
-  const now = new Date();
-  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-}
-
-function pad(n: number) {
-  return String(n).padStart(2, "0");
-}
 
 function toIso(date: string) {
   const parsed = new Date(`${date}T12:00:00`);
@@ -86,6 +77,7 @@ function ComposeScreen() {
   const session = useSession();
 
   const [assets, setAssets] = useState<DraftAsset[]>([]);
+  const [mediaFirst] = useState(() => draft.hasMedia());
   const addAssets = (added: DraftAsset[]) =>
     setAssets((current) => [...current, ...added.filter((a) => !current.some((c) => c.uri === a.uri))]);
   useFocusEffect(
@@ -109,7 +101,8 @@ function ComposeScreen() {
   ];
   const [title, setTitle] = useState("");
   const [story, setStory] = useState("");
-  const [date, setDate] = useState(today());
+  // Local date, not UTC: an evening capture belongs to today, not tomorrow.
+  const [date, setDate] = useState(() => localDay(new Date()));
   const [dateTouched, setDateTouched] = useState(false);
   const [location, setLocation] = useState("");
   const [authorId, setAuthorId] = useState<string | null>(null);
@@ -117,7 +110,6 @@ function ComposeScreen() {
   const [collectionIds, setCollectionIds] = useState<string[]>(
     params.collectionId ? [params.collectionId] : [],
   );
-  const [pillar, setPillar] = useState<PillarKey>("FAMILY_LIFE");
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -141,17 +133,6 @@ function ComposeScreen() {
     people[0]?.id ??
     null;
 
-  const collections = useMemo(
-    () =>
-      (collectionsData?.collections ?? []).filter(
-        (c) => c.pillar === pillar && (c.parentId === null || c.id === params.collectionId),
-      ),
-    [collectionsData, pillar, params.collectionId],
-  );
-  const chosen = useMemo(
-    () => (collectionsData?.collections ?? []).filter((c) => collectionIds.includes(c.id)),
-    [collectionsData, collectionIds],
-  );
 
   async function save() {
     if (!title.trim()) return setError("Give the memory a title so it can be found again.");
@@ -181,6 +162,72 @@ function ComposeScreen() {
     }
   }
 
+  const media = (
+    <>
+      <Field label="Photos, videos & voices">
+        {visuals.length ? (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
+            <View className="flex-row gap-2">
+              {visuals.map((asset) => {
+                const isVideo = asset.mime.startsWith("video/");
+                return (
+                  <View key={asset.uri}>
+                    {isVideo ? (
+                      <VideoThumb asset={asset} />
+                    ) : (
+                      <Image
+                        source={{ uri: asset.uri }}
+                        className="h-24 w-24 rounded-sm bg-surface-alt"
+                        contentFit="cover"
+                      />
+                    )}
+                    <RemoveButton
+                      label={isVideo ? "Remove video" : "Remove photo"}
+                      onPress={() => removeAsset(asset.uri)}
+                      className="absolute right-1 top-1 bg-ink/55"
+                      iconClassName="accent-surface"
+                    />
+                  </View>
+                );
+              })}
+            </View>
+          </ScrollView>
+        ) : null}
+        {recordings.map((asset, i) => (
+          <View key={asset.uri} className="mb-2 flex-row items-center gap-2">
+            <View className="flex-1">
+              <AudioClip
+                uri={asset.uri}
+                title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
+                durationS={asset.durationS}
+              />
+            </View>
+            <RemoveButton label="Remove recording" onPress={() => removeAsset(asset.uri)} iconClassName="accent-muted" />
+          </View>
+        ))}
+        <View className="flex-row flex-wrap gap-2">
+          {addMediaActions.map(({ label, icon, onPress }) => (
+            <Button
+              key={label}
+              variant="secondary"
+              label={label}
+              icon={icon}
+              disabled={saving}
+              onPress={onPress}
+              className="grow basis-[140px] px-3"
+            />
+          ))}
+        </View>
+      </Field>
+      {recordings.length || hasVideo ? (
+        <Text className="-mt-4 type-caption">
+          The transcript will be written automatically after you save.
+        </Text>
+      ) : null}
+      {oversizedMessage ? <Text className="type-caption text-error">{oversizedMessage}</Text> : null}
+    </>
+  );
+
   if (!peopleData || !collectionsData) return <ComposeUnavailable queries={[peopleQuery, collectionsQuery]} />;
 
   return (
@@ -198,73 +245,13 @@ function ComposeScreen() {
             </View>
           ) : null}
 
-          <Field label="Photos, videos & voices">
-            {visuals.length ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-2">
-                <View className="flex-row gap-2">
-                  {visuals.map((asset) => {
-                    const isVideo = asset.mime.startsWith("video/");
-                    return (
-                      <View key={asset.uri}>
-                        {isVideo ? (
-                          <VideoThumb asset={asset} />
-                        ) : (
-                          <Image
-                            source={{ uri: asset.uri }}
-                            className="h-24 w-24 rounded-sm bg-surface-alt"
-                            contentFit="cover"
-                          />
-                        )}
-                        <RemoveButton
-                          label={isVideo ? "Remove video" : "Remove photo"}
-                          onPress={() => removeAsset(asset.uri)}
-                          className="absolute right-1 top-1 bg-ink/55"
-                          iconClassName="accent-surface"
-                        />
-                      </View>
-                    );
-                  })}
-                </View>
-              </ScrollView>
-            ) : null}
-            {recordings.map((asset, i) => (
-              <View key={asset.uri} className="mb-2 flex-row items-center gap-2">
-                <View className="flex-1">
-                  <AudioClip
-                    uri={asset.uri}
-                    title={recordings.length > 1 ? `Recording ${i + 1}` : "Your recording"}
-                    durationS={asset.durationS}
-                  />
-                </View>
-                <RemoveButton label="Remove recording" onPress={() => removeAsset(asset.uri)} iconClassName="accent-muted" />
-              </View>
-            ))}
-            <View className="flex-row flex-wrap gap-2">
-              {addMediaActions.map(({ label, icon, onPress }) => (
-                <Button
-                  key={label}
-                  variant="secondary"
-                  label={label}
-                  icon={icon}
-                  disabled={saving}
-                  onPress={onPress}
-                  className="grow basis-[140px] px-3"
-                />
-              ))}
-            </View>
-          </Field>
-          {recordings.length || hasVideo ? (
-            <Text className="-mt-4 type-caption">
-              The transcript will be written automatically after you save.
-            </Text>
-          ) : null}
-          {oversizedMessage ? <Text className="type-caption text-error">{oversizedMessage}</Text> : null}
+          {mediaFirst ? media : null}
 
           <Field label="Title">
             <TextInput
               value={title}
               onChangeText={setTitle}
-              placeholder="The morning we found out"
+              placeholder="e.g. The morning we found out"
               placeholderTextColorClassName="accent-muted"
               className={`${INPUT} text-[15.5px]`}
             />
@@ -283,24 +270,24 @@ function ComposeScreen() {
             />
           </Field>
 
+          {mediaFirst ? null : media}
+
           <View className="flex-row gap-3">
             <Field label="Date" className="flex-1">
-              <TextInput
+              <DateField
                 value={date}
-                onChangeText={(next) => {
+                onChange={(next) => {
                   setDate(next);
                   setDateTouched(true);
                 }}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColorClassName="accent-muted"
-                className={`${INPUT} text-[15.5px]`}
+                className={INPUT}
               />
             </Field>
             <Field label="Place" className="flex-[1.4]">
               <TextInput
                 value={location}
                 onChangeText={setLocation}
-                placeholder="Home"
+                placeholder="e.g. Home"
                 placeholderTextColorClassName="accent-muted"
                 className={`${INPUT} text-[15.5px]`}
               />
@@ -341,39 +328,12 @@ function ComposeScreen() {
             </View>
           </Field>
 
-          <Field label="Where it belongs">
-            <View className="mb-2 flex-row flex-wrap gap-2">
-              {PILLARS.map((key) => (
-                <Chip key={key} label={PILLAR_LABELS[key]} selected={pillar === key} onPress={() => setPillar(key)} />
-              ))}
-            </View>
-            {collections.length === 0 ? (
-              <Text className="type-caption">
-                {pillar === "FAMILY_LIFE"
-                  ? "No Family Life collections yet. The memory is kept in the archive either way."
-                  : "No collections here yet — they come with each child. The memory is kept in the archive either way."}
-              </Text>
-            ) : null}
-            <View className="flex-row flex-wrap gap-2">
-              {collections.map((collection) => (
-                <Chip
-                  key={collection.id}
-                  label={
-                    collection.personName
-                      ? `${collection.personName} · ${collectionName(collection)}`
-                      : collectionName(collection)
-                  }
-                  selected={collectionIds.includes(collection.id)}
-                  onPress={() => setCollectionIds((ids) => toggle(ids, collection.id))}
-                />
-              ))}
-            </View>
-            {chosen.length ? (
-              <Text className="mt-2 type-caption">
-                Filed in {chosen.map(collectionName).join(", ")}
-              </Text>
-            ) : null}
-          </Field>
+          <FilingField
+            collections={collectionsData.collections}
+            presetId={params.collectionId}
+            chosenIds={collectionIds}
+            onToggle={(id) => setCollectionIds((ids) => toggle(ids, id))}
+          />
 
           {error ? <Text className="type-caption text-error">{error}</Text> : null}
 
@@ -476,6 +436,101 @@ function Field({
     <View className={className}>
       <Text className="mb-2 type-label">{label}</Text>
       {children}
+    </View>
+  );
+}
+
+function FilingField({
+  collections: all,
+  presetId,
+  chosenIds,
+  onToggle,
+}: {
+  collections: Collection[];
+  presetId?: string;
+  chosenIds: string[];
+  onToggle: (id: string) => void;
+}) {
+  const [pillarChoice, setPillar] = useState<PillarKey | null>(null);
+  const [filing, setFiling] = useState(false);
+  const pillar = pillarChoice ?? all.find((c) => c.id === presetId)?.pillar ?? "FAMILY_LIFE";
+  const collections = all
+    .filter((c) => c.pillar === pillar && (c.parentId === null || c.id === presetId))
+    .toSorted((a, b) => (a.personName ?? "").localeCompare(b.personName ?? ""));
+  const chosen = all.filter((c) => chosenIds.includes(c.id));
+
+  return (
+    <Field label="Where it belongs">
+      {filing ? (
+        <>
+          <PillarTabs value={pillar} onChange={setPillar} />
+          {collections.length === 0 ? (
+            <Text className="type-caption">
+              {pillar === "FAMILY_LIFE"
+                ? "No Family Life collections yet. The memory is kept in the archive either way."
+                : "No collections here yet — they come with each child. The memory is kept in the archive either way."}
+            </Text>
+          ) : null}
+          <View className="flex-row flex-wrap gap-2">
+            {collections.map((collection) => (
+              <Chip
+                key={collection.id}
+                label={collectionLabel(collection)}
+                selected={chosenIds.includes(collection.id)}
+                onPress={() => onToggle(collection.id)}
+              />
+            ))}
+          </View>
+          {chosen.length ? (
+            <Text className="mt-2 type-caption">Filed in {chosen.map(collectionLabel).join(", ")}</Text>
+          ) : null}
+        </>
+      ) : (
+        <Pressable
+          onPress={() => setFiling(true)}
+          accessibilityRole="button"
+          className="flex-row items-center gap-3 rounded-md border border-line bg-surface px-4 py-[13px] active:opacity-70"
+        >
+          <Ionicons
+            name={chosen.length ? "albums-outline" : "add"}
+            size={18}
+            colorClassName="accent-accent-deep"
+          />
+          <Text className="flex-1 text-[15.5px] text-ink" numberOfLines={1}>
+            {chosen.length ? chosen.map(collectionLabel).join(", ") : "Add to a collection"}
+          </Text>
+          <Text className={`text-[14px] ${chosen.length ? "font-sans-semibold text-accent-deep" : "font-sans text-muted"}`}>
+            {chosen.length ? "Change" : "Optional"}
+          </Text>
+        </Pressable>
+      )}
+    </Field>
+  );
+}
+
+function collectionLabel(collection: Collection) {
+  return collection.personName ? `${collection.personName} · ${collectionName(collection)}` : collectionName(collection);
+}
+
+function PillarTabs({ value, onChange }: { value: PillarKey; onChange: (pillar: PillarKey) => void }) {
+  return (
+    <View className="mb-3 flex-row rounded-full bg-surface-alt p-1" accessibilityRole="tablist">
+      {PILLARS.map((key) => {
+        const selected = key === value;
+        return (
+          <Pressable
+            key={key}
+            onPress={() => onChange(key)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            className={`flex-1 items-center rounded-full py-2 ${selected ? "bg-surface shadow-card" : ""}`}
+          >
+            <Text className={`text-[13.5px] ${selected ? "font-sans-semibold text-ink" : "font-sans text-ink-soft"}`}>
+              {PILLAR_LABELS[key]}
+            </Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }

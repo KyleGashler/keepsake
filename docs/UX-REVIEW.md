@@ -30,11 +30,11 @@ A walk through every main screen of the local build (demo family, phone width). 
 
 ## Capture
 
-- [ ] **"Tell a story" opens a form that leads with media buttons.** Put the story field first for that entry point; keep media first for "Capture a moment".
-- [ ] **The Title placeholder looks like real text** ("The morning we found out"). Lighten placeholders or prefix "e.g.".
-- [ ] **Date shows as `2026-11-05`.** Use a friendly format or picker ("Today · Nov 5").
+- [x] **"Tell a story" opens a form that leads with media buttons.** Put the story field first for that entry point; keep media first for "Capture a moment". Done: media leads only when the form opens with media attached.
+- [x] **The Title placeholder looks like real text** ("The morning we found out"). Lighten placeholders or prefix "e.g.". Done: "e.g." on Title and Place.
+- [x] **Date shows as `2026-11-05`.** Use a friendly format or picker ("Today · Nov 5"). Done: `DateField` — datetimepicker on iOS/Android, the browser picker on web. Not yet tried on a device.
 - [ ] **"Saved by" offers a single option.** Hide it unless more than one member can add memories.
-- [ ] **"Where it belongs" mixes two levels of chips** (pillars, then their collections) with no visual distinction. Default it from where the user started (e.g. Banks → Milestones via "Add to this collection") and collapse it otherwise.
+- [x] **"Where it belongs" mixes two levels of chips** (pillars, then their collections) with no visual distinction. Default it from where the user started (e.g. Banks → Milestones via "Add to this collection") and collapse it otherwise. Done: collapsed row, pillar tabs, chips grouped by child.
 
 ## Family Hub
 
